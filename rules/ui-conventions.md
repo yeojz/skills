@@ -8,18 +8,11 @@
 
 - Express type sizes in `rem`, anchored on the browser default.
 - Keep UI text at 16px or larger.
-- Do not set a base font size below the browser default.
-- Avoid full-viewport-height sections by default.
 
-- Avoid thick accent borders.
 - Avoid the default indigo and violet palettes.
 - Avoid a uniform grid of identical cards.
-- Avoid block-by-block scroll reveal animations.
-- Vary section rhythm, density and composition instead of repeating one block shape.
 
 - Follow the agreed design document.
-- Raise a proposed deviation from that document before building it, not after.
-- Do not improvise a new direction mid-build.
 
 - Check mobile widths before calling a layout done.
 - Check for horizontal overflow at the narrowest supported width.

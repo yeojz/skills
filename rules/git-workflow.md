@@ -19,9 +19,9 @@
 - Open PRs as drafts unless told otherwise.
 
 - List the repo owner as the commit author.
-- Take attribution from settings: honour `includeCoAuthoredBy` and `attribution` in settings.json.
-- Add a `Co-Authored-By` trailer only when settings ask for one.
-- Never include a Claude session link in a commit message or PR body.
+- Take attribution from the harness's attribution settings.
+- Add a co-author trailer only when those settings ask for one.
+- Never include an agent session link in a commit message or PR body.
 
 - Never stage `.claude/`, `docs/plans/` or `.plans/`.
 - Stage only the files you changed for this task. Never `git add -A` blindly.

@@ -8,7 +8,8 @@ editing a skill, rule, agent or template.
 ## Skill format
 
 Every skill is a directory under `skills/` containing `SKILL.md` and
-`evals/evals.json`.
+`evals/evals.json`. A skill that fills in a document also carries its
+`template.md` in the same directory.
 
 `SKILL.md` starts with YAML frontmatter, exactly two keys:
 
@@ -43,6 +44,9 @@ One or two sentences. What the skill does and what it guarantees.
 |---------|-----|
 ```
 
+A skill with more than one way of running may add `## Modes` between Overview
+and Workflow, with a table naming each mode and one section per mode after it.
+
 Rules for the body:
 
 - Numbered steps with real commands in fenced `bash` blocks.
@@ -54,7 +58,9 @@ Rules for the body:
 
 ## Eval format
 
-`evals/evals.json` matches the shape already used by the `git-commit` skill:
+`evals/evals.json` is a transcript-review checklist: prompts a user would type,
+paired with behaviour that can be checked by reading the transcript.
+`validate.sh` enforces the structure.
 
 ```json
 {
@@ -75,6 +81,25 @@ Rules for the body:
 
 Three to five evals per skill. Each `expectations` entry must be checkable by
 reading a transcript.
+
+## Rule format
+
+A rule file is plain markdown under `rules/`: one H1, a flat list of
+imperative lines, no frontmatter, under 80 lines. Rules are always on and cost
+tokens in every session, so a line that a skill already enforces belongs in the
+skill, not here.
+
+## Agent format
+
+An agent is a markdown file under `agents/` with frontmatter carrying `name`,
+`description` and `tools`. Agents are read-only reviewers, so `tools` must not
+include `Edit` or `Write`. Findings use an id prefix per persona, such as `PE`,
+`SEC` or `TE`, so a plan can trace each item back to the lens that raised it.
+
+## Template format
+
+A template is plain markdown with no frontmatter, saved as `template.md` inside
+the skill directory that fills it in. There is no top-level `templates/`.
 
 ---
 
@@ -101,52 +126,12 @@ Never invent a command. Read `package.json` scripts and run those. Coverage in a
 workspace usually needs both a filter and a project, for example
 `pnpm --filter <pkg> test:ci --project <project>`.
 
-### Git and PR conventions
+### Conventions
 
-- Branch before editing. Never edit on `main`.
-- Do not create a git worktree unless explicitly asked.
-- The default branch is `main`, never `master`.
-- Conventional Commits for commit subjects, branch names and PR titles.
-- Branches are `<type>/<scope>-<description>`.
-- PRs squash-merge, so the PR title becomes the commit on `main`.
-- PR body is summary, trade-offs, follow-ups. No test plan. No chat narrative.
-  No release-type opinions, that decision belongs to the repo owner.
-- Open PRs as drafts unless told otherwise.
-- Commits list the repo owner as author. Attribution follows settings.json:
-  honour `includeCoAuthoredBy` and `attribution`, and add a `Co-Authored-By`
-  trailer only when they ask for one. No Claude session links anywhere in
-  commit messages or PR bodies.
-- Never stage `.claude/`, `docs/plans/`, or `.plans/`.
-- Never use `--no-verify`.
-
-### Writing and docs
+The git, PR, writing, code-style and working-style conventions live in
+`rules/` and nowhere else; read those files rather than a restatement here.
+Two facts no rule file carries:
 
 - READMEs are succinct quickstarts. Link to the guide, do not paste
   implementations.
-- No auto-generated CHANGELOG or migration guide unless asked.
-- No emoji. Em-dashes only where they genuinely help.
-- Never put model names or AI identifiers in code, comments, docs or PR text.
-- No secrets, real domains or credentials in examples. Use `example.com`.
-
-### Code style
-
-- No `any`. No `enum`, use string literal unions. Prefer `type` over `interface`.
-- Dependency injection over globals. No global variables.
-- Braces on `if` statements.
-- Comments are minimal and explain why, never what.
-- Readable test values, prefer strings over byte arrays.
-- No deprecated aliases left behind for compatibility unless the package is
-  already published and the change is breaking.
-- Do not use non-public APIs from dependencies.
-- Prefer no new dependency. If one is needed, check maintenance status, last
-  release, and license compatibility with MIT or ISC first.
-
-### Working style
-
-- Fan independent work out to subagents by default.
-- Present design and naming decisions as lettered options with a recommendation,
-  rather than implementing straight away.
 - Plans live in `docs/plans/YYYY-MM-DD-HHMM-<slug>.md` and are not committed.
-- Root-cause a failure. Never work around a failing test to make a suite green.
-- Never claim done, fixed or passing without pasting the command output that
-  proves it.

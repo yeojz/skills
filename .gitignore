@@ -7,8 +7,5 @@ node_modules/
 .plans/
 docs/plans/
 
-# Created by install.sh before it merges settings.json
-.install-backup/
-
-# Private. Written from real session history and never published.
+# Local notes, not published.
 PROPOSAL.md

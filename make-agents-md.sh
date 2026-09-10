@@ -5,13 +5,25 @@
 #
 #   ./make-agents-md.sh ~/code/some-project
 #   ./make-agents-md.sh              writes to the current directory
+#   ./make-agents-md.sh --dry-run    print the generated block, write nothing
 #
 # The generated block is delimited, so re-running replaces it and leaves
 # anything you wrote by hand alone.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="${1:-$PWD}"
+TARGET="$PWD"
+DRY_RUN=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    -h|--help) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "unknown option: $arg" >&2; exit 1 ;;
+    *) TARGET="$arg" ;;
+  esac
+done
+
 OUT="$TARGET/AGENTS.md"
 BEGIN="<!-- begin agent-config rules -->"
 END="<!-- end agent-config rules -->"
@@ -32,14 +44,27 @@ trap 'rm -f "$block"' EXIT
   echo "$END"
 } > "$block"
 
+if [ "$DRY_RUN" = 1 ]; then
+  cat "$block"
+  exit 0
+fi
+
 if [ -f "$OUT" ] && grep -qF "$BEGIN" "$OUT"; then
   BEGIN="$BEGIN" END="$END" BLOCK="$block" OUT="$OUT" python3 - <<'PY'
-import os, re
+import os, re, tempfile
 out, begin, end = os.environ["OUT"], os.environ["BEGIN"], os.environ["END"]
-block = open(os.environ["BLOCK"]).read().rstrip("\n")
-text = open(out).read()
+with open(os.environ["BLOCK"]) as fh:
+    block = fh.read().rstrip("\n")
+with open(out) as fh:
+    text = fh.read()
 pattern = re.compile(re.escape(begin) + ".*?" + re.escape(end), re.S)
-open(out, "w").write(pattern.sub(lambda _: block, text, count=1))
+updated = pattern.sub(lambda _: block, text, count=1)
+# Write beside the target and rename so a crash never truncates AGENTS.md.
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(out), prefix=".AGENTS.md.")
+with os.fdopen(fd, "w") as fh:
+    fh.write(updated)
+os.chmod(tmp, os.stat(out).st_mode & 0o777)
+os.replace(tmp, out)
 PY
   echo "replaced the generated block in $OUT"
 else

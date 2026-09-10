@@ -39,8 +39,8 @@ before any merge that changes it, and only this repo's own hook and permission e
 added or removed.
 
 Set `CLAUDE_CONFIG_DIR` to install somewhere other than `~/.claude`. When
-`~/.codex` exists (or `CODEX_HOME` points at one), the skills are linked there
-too.
+`~/.codex` exists (or `CODEX_HOME` points at one), skills and agents are linked
+there too, aliased back to the same files in this repo.
 
 ---
 
@@ -122,9 +122,15 @@ every skill is listed in this README. Run it before committing a change here.
 ## Using this with Codex
 
 Skills need no extra step. When `./install.sh` detects a Codex directory it
-links `skills/*` into `~/.codex/skills` alongside `~/.claude/skills`; when it
-does not, it says so. Codex loads `~/.codex/skills/<name>/SKILL.md` with the
-same `name` and `description` frontmatter, so the same files serve both.
+mirrors the Claude side there, linking `skills/*` into `~/.codex/skills` and
+`agents/*.md` into `~/.codex/agents`; when it does not, it says so. Both are
+symlinks back into this repo, so the two runtimes read one source of truth and
+a `git pull` updates both.
+
+Codex loads `~/.codex/skills/<name>/SKILL.md` with the same `name` and
+`description` frontmatter, so the same files serve both. It has no documented
+agents directory, so those links are there to make a persona file resolvable on
+disk when a skill reads one directly, not because Codex loads them itself.
 
 Rules are always-on in Claude Code through `~/.claude/rules`. Codex reads an
 instruction file in the repository instead, so write the rules into one:

@@ -283,9 +283,14 @@ else
   merge_settings install
 fi
 
-step "Codex skills"
+step "Codex"
 if [ -d "$CODEX_DIR" ]; then
+  # Mirror the Claude side: the same directories, aliased back into this repo,
+  # so both runtimes read one source of truth. Codex loads skills from here.
+  # It has no documented agents directory, so those links exist to make the
+  # persona files resolvable on disk for a skill that reads one directly.
   link_into "$REPO_DIR/skills" "$CODEX_DIR/skills" '*'
+  link_into "$REPO_DIR/agents" "$CODEX_DIR/agents" '*.md'
 else
   info "Codex not detected at $CODEX_DIR, skipped"
 fi

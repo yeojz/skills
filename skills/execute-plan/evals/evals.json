@@ -1,0 +1,90 @@
+{
+  "skill_name": "execute-plan",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "@docs/plans/2026-09-10-1030-auth-remediation.md Start with 'Priority 3: Medium Impact (3 items)' and validate whether each item has already been mitigated.",
+      "expected_output": "The skill parses the plan into items 3.1, 3.2 and 3.3, echoes the parsed list and scope, then checks each item against the current tree before editing. Item 3.1 (rate limit on the token endpoint) is already implemented in src/auth/token.ts, so it is marked done with the evidence pointing at the existing code and no file is edited. Items 3.2 and 3.3 are implemented, verified, and marked done with the verify command. The final report is a per-item table.",
+      "files": [
+        "docs/plans/2026-09-10-1030-auth-remediation.md",
+        "src/auth/token.ts",
+        "src/auth/session.ts",
+        "package.json"
+      ],
+      "expectations": [
+        "Echoes the parsed item list with ids before making any change",
+        "States that only Priority 3 is in scope for this run",
+        "Reads src/auth/token.ts to check item 3.1 before implementing anything",
+        "Reports item 3.1 as already mitigated and makes no edit to src/auth/token.ts",
+        "Marks item 3.1 as done in the plan file with an evidence reference to the existing code",
+        "Implements items 3.2 and 3.3 and runs the verify skill for each",
+        "Writes a status line into docs/plans/2026-09-10-1030-auth-remediation.md for each of the three items",
+        "Final report is a table with one row per item showing status and evidence"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Please execute the remediations in @docs/plans/2026-09-10-0915-lint-cleanup.md in priority order. Use subagents for the tasks where you can.",
+      "expected_output": "The skill parses four items that each touch a different package (packages/core, packages/cli, packages/utils, apps/docs), determines they are independent because they share no files and none feeds another, and fans them out to concurrent subagents. Each subagent runs verify on its own change. The skill then writes per-item status back into the plan and pauses for a commit checkpoint.",
+      "files": [
+        "docs/plans/2026-09-10-0915-lint-cleanup.md",
+        "packages/core/src/index.ts",
+        "packages/cli/src/index.ts",
+        "packages/utils/src/index.ts",
+        "apps/docs/src/index.ts",
+        "pnpm-workspace.yaml",
+        "package.json"
+      ],
+      "expectations": [
+        "Echoes the parsed item list before starting",
+        "States explicitly that the items are independent because they touch different files and none feeds another",
+        "Dispatches the independent items to subagents in a single concurrent batch rather than one at a time",
+        "Each dispatched item is instructed to run the verify skill on its own change",
+        "Does not fan out any pair of items that touch the same file",
+        "Writes per-item status back into docs/plans/2026-09-10-0915-lint-cleanup.md",
+        "Pauses for a commit checkpoint rather than committing everything unprompted"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Work through phase 2 of @docs/plans/2026-09-09-1400-storage-migration.md. Pause to allow a commit after each issue fix.",
+      "expected_output": "The skill implements only the phase 2 items. Phase 3 and phase 4 items, including the tempting remote-sync integration in phase 6 that shares a file with a phase 2 item, are left untouched and reported as not started. After each phase 2 item it runs verify, writes status into the plan, and stops for a commit checkpoint before continuing.",
+      "files": [
+        "docs/plans/2026-09-09-1400-storage-migration.md",
+        "src/storage/adapter.ts",
+        "src/storage/remote.ts",
+        "package.json"
+      ],
+      "expectations": [
+        "States that only phase 2 is in scope before starting",
+        "Implements no item belonging to phase 3, 4, 5 or 6",
+        "Does not create or modify src/storage/remote.ts, which belongs to phase 6",
+        "Notes any out-of-scope problem it spots as a follow-up instead of fixing it",
+        "Runs the verify skill after each phase 2 item",
+        "Stops and waits for the user after each item rather than committing and continuing on its own",
+        "Final report marks phase 3 through 6 items as not started rather than omitting them"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Continue with @docs/plans/2026-09-08-1120-coverage-push.md and address the remaining tasks.",
+      "expected_output": "The skill resumes at the first item not already marked done. While working item 4, the test suite fails and the fix requires a decision outside the item's scope. The skill reports item 4 as blocked with the failing command and its output, does not mark it done, continues with the remaining independent items, and the final report names item 4 as blocked rather than claiming the plan is complete.",
+      "files": [
+        "docs/plans/2026-09-08-1120-coverage-push.md",
+        "packages/utils/src/config-loader.ts",
+        "packages/utils/src/config-loader.test.ts",
+        "packages/utils/package.json",
+        "package.json"
+      ],
+      "expectations": [
+        "Resumes at the first item not already marked done rather than restarting from item 1",
+        "Runs the verify skill for item 4 and shows the failing command output",
+        "Marks item 4 as blocked in the plan file, not as done, and records what is blocking it",
+        "Does not work around the failing test to make the suite green",
+        "Continues with the remaining items after recording item 4 as blocked",
+        "Final report does not say all tasks or all phases are complete",
+        "Final report lists item 4 as blocked and names it as an explicit next step"
+      ]
+    }
+  ]
+}

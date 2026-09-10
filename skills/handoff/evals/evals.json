@@ -1,0 +1,69 @@
+{
+  "skill_name": "handoff",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Please pause and write a handoff as context is getting low. We're halfway through the auth refresh work.",
+      "expected_output": "Runs the git state commands first, writes docs/plans/YYYY-MM-DD-HHMM-handoff-auth-refresh.md from templates/handoff.md, records that the branch has unpushed commits with the ahead count, lists completed items with the command output that proves each, lists remaining work in order with file paths and acceptance checks, and ends with a self-contained paste-ready prompt in a fenced block.",
+      "files": [],
+      "expectations": [
+        "Runs git branch --show-current, git status -sb, git status --short, git log --oneline main..HEAD and a git diff --stat before writing any prose",
+        "Quotes the real output of those commands rather than describing the state from the conversation",
+        "Records the branch as not pushed, or ahead by N commits, based on git status -sb rather than an assumption",
+        "Writes the file to docs/plans/ with a YYYY-MM-DD-HHMM-handoff-<slug>.md name",
+        "Every Completed row carries an evidence command and that command's actual result",
+        "Every Remaining item names repo-relative file paths and an acceptance check command",
+        "Ends the reply with a fenced paste-ready prompt naming the absolute repo path, the branch and the first command to run",
+        "Does not commit the handoff file",
+        "Does not clear context or offer to clear it as an action it will take"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We're reaching context limits. Can we hand off to a new session? The rate limit middleware is written, but I don't think we ever ran the tests on it.",
+      "expected_output": "Gathers git state, then lists the rate limit middleware as unverified rather than complete, naming the command the next session must run. Other finished items keep their evidence commands and results. The remaining list puts verifying the middleware first.",
+      "files": [],
+      "expectations": [
+        "Does not list the rate limit middleware under Completed as done",
+        "Marks it explicitly as unverified, with the command that would prove it",
+        "States that a commit existing is not evidence the code works",
+        "Keeps evidence commands and real results on the items that were actually verified",
+        "Puts running the unverified item's test in the Remaining list with an acceptance check",
+        "Runs the git state commands rather than reconstructing status from the conversation",
+        "Does not invent a test command; reads package.json scripts to name the real one"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Do a quick 2-3 instruction summary, handoff and clear context",
+      "expected_output": "Runs the git state commands, then produces a short paste-ready prompt of at most three instructions in a single fenced block, self-contained with the absolute repo path, branch and first command. Offers to pbcopy it. Says clearing context is the user's action and does not attempt it.",
+      "files": [],
+      "expectations": [
+        "Still runs the git state commands before writing the prompt",
+        "Produces a short prompt of three instructions or fewer, not a full document dump in the reply",
+        "The prompt is in one fenced block and is the last thing in the reply",
+        "The prompt names the absolute repo path and the branch",
+        "The prompt names the first command the next session should run",
+        "The prompt does not reference 'the plan we discussed' or anything else the next session cannot see",
+        "Offers to copy the prompt with pbcopy",
+        "States that clearing context is the user's action and does not claim to have cleared it"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Can we have a handoff prompt for a new session that spins off agents for the remaining doc pages? Please write the handoff and copy the prompt to my clipboard.",
+      "expected_output": "Gathers git state, writes the handoff document, identifies which remaining doc pages touch disjoint files and are therefore parallelisable, and writes a prompt that tells the next session to fan those out to one subagent each. Runs pbcopy without asking again because the request already said to copy it.",
+      "files": [],
+      "expectations": [
+        "Runs the git state commands and records branch, push status and uncommitted files from their output",
+        "Lists the remaining doc pages as an ordered list with file paths and an acceptance check each",
+        "Identifies which items touch disjoint files and marks only those as parallelisable",
+        "Does not claim parallelism for two items that edit the same file",
+        "The paste-ready prompt instructs the next session to fan the independent items out to one subagent each",
+        "The prompt names any item that depends on the others and states it runs after them",
+        "Runs pbcopy to copy the prompt rather than only offering to",
+        "Writes the handoff under docs/plans/ and does not commit it"
+      ]
+    }
+  ]
+}

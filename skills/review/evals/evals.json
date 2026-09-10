@@ -1,0 +1,92 @@
+{
+  "skill_name": "review",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "As a principal software engineer, review the code changes between this branch and main and assess the risks and any optimisations.",
+      "expected_output": "The review is scoped to the branch diff using the three-dot form after fetching origin/main, reads the changed files and their callers rather than only the hunks, and prints a severity-ranked findings table plus per-finding detail in the session. No plan file is written.",
+      "files": [],
+      "expectations": [
+        "Runs `git fetch origin main` before diffing",
+        "Uses `git diff origin/main...HEAD` with three dots, not `origin/main..HEAD`",
+        "States in the report that the three-dot form was used so unrelated upstream commits are excluded",
+        "Reads the full contents of changed files rather than only the diff hunks",
+        "Greps for callers of changed signatures to check argument pass-through",
+        "Every reported finding cites a concrete file path and line number",
+        "Prints a severity-ranked findings table with stable R-prefixed ids and a detail section per finding",
+        "Severity values are limited to Critical, High, Medium and Low",
+        "Writes no file under docs/plans/ or anywhere else",
+        "Does not offer to start fixing the findings unless the user asks"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "As a principal software engineer, please give me a code review of my current changes before I commit.",
+      "expected_output": "The skill resolves the scope to the uncommitted working tree, reviews it against the checklist, grounds each finding in a line, and reports in the session without editing code or committing anything.",
+      "files": [],
+      "expectations": [
+        "Runs `git status --short` and `git diff HEAD` to scope the review to the working tree",
+        "Does not treat the review as a branch diff when uncommitted changes are present",
+        "Checks for duplicated logic by grepping the workspace for an existing function before accepting a new helper",
+        "Checks for non-null assertions, `any`, or `as unknown as` introduced by the change",
+        "Checks any new package.json dependency for justification, maintenance status and license",
+        "Every finding cites file:line",
+        "Does not commit, stage, or create a branch",
+        "Reports in the session and writes no plan file",
+        "States plainly that nothing needs changing if no grounded finding exists, rather than padding with Low-severity filler"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Please look at the review comments on https://github.com/example/example/pull/1234 and check whether they are addressed. Double check if the new PR comment is valid.",
+      "expected_output": "Every review thread is enumerated with gh api including resolved and outdated state, each unresolved and non-outdated comment is judged for correctness before any change is made, the incorrect comment is pushed back on with evidence rather than implemented, replies are posted on the threads, and the closing report gives the remaining unresolved and non-outdated count.",
+      "files": [],
+      "expectations": [
+        "Fetches review threads with `gh api` rather than fetching or scraping the pull request web page",
+        "Uses the GraphQL reviewThreads query so isResolved and isOutdated are available per thread",
+        "Builds a ledger of threads with path, line, resolved state and outdated state before changing any code",
+        "Limits the work set to threads where isResolved is false and isOutdated is false",
+        "Reads the code each comment points at on the current head before acting on it",
+        "Identifies the comment that is wrong and does not change the code for it",
+        "Pushes back on the incorrect comment with a file:line or dependency source citation rather than agreeing",
+        "Replies on each thread via `gh api ... -F in_reply_to=<databaseId>`",
+        "Does not resolve a thread it disagreed with",
+        "Calls the verify skill and pastes its report block before claiming any fix is complete",
+        "Re-fetches the threads after the work and reports the remaining unresolved and non-outdated count",
+        "Lists any thread left unaddressed by name with a reason"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Please do a second check. Two comments are still unresolved and not marked outdated. Are they addressed?",
+      "expected_output": "The skill re-runs the scope commands and re-fetches the threads from scratch rather than reusing the earlier result, classifies each earlier finding or comment as fixed, not fixed, or no longer applicable with a line reference, reviews the new hunks as a fresh change, and verifies before claiming resolution.",
+      "files": [],
+      "expectations": [
+        "Re-runs the diff and re-fetches review threads from scratch instead of re-printing the previous report",
+        "Re-runs the GraphQL reviewThreads query rather than reusing the earlier response",
+        "Classifies each previous finding or comment as fixed, not fixed, or no longer applicable",
+        "Cites the file:line that fixes each item claimed as fixed",
+        "Reviews the newly added hunks as a fresh change rather than only ticking off the old list",
+        "Calls the verify skill and pastes its report block before saying the items are resolved",
+        "Reports an explicit count of remaining unresolved and non-outdated threads",
+        "Does not claim all comments are addressed without that count"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Do a general review without using the skill, just a quick look at the changes between this branch and main.",
+      "expected_output": "A low-ceremony pass: no personas, no severity table, no ids, reported as short prose grouped by file, while still fetching, using the three-dot diff, reading past the hunks, and citing a line behind every point raised.",
+      "files": [],
+      "expectations": [
+        "Produces prose notes grouped by file rather than a severity-ranked table",
+        "Does not assign R-prefixed ids or severity labels",
+        "Does not fan out to persona subagents",
+        "Still runs `git fetch origin main` and uses `git diff origin/main...HEAD` with three dots",
+        "Still reads the changed files beyond the diff hunks",
+        "Still cites file:line behind every point raised",
+        "Writes no plan file and edits no code",
+        "Says plainly if nothing needs changing rather than inventing findings"
+      ]
+    }
+  ]
+}

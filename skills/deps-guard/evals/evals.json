@@ -1,0 +1,96 @@
+{
+  "skill_name": "deps-guard",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Please branch, fix the pnpm audit issue and open a PR.",
+      "expected_output": "Mode 1. Creates a branch before touching any file, detects pnpm from pnpm-lock.yaml, gathers findings from pnpm audit and from the GitHub Dependabot alerts API, presents a deduplicated triage table keyed on GHSA id with severity, dependency path, production or development scope and whether a fixed version exists. Applies the remedy ladder: upgrade first, scoped exact-version override only if no upgrade path exists, and does not reach for an ignore. Re-runs pnpm audit and pastes the real output as proof, calls the verify skill, then hands off to ship for the commit and draft PR.",
+      "files": [],
+      "expectations": [
+        "Runs git rev-parse --abbrev-ref HEAD or equivalent and creates a branch before editing any file",
+        "Branch name follows <type>/<scope>-<description>, for example fix/deps-patch-<package>",
+        "Detects the package manager from pnpm-lock.yaml rather than assuming, and uses pnpm commands throughout",
+        "Gathers findings from more than one source: pnpm audit output plus gh api repos/{owner}/{repo}/dependabot/alerts",
+        "Presents a triage table listing advisory id, severity, package, dependency path, scope and fixed version",
+        "Distinguishes production from development scope for at least one finding",
+        "Attempts a real upgrade before proposing any override",
+        "Does not add an audit ignore entry when a fixed version exists",
+        "Re-runs pnpm audit after the fix and pastes the actual command output rather than asserting the audit is clean",
+        "Calls the verify skill before reporting completion",
+        "Hands off to the ship skill for the commit, push and PR instead of running git commit or gh pr create directly"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "For all GitHub Actions, can we pin them to the latest versions, and via hash rather than via version, for security reasons?",
+      "expected_output": "Mode 2. Branches first, inventories every uses: reference under .github/, resolves each action to its latest release tag and then to that release's full 40 character commit SHA via the GitHub API, dereferencing annotated tag objects to reach the commit. Rewrites each reference as owner/repo@<sha> with the version as a trailing comment. Reads GitHub's secure-use documentation for the pinning guidance rather than asserting it from memory. Flags any action running on a deprecated Node runtime, checking the currently supported runtimes against live docs. Validates the workflow files still parse and that no uses: line remains on a tag, then calls verify and hands off to ship.",
+      "files": [],
+      "expectations": [
+        "Creates a branch before editing any workflow file",
+        "Greps .github/workflows for uses: references and lists every distinct action found",
+        "Resolves the latest release per action with gh api repos/<owner>/<repo>/releases/latest rather than using a remembered version",
+        "Resolves the tag to a commit SHA via the git ref API and handles the annotated tag case by dereferencing the tag object",
+        "Writes a full 40 character SHA, not a short SHA, tag or branch",
+        "Keeps the human-readable version as a trailing comment on each uses: line",
+        "Fetches GitHub documentation for workflow syntax or secure use before or while editing, and cites the URL",
+        "Checks each action's runs.using against currently supported runtimes from live documentation rather than asserting which Node major is deprecated from memory",
+        "Verifies after editing that no uses: line still references a tag or branch",
+        "Calls the verify skill and then hands off to ship rather than committing directly"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Please set minimumReleaseAge to 1 week for npm, and add a cooldown for Dependabot.",
+      "expected_output": "Mode 3. Branches first, then fetches the pnpm dependency-resolution settings page and the GitHub Dependabot options reference before writing anything, and cites both URLs. Confirms from the live docs that pnpm install-time settings belong in pnpm-workspace.yaml rather than .npmrc or package.json, and that minimumReleaseAge is expressed in minutes, converting one week to 10080 and showing the arithmetic. Adds cooldown nested under the relevant updates entry in .github/dependabot.yml, confirming the sub-key names and permitted day range against the reference. Validates the YAML parses, notes that GitHub reports dependabot.yml errors only after the file is pushed, calls verify and hands off to ship.",
+      "files": [],
+      "expectations": [
+        "Creates a branch before editing pnpm-workspace.yaml or .github/dependabot.yml",
+        "Fetches the pnpm settings documentation before writing minimumReleaseAge and cites the URL",
+        "Fetches the GitHub Dependabot options reference before writing cooldown and cites the URL",
+        "Writes minimumReleaseAge into pnpm-workspace.yaml, not into .npmrc or package.json, and says the docs confirm that location",
+        "Converts one week to 10080 minutes and shows the conversion rather than writing 7",
+        "Nests cooldown under an updates entry in .github/dependabot.yml rather than at the top level",
+        "Confirms which cooldown sub-keys are supported for the ecosystem being configured instead of assuming all of them apply",
+        "Reads the existing pnpm-workspace.yaml and dependabot.yml and preserves existing keys rather than overwriting the files",
+        "Validates the resulting YAML parses and does not claim the Dependabot config is valid on a local parse alone",
+        "Calls the verify skill and then hands off to ship"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The keytar package is no longer maintained. Any alternatives?",
+      "expected_output": "Mode 4, read-only. Does not create a branch and does not edit files. Checks first whether something already in the workspace or the platform covers the need. Collects evidence for keytar with npm view and the GitHub API: last release date, deprecated flag, archived status, last commit, open issue and PR counts, license SPDX id, install size and direct dependency count. Presents the findings as a table, confirms keytar is unmaintained, then names a specific alternative and runs the same evidence checks on it, including license compatibility with MIT or ISC. Ends with a single recommendation and the migration cost, with do-not-add-a-dependency as the standing default.",
+      "files": [],
+      "expectations": [
+        "Does not create a branch and does not modify any file",
+        "Checks whether the workspace already has a package covering the need, or whether a platform built-in does, before evaluating alternatives",
+        "Runs npm view or equivalent to read keytar's last release date, deprecated flag and license rather than relying on memory",
+        "Checks repository health via the GitHub API, including archived status and last commit or release date",
+        "Presents findings in a table covering last release, maintenance status, open issue and PR health, license, install size and transitive dependency count",
+        "Names at least one specific alternative rather than saying alternatives exist",
+        "Runs the same evidence checks on the proposed alternative rather than asserting it is maintained",
+        "States the alternative's SPDX license id and whether it is compatible with MIT or ISC",
+        "Ends with one clear recommendation, including the migration cost, rather than an open-ended survey"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Can we add CVE-2025-12345 to the pnpm auditConfig ignore temporarily?",
+      "expected_output": "Mode 1 ending at the ignore rung. Treats the user's wording as intent rather than schema: fetches the pnpm audit documentation to confirm the current key name and file before writing anything, and reports that auditConfig.ignoreCves is no longer recognised and that the ignore list keys on GHSA ids in pnpm-workspace.yaml. Resolves CVE-2025-12345 to its GHSA id and confirms the mapping. Checks the upgrade and scoped override rungs first and reports why each is unavailable. Then adds the ignore with a reason comment and an explicit expiry date in YYYY-MM-DD form, defaulting to 90 days out since the user only said temporarily, records the same three facts in the PR body under Trade-offs, re-runs the audit with pasted output, and hands off to ship.",
+      "files": [],
+      "expectations": [
+        "Creates a branch before editing pnpm-workspace.yaml",
+        "Fetches the pnpm audit documentation before writing the ignore entry and cites the URL",
+        "Does not write auditConfig.ignoreCves, and states that the key the user named is deprecated or no longer recognised",
+        "Resolves CVE-2025-12345 to its GHSA identifier and confirms the mapping rather than writing the CVE id into the config",
+        "Checks whether an upgrade or a scoped override can fix the advisory and reports why each is unavailable before adding the ignore",
+        "Writes the ignore entry with a reason comment explaining why the risk is accepted",
+        "Writes an explicit expiry date in YYYY-MM-DD form rather than accepting temporarily as an expiry",
+        "Defaults the expiry to roughly 90 days out because the user gave no date, and says so",
+        "Records the advisory id, reason and expiry in the PR body handed to ship, under Trade-offs",
+        "Re-runs pnpm audit and pastes the output showing the finding is now suppressed",
+        "Calls the verify skill and hands off to ship rather than committing directly"
+      ]
+    }
+  ]
+}

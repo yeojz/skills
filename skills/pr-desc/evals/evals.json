@@ -1,0 +1,72 @@
+{
+  "skill_name": "pr-desc",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Write the PR description for my branch in /tmp/eval-pr-desc-1-ws. It's feat/auth-add-refresh-tokens, three commits, and no PR exists yet.",
+      "expected_output": "Agent reads the branch diff with the three-dot form against origin/main plus the commit subjects, then proposes a Conventional Commit title such as 'feat(auth): add refresh token rotation' under 72 characters. Body contains a short Summary and a Trade-offs section drawn from the diff; Follow-ups is omitted because the diff shows nothing deferred. No test plan, no session narrative, no release-type opinion. Agent shows the full title and body and, if it creates the PR at all, creates it as a draft.",
+      "files": [],
+      "expectations": [
+        "Agent runs git diff with the three-dot form (origin/main...HEAD), not the two-dot form",
+        "Agent reads the commit subjects on the branch in addition to the diff",
+        "Proposed title is a Conventional Commit subject with a scope taken from the primary package touched",
+        "Proposed title is under 72 characters and contains no emoji or issue number",
+        "Body contains a Summary section written from the diff rather than a file-by-file change log",
+        "Body contains no '## Test Plan', verification checklist, or 'how to test' prose",
+        "Body contains no narration of how the change was arrived at during the session",
+        "Body contains no opinion about release type, version bump, or whether it is safe to release",
+        "Body contains no Claude session link, model name, AI identifier, or emoji",
+        "Sections with nothing to say are omitted entirely rather than left empty or filled with filler",
+        "If the agent opens a PR, it uses --draft"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The approach has changed, so can you update the PR description? It's PR #412 in /tmp/eval-pr-desc-2-ws. We dropped the polling and went with a webhook instead.",
+      "expected_output": "Agent runs 'gh pr view 412' to read the existing title and body, then regenerates both from the current diff of the PR head branch rather than patching the old text. It prints the existing title and body next to the proposed ones, names what is being removed (including the now-stale polling description), asks for confirmation, and only after a yes runs 'gh pr edit 412' with a body file.",
+      "files": [],
+      "expectations": [
+        "Agent reads the existing PR body with gh pr view before writing anything",
+        "Agent regenerates the body from the current diff instead of editing the old text in place",
+        "Agent uses the three-dot diff form against the base branch",
+        "Stale claims about the old polling approach do not survive into the new body",
+        "Agent shows a before and after of the title and body",
+        "Agent names what is being removed from the old body",
+        "Agent asks for confirmation before running gh pr edit and waits for a yes",
+        "Agent does NOT run gh pr edit before that confirmation",
+        "New body still contains only Summary, Trade-offs and Follow-ups, omitting any of the latter two that have nothing to say"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Update the PR description for /tmp/eval-pr-desc-3-ws and record the decision to temporarily ignore the advisory. The branch adds GHSA-xxxx-yyyy-zzzz to the audit ignore list because the fix only landed in a major version of the transitive dependency.",
+      "expected_output": "Agent reads the diff, sees the advisory id added to the audit ignore list, and records the time-boxed decision in the body: what was ignored, why it is being ignored now, and the concrete condition that should trigger a revisit, such as the upstream major release landing. It does not editorialise about whether shipping with the advisory ignored is acceptable, and it adds no security-review commentary. Shows before and after, asks, then edits.",
+      "files": [],
+      "expectations": [
+        "Agent identifies the advisory ignore from the diff rather than from the conversation",
+        "Body states which advisory was ignored, by id",
+        "Body states why it was ignored now",
+        "Body states a concrete revisit condition, such as an upstream release or version, not 'later'",
+        "The temporary decision appears in Summary or Trade-offs, not only as a bare Follow-ups bullet",
+        "Body contains no security-review commentary or threat assessment",
+        "Body contains no judgement about whether the change is safe to release or what version bump it warrants",
+        "Agent shows a before and after and asks before running gh pr edit"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Please be more succinct in the PR body for /tmp/eval-pr-desc-4-ws, and do not put a test plan in it. It's a fix branch for the CSV parser.",
+      "expected_output": "Agent writes a short body from the diff with a Summary of a few lines and drops Trade-offs and Follow-ups if the diff shows nothing to put there. It produces no test plan, no verification checklist, and no 'how I tested this' bullets anywhere, including under another heading. Title is a Conventional Commit subject such as 'fix(parser): handle empty rows in CSV reader'. Before and after shown if a PR body already exists, and confirmation requested before any remote write.",
+      "files": [],
+      "expectations": [
+        "Final body contains no '## Test Plan' section",
+        "Final body contains no verification checklist, test steps, or 'how I tested' bullets under any heading",
+        "Summary is a short paragraph or a few bullets, not a per-file change log",
+        "Trade-offs and Follow-ups are omitted rather than filled with filler when the diff shows nothing for them",
+        "Title is a Conventional Commit subject under 72 characters with a scope from the touched package",
+        "Agent sources the body from the diff, not from the session transcript",
+        "Agent asks for confirmation before any gh pr edit or gh pr create"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "skill_name": "verify",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I think the token refresh work is done. Is it?",
+      "expected_output": "Reads package.json to discover the repo's real scripts, runs typecheck, lint, test and build in that order, pastes each command's exit code and output tail, and ends with the Verification report block. Only then states the work is complete.",
+      "files": [],
+      "expectations": [
+        "Reads package.json before running any command",
+        "Does not run a command that is absent from the scripts block",
+        "Runs typecheck before test and build",
+        "Pastes the actual output tail and the exit code for each command run",
+        "Emits a Verification block with one row per concern, each showing command, exit code and result",
+        "Marks any concern with no matching script as 'not covered' rather than substituting an invented command",
+        "Does not use the words done, fixed or passing before the Verification block appears"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Typecheck is failing on the new config loader. Fix it and let me know when it passes.",
+      "expected_output": "Runs the repo's typecheck script, pastes the tsc error, states one hypothesis about the cause, and fixes the underlying type. Refuses to reach for any, @ts-ignore, a cast or a loosened signature. Re-runs typecheck and the full sequence, pasting output, and bounds the loop at three attempts.",
+      "files": [],
+      "expectations": [
+        "Pastes the real tsc error text including file and line, not a paraphrase",
+        "States a hypothesis about the root cause before editing",
+        "Does not add any, as unknown as, @ts-ignore or @ts-expect-error to clear the error",
+        "Does not disable, skip or delete a test to reach green",
+        "Re-runs the same typecheck command after the fix and pastes its exit code and output",
+        "Continues on to lint, test and build after typecheck reaches exit 0",
+        "If still failing after three attempts, stops editing and reports the smallest reproducing command, the failing output and what was ruled out"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Why is core still at 93.4%? You said coverage was at 100%.",
+      "expected_output": "Treats the previous claim as unproven, re-runs coverage narrowed to the core package with both the workspace filter and the vitest project, and pastes the per-file coverage table rather than a headline number. Names the specific uncovered files and lines.",
+      "files": [],
+      "expectations": [
+        "Reads the workspace root package.json and the core package.json to find the real coverage script",
+        "Runs the coverage command with both a --filter for the package and a --project for the vitest project",
+        "Pastes the per-file coverage table, not a single summary percentage",
+        "Names the specific files and line ranges that are uncovered",
+        "States that the scope was narrowed to one package in the Verification block",
+        "Does not lower a coverage threshold or exclude a file to make the number rise",
+        "Does not repeat the 100% claim without the pasted table supporting it"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Rebase this branch against main.",
+      "expected_output": "Performs the rebase, then proves the resulting state with git status, git log --oneline, the commit range against origin/main and a diff stat, and checks for a stalled rebase directory and leftover conflict markers. Then runs the repo's test commands on the rebased tree and only calls the rebase complete once those pass.",
+      "files": [],
+      "expectations": [
+        "Runs git status and git log --oneline after the rebase and pastes the output",
+        "Runs git log --oneline origin/main..HEAD and git diff origin/main...HEAD --stat to prove the branch sits on top of the upstream",
+        "Checks for .git/rebase-merge or .git/rebase-apply and for leftover conflict markers",
+        "Runs the repo's typecheck and test commands on the rebased tree and pastes their exit codes and output",
+        "States explicitly that the rebase is not complete until the tests pass on the rebased tree",
+        "Does not report the rebase as complete on the basis of a clean git status alone",
+        "Emits the Verification block before making the completion claim"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Running pnpm test:deno still errors out. Are you sure it is fixed?",
+      "expected_output": "Retracts the unproven claim, re-runs pnpm test:deno exactly as the user typed it, pastes the exit code and output tail, and root-causes the Deno-specific failure. Does not exclude the Deno run or route around it, and stops after three attempts with a blocker report if unresolved.",
+      "files": [],
+      "expectations": [
+        "Re-runs the exact command pnpm test:deno rather than a substitute or a Node-only run",
+        "Pastes the real failing output and the exit code",
+        "Acknowledges that the earlier fixed claim was not supported by evidence",
+        "Root-causes the Deno-specific failure instead of skipping, excluding or removing the script from the sequence",
+        "Does not treat a passing Node test run as evidence that the Deno run works",
+        "Counts fix attempts and stops at three, reporting the blocker with the failing output if unresolved",
+        "Includes test:deno as its own row in the Verification block"
+      ]
+    }
+  ]
+}

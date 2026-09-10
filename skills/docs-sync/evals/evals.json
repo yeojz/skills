@@ -1,0 +1,76 @@
+{
+  "skill_name": "docs-sync",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We renamed formatDate to formatTimestamp across packages/core. Please check through our TSDoc/JSDoc headers as well as @apps/docs/guide/ and the READMEs and make sure everything is consistent.",
+      "expected_output": "The skill inventories every documentation surface before editing, verifies the new name against the package's real exports, updates doc comments, guide pages, package README and root README together, checks the VitePress sidebar for entries affected by the change, and reports what changed per file with the source that proved each change.",
+      "files": [],
+      "expectations": [
+        "Enumerates all documentation surfaces (root README, package READMEs, CONTRIBUTING, apps/docs guide pages, VitePress config, doc comments, CLI help text, llms.txt) and presents the inventory before making any edit",
+        "Reads packages/core entry point or built .d.ts to confirm formatTimestamp is actually exported rather than trusting the prompt",
+        "Confirms formatDate no longer appears in the package's public exports",
+        "Greps for the old name across .md and .ts files including doc comments, not just markdown",
+        "Updates TSDoc or JSDoc headers in source as well as the guide pages under apps/docs/guide/",
+        "Updates the package README and checks the root README for the same reference",
+        "Checks apps/docs/.vitepress/config.ts for sidebar or nav entries affected by the change",
+        "Does not introduce any symbol in an example that is absent from the package's exports",
+        "Ends with a report listing changed files with the file that verified each change, plus a separate list of drift found but not fixed"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Can you look through all the READMEs? I think some of the links to guide pages are no longer valid. I see links to 'quickstart' as well as 'advanced usage' which are no longer available.",
+      "expected_output": "The skill sweeps relative and external links across every README, resolves each target against the filesystem including anchors, checks the VitePress sidebar for dangling entries and orphan pages, and reports each dead link with its target and referring file:line rather than deleting the surrounding section.",
+      "files": [],
+      "expectations": [
+        "Finds every README in the repo excluding node_modules rather than only the root README",
+        "Extracts relative markdown links and resolves each one from the file that contains it",
+        "Checks anchors against real headings in the target file, not just that the file exists",
+        "Checks apps/docs/.vitepress/config.ts sidebar and nav links resolve to real pages",
+        "Reports dangling sidebar entries and orphan guide pages as two separate lists",
+        "Reports each dead link with the target path and the referring file:line",
+        "Does not delete the section surrounding a dead link in order to remove the link",
+        "Distinguishes a moved target (repointed) from a deleted target whose content is gone (reported and asked about)",
+        "Does not invent a replacement URL for any link it cannot resolve",
+        "Separates links it fixed from links that need a decision in the final report"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Looking at the appctl --help output as well as the README.md, I think there are some discrepancies. Also, please do not leave any envtool examples in the help text.",
+      "expected_output": "The skill builds and runs the CLI to capture real --help output, diffs the documented flags, subcommands and examples against it, treats --help as the source of truth for what exists, sweeps every surface for the abandoned tool name, and reports any place the docs describe an interface the binary does not have as a decision rather than writing it.",
+      "files": [],
+      "expectations": [
+        "Reads package.json bin and scripts to find how the CLI is actually invoked instead of guessing a command",
+        "Builds the package if needed and runs the CLI with --help, capturing the real output",
+        "Runs --help on subcommands as well as the top-level command",
+        "Compares each documented flag and example in README.md against the captured help output rather than from memory",
+        "Treats --help output as the source of truth for flags and subcommands that exist",
+        "Reports any flag documented in the README but absent from --help as a code-or-docs decision instead of silently deleting or silently keeping it",
+        "Greps for the envtool name across markdown, source and JSON so help text and doc comments are covered, not just README.md",
+        "Removes every envtool mention found in the CLI help text source as well as in the docs",
+        "Does not leave any CLI example unverified without labelling it unverified in the report",
+        "Writes no example that prints a secret or token to the terminal"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Please make sure the CONTRIBUTING.md steps for development and for installing a development build are accurate. CONTRIBUTING says Node v18, but I don't think that is right anymore.",
+      "expected_output": "The skill gathers the Node version, package manager and script names from package.json, .nvmrc and the CI workflows before editing, builds a table of every place each claim appears, updates CONTRIBUTING to match the real sources, and reports each disagreement with the file and line for both sides.",
+      "files": [],
+      "expectations": [
+        "Reads package.json engines and packageManager rather than accepting the version stated in the prompt",
+        "Reads .nvmrc or .node-version if present",
+        "Reads .github/workflows/ for the node-version and package manager setup steps actually exercised in CI",
+        "Detects the package manager from the lock file rather than from README or CONTRIBUTING prose",
+        "Builds a comparison of each claim (Node version, package manager, install command, script names) across package.json, CI, README and CONTRIBUTING",
+        "Verifies every development and build command in CONTRIBUTING exists as a real script in package.json and invents none",
+        "Updates the Node version in CONTRIBUTING to match the verified source",
+        "Reports every disagreement with the file and line number for each side, including any disagreement between engines and CI",
+        "Checks the README for the same version and command claims rather than fixing CONTRIBUTING alone",
+        "Does not average or guess a version when two sources disagree; reports the conflict"
+      ]
+    }
+  ]
+}

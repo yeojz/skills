@@ -1,0 +1,14 @@
+.DS_Store
+node_modules/
+*.log
+
+# Claude Code working artifacts. Never committed, in this repo or any other.
+.claude/
+.plans/
+docs/plans/
+
+# Created by install.sh before it merges settings.json
+.install-backup/
+
+# Private. Written from real session history and never published.
+PROPOSAL.md

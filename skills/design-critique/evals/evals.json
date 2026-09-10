@@ -1,0 +1,75 @@
+{
+  "skill_name": "design-critique",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "This dashboard looks AI generated. The selected card is marked with a thick right border, which screams AI design, and the colours are the same ones I see on every other AI generated site. Can you critique it?",
+      "expected_output": "Loads the running page in the browser tooling, then walks the fixed checklist row by row, giving each row a verdict and naming the file and component for every finding. Names the thick accent border, the default indigo or violet or teal palette, the uniform card grid, any 100vh sections, block-by-block scroll reveals, the centred hero with a two-button row, emoji iconography and inline SVG icons. Ends with two or three lettered redesign directions and a recommendation rather than editing straight away.",
+      "files": [],
+      "expectations": [
+        "Loads the actual page in a browser before offering any critique, rather than reading only the source",
+        "Produces a findings list against the fixed checklist with a per-row verdict, not a general impression",
+        "Names the specific file and component for each finding rather than saying it feels generic",
+        "Identifies the thick coloured accent border on the selected card as a generic AI tell",
+        "Checks for the default indigo, violet or teal palette and for gradients between them",
+        "Checks the remaining tells: uniform card grid, full-viewport sections, block-by-block scroll reveals, centred hero with two-button row, emoji as iconography, inline hand-drawn SVG",
+        "Checks hierarchy by naming the screen's single primary action",
+        "Reports type sizes as computed values and flags any UI text below 16px",
+        "Presents two or three lettered directions, each naming palette, type pairing and layout rhythm, with a recommendation",
+        "Does not implement a redesign before the user picks a direction"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Something is causing a horizontal scroll on mobile and I cannot tell what. Can you figure out what is causing it?",
+      "expected_output": "Loads the page, resizes to a 375px mobile viewport, and measures documentElement.scrollWidth against clientWidth rather than judging from a screenshot. Enumerates elements whose bounding rect extends past the viewport to name the culprit, fixes it, then re-measures at 375px and at desktop and pastes the visual verification block with the actual numbers.",
+      "files": [],
+      "expectations": [
+        "Resizes the browser to a mobile width of about 375px before measuring",
+        "Compares document.documentElement.scrollWidth against clientWidth to detect the overflow numerically",
+        "Enumerates elements whose bounding rect extends past the viewport width to identify the specific culprit element",
+        "Does not conclude there is or is not overflow from a screenshot or by eye",
+        "Also checks for clipped text by comparing scrollWidth against clientWidth on candidate elements",
+        "Re-loads and re-measures after the fix rather than asserting the fix works",
+        "Emits the Visual verification block with the measured scrollWidth and clientWidth values",
+        "Verifies at desktop width as well to confirm the fix did not break the wider layout",
+        "Does not use the words fixed, done or working before the verification block appears"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Still no change. That is three fixes now, and the blink is still happening on every page load.",
+      "expected_output": "Recognises this as the third failed attempt on one visual bug, stops editing rather than trying a fourth change, and reports each attempt's hypothesis with what was actually observed in the browser each time. Presents lettered options in which reverting to the state before the first attempt is a legitimate recommended outcome, with the exact git restore command, and waits for the user to choose.",
+      "files": [],
+      "expectations": [
+        "States the attempt count explicitly and recognises the three-attempt cap has been reached",
+        "Does not begin a fourth code change on the same visual bug",
+        "Lists each attempt's hypothesis and what the browser measurement or observation ruled out",
+        "Reports what was actually observed each time rather than what was expected",
+        "Restates the exact reproduction path that still fails",
+        "Presents two or three lettered options, one of which is reverting to the state before the first attempt",
+        "Frames reverting as a legitimate outcome rather than a failure, and recommends it",
+        "Includes the exact git command to revert the affected paths",
+        "Waits for the user's choice before making further changes"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Redesign the settings page. It looks very plain, and as a user I don't know what I'm supposed to do first.",
+      "expected_output": "Looks for an existing design document under docs/plans or docs/design and reads it in full before proposing anything. Tables each proposal against what the document specifies, marking it aligned or deviation, and raises every deviation for approval before implementing it. Names the missing primary action as a hierarchy finding, then offers two or three lettered directions with a recommendation, and verifies in the browser after the change.",
+      "files": [],
+      "expectations": [
+        "Searches docs/plans and docs/design for an existing design document before proposing changes",
+        "Reads the design document in full when one is found",
+        "Produces a table mapping each proposal to what the design document specifies with an aligned or deviation verdict",
+        "Raises every deviation explicitly before implementing it, not after",
+        "Does not fold a deviation into a larger change without an explicit yes",
+        "Identifies the absent primary action as a hierarchy finding and names what the primary action should be",
+        "Offers two or three lettered directions naming palette, type pairing and layout rhythm, with a recommendation",
+        "Does not improvise a direction unrelated to the design document",
+        "After implementing, loads the page in a browser and emits the Visual verification block with measured contrast, overflow and font-size values",
+        "Verifies the settings controls actually toggle, open and close rather than assuming they do"
+      ]
+    }
+  ]
+}

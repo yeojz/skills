@@ -1,0 +1,85 @@
+{
+  "skill_name": "ship",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Commit and push my changes in /tmp/eval-ship-1-ws. It's a pnpm TypeScript project and I'm already on feat/parser-add-csv-reader. I added a CSV reader and a test for it. The repo's .claude/settings.json sets includeCoAuthoredBy to false.",
+      "expected_output": "Agent sees it is already on a feature branch and does not create a new one. Detects pnpm from pnpm-lock.yaml, runs 'pnpm run format' and 'pnpm run lint:fix', verifies with the repo's own scripts, shows git status and the staged file list, reads settings.json to decide attribution and, since includeCoAuthoredBy is false there, commits with a conventional subject such as 'feat(parser): add CSV reader' and no Co-Authored-By trailer, asks before pushing, and pushes only after the user agrees. Does not open a PR.",
+      "files": [],
+      "expectations": [
+        "Agent checks the current branch and confirms it is not main/master before committing",
+        "Agent does NOT create a new branch because the repo is already on a feature branch",
+        "Agent does NOT create a git worktree",
+        "Agent detects pnpm as the package manager, referencing pnpm-lock.yaml or the packageManager field",
+        "Agent runs the repo's own format and lint fix scripts via pnpm rather than ad-hoc commands",
+        "Agent shows git status and the staged file list before committing",
+        "Agent uses a conventional commit subject under 72 characters",
+        "Agent reads settings.json for attribution and omits the Co-Authored-By trailer because includeCoAuthoredBy is false; no Claude session link or model name appears",
+        "Agent asks for confirmation before pushing rather than pushing automatically",
+        "Agent does NOT open a pull request, since the user did not ask for one"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I finished the retry logic in /tmp/eval-ship-2-ws. Please commit it.",
+      "expected_output": "The repo is sitting on main. Agent refuses to commit on main, creates a branch named per Conventional Commits such as feat/client-add-retry-logic, works directly in the folder without a worktree, then formats, lint-fixes, verifies, stages with .claude/ and docs/plans/ excluded, and commits. Does not push and does not open a PR because neither was asked for.",
+      "files": [],
+      "expectations": [
+        "Agent detects that the current branch is main and refuses to commit on it",
+        "Agent creates a new branch before committing, named <type>/<scope>-<description>",
+        "Agent does NOT create a git worktree and works in the existing folder",
+        "Agent runs the repo's package.json scripts for format and lint fix",
+        "Agent excludes .claude/, docs/plans/ and .plans/ from the staged files",
+        "Agent commits with a conventional commit message on the new branch",
+        "Agent does NOT push, since the user asked only for a commit",
+        "Agent does NOT open a pull request"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Commit and push my work in /tmp/eval-ship-3-ws. Heads up, the pre-commit hook has been strict lately.",
+      "expected_output": "Agent branches if needed, formats, lint-fixes, stages and commits. The pre-commit hook fails on a type error in src/client.ts. Agent reads the hook output, fixes the actual type error rather than suppressing it, re-stages, and retries. The second attempt succeeds. Agent asks before pushing, then pushes, and reports what was root-caused.",
+      "files": [],
+      "expectations": [
+        "Agent attempts a commit that fails on the pre-commit hook",
+        "Agent does NOT use --no-verify and does not disable or delete the hook",
+        "Agent reads the hook output and fixes the root cause in the file the hook named",
+        "Agent does NOT suppress the error with a cast, an ignore comment, or a weakened test",
+        "Agent re-stages the fixed files and retries the commit",
+        "Agent stays within 3 commit attempts",
+        "Agent asks for confirmation before pushing",
+        "Agent reports which hook failure was fixed and how"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Commit, push and open a PR for /tmp/eval-ship-4-ws. The change adds token refresh to the auth package.",
+      "expected_output": "Agent branches if on main, runs format, lint:fix and verification, stages cleanly, commits with a conventional message, asks separately before pushing and again before opening the PR, then opens a draft PR whose title is a Conventional Commit subject and whose body contains only Summary, Trade-offs and Follow-ups. No test plan section, no chat narrative, no security commentary, no release-type opinion.",
+      "files": [],
+      "expectations": [
+        "Agent asks for confirmation before pushing and again, separately, before opening the PR",
+        "PR is opened as a draft",
+        "PR title is a Conventional Commit subject, for example feat(auth): add token refresh",
+        "PR body contains a Summary section, a Trade-offs section and a Follow-ups section",
+        "PR body contains NO '## Test Plan' section",
+        "PR body contains no chat narrative, security-review commentary, or release-type or version-bump opinion",
+        "PR body contains no Claude session link, model name or other AI identifier",
+        "Agent reports the PR URL and that it is a draft"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Commit all unstaged changes in /tmp/eval-ship-5-ws. Ignore \"notes.local.md\".",
+      "expected_output": "Agent branches first if on main, then stages everything except notes.local.md, and also excludes .claude/, docs/plans/ and .plans/. It shows the staged file list so the exclusions are visible, then commits with a conventional message. notes.local.md remains modified but unstaged afterwards. No push and no PR.",
+      "files": [],
+      "expectations": [
+        "Agent excludes notes.local.md from staging as the user requested",
+        "Agent also excludes .claude/, docs/plans/ and .plans/ without being asked",
+        "Agent shows the staged file list before committing so exclusions are visible",
+        "The commit does not contain notes.local.md",
+        "Agent uses a conventional commit message",
+        "Agent does NOT push and does NOT open a pull request"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "skill_name": "audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "As a principal software architect, do a review and audit of the existing codebase. DO NOT modify code. Just write out a plan if you detect any issues.",
+      "expected_output": "The audit skill runs read-only across the whole repo, fans out to parallel personas, and produces a single plan file under docs/plans/. No source file is edited, no branch is created, nothing is staged or committed.",
+      "files": [],
+      "expectations": [
+        "Uses no Edit tool call on any file",
+        "Uses no Write tool call except for the single plan file under docs/plans/",
+        "Runs no state-changing git command (no checkout -b, add, commit, stash, restore, push)",
+        "Defaults the scope to the whole repo without asking the user to narrow it",
+        "Launches multiple persona subagents in a single message so they run concurrently",
+        "Persona set covers principal engineer, security engineer, test engineer and technical writer lenses",
+        "Every reported finding cites a concrete file path and line number",
+        "Writes exactly one plan file at docs/plans/YYYY-MM-DD-HHMM-<slug>.md",
+        "Plan contains a scope section, a severity-ranked findings table, per-finding detail, and a remediation order",
+        "Does not stage or commit the plan file",
+        "Chat reply gives the plan path and a severity count rather than pasting the whole plan"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Audit and assess whether all the providers in packages/auth are implemented properly and properly dependency injected, with no bleeding across providers. Ignore the specs in the @docs folder, they may not be valid anymore.",
+      "expected_output": "The audit is scoped to packages/auth plus its direct dependents, the docs/ directory is excluded from every persona prompt and the exclusion is recorded in the plan scope, and findings about DI and provider boundaries are grounded in real file:line citations.",
+      "files": [],
+      "expectations": [
+        "Scopes the audit to packages/auth and its direct dependents rather than the whole repo",
+        "Excludes the docs/ directory from the audit and passes that exclusion to every persona",
+        "Records the docs/ exclusion in the plan's scope section",
+        "Edits no code and creates no branch",
+        "The principal engineer lens explicitly examines dependency injection, singletons or globals, and cross-provider imports",
+        "Verifies each claimed cross-provider import by reading the cited import line before reporting it",
+        "Does not report a symbol or module that does not exist in the codebase",
+        "Writes the plan to docs/plans/ with stable A-prefixed finding ids",
+        "Sizes each remediation item so it fits one subagent task"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Please take a look at @docs/plans/2026-09-02-1130-token-rotation-plan.md and see if it has merits. Critique the approach, see if the concerns are valid. Any changes or issues we should address?",
+      "expected_output": "The skill enters plan critique mode: it reads the plan, checks every claim it makes about the codebase against the actual code, classifies each stated concern as valid, already mitigated, or not a real problem with evidence, names hidden risks, and writes a critique file without touching the plan being critiqued or any code.",
+      "files": [
+        "docs/plans/2026-09-02-1130-token-rotation-plan.md"
+      ],
+      "expectations": [
+        "Reads the referenced plan document in full before commenting",
+        "Does not edit the plan document being critiqued",
+        "Does not edit any source file and creates no branch",
+        "Verifies each claim the plan makes about the codebase against real files, citing file:line",
+        "Produces a verdict per stated concern: valid, already mitigated, or not a real problem",
+        "Flags any concern that is already handled in the code, citing the line that handles it",
+        "Names hidden risks the plan does not mention, such as migration, backwards compatibility, error paths or half-finished state",
+        "Writes the critique to a new docs/plans/YYYY-MM-DD-HHMM-<slug>-critique.md file",
+        "Ends with lettered options and a stated recommendation"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Do an assessment of the repo to make sure there are no code smells or risks. Write a plan file with the identified issues and suggested fixes. DO NOT EDIT ANY CODE AT THIS TIME.",
+      "expected_output": "A whole-repo audit producing a correctly located and correctly structured plan file whose findings carry stable ids that execute-plan can reference later.",
+      "files": [],
+      "expectations": [
+        "Runs `date` or an equivalent to get the real timestamp for the filename rather than guessing a date",
+        "Writes the plan at docs/plans/YYYY-MM-DD-HHMM-<slug>.md with a kebab-case slug naming the target",
+        "Creates no other file and edits no existing file",
+        "Every finding has a stable id of the form A1, A2, A3",
+        "Ids in the findings table match the ids used in the per-finding detail sections and in the remediation order",
+        "Findings table has columns for id, severity, file:line location, finding, and suggested fix",
+        "Severity values are limited to Critical, High, Medium and Low",
+        "Each suggested fix names a verification command taken from the repo's package.json scripts rather than an invented one",
+        "Remediation order lists items sized as individual subagent tasks",
+        "Plan file is not staged or committed"
+      ]
+    }
+  ]
+}

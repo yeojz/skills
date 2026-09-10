@@ -83,15 +83,16 @@ a documented, deliberate decision is not a finding.
 ### Step 3: Fan out to parallel personas
 
 Fan-out is the default, not an optimisation. Launch all applicable personas in
-a single message so they run concurrently. Give each one the same scope, the
-same exclusions, and the same grounding rules from Step 4.
+a single message so they run concurrently. Each persona is a subagent type
+defined by a file under `agents/`; launch that type and give each one the same
+scope, the same exclusions, and the same grounding rules from Step 4.
 
-| Persona | Looks for |
-|---|---|
-| Principal engineer | layering violations, module boundaries, duplication, dead code, over-engineering, abstractions with one implementation, dependency injection done as a global or a singleton, provider implementations bleeding into each other or into core, missing argument pass-through, non-null assertions, `any`, `enum`, deprecated aliases kept for no reason |
-| Security engineer | input validation and parsing, secret handling and logging, comparison of secrets that is not constant time, injection vectors including shell, SQL, path traversal and prototype pollution, unsafe deserialisation, supply chain: new or unmaintained dependencies, transitive risk, unpinned GitHub Actions, install scripts |
-| Test engineer | uncovered branches, tests that assert nothing or only assert a mock was called, a rejecting branch with no negative test, tests that pass because of a workaround, shared mutable fixture state, skipped or `.only` tests |
-| Technical writer | README and guide drift against real exports, code examples that call something that is not exported, CLI examples that disagree with real `--help` output, dead links, stale version numbers, secrets or real domains in examples |
+| Persona | Subagent type | Looks for |
+|---|---|---|
+| Principal engineer | `principal-engineer` | layering violations, module boundaries, duplication, dead code, over-engineering, abstractions with one implementation, dependency injection done as a global or a singleton, provider implementations bleeding into each other or into core, missing argument pass-through, non-null assertions, `any`, `enum`, deprecated aliases kept for no reason |
+| Security engineer | `security-engineer` | input validation and parsing, secret handling and logging, comparison of secrets that is not constant time, injection vectors including shell, SQL, path traversal and prototype pollution, unsafe deserialisation, supply chain: new or unmaintained dependencies, transitive risk, unpinned GitHub Actions, install scripts |
+| Test engineer | `test-engineer` | uncovered branches, tests that assert nothing or only assert a mock was called, a rejecting branch with no negative test, tests that pass because of a workaround, shared mutable fixture state, skipped or `.only` tests, coverage thresholds not met |
+| Technical writer | `technical-writer` | README and guide drift against real exports, code examples that call something that is not exported, CLI examples that disagree with real `--help` output, dead links, stale version numbers, secrets or real domains in examples |
 
 Drop a persona only when it has nothing to read, for example the test engineer
 in a repo with no test directory, and say so in the plan's scope section.
@@ -107,9 +108,17 @@ severity, file:line, one-sentence finding, evidence quote, suggested fix.
 If you cannot cite a file and line, do not report it.
 ```
 
-When the target is small enough that fan-out costs more than it saves, for
-example a single file under a few hundred lines, run the lenses yourself in
-sequence and say in the plan that you did.
+Run the lenses yourself, in sequence, in exactly two cases:
+
+| Case | Why |
+|---|---|
+| The host agent cannot launch subagents, for example a runtime without multi-agent mode | There is nothing to fan out to |
+| The target is small enough that fan-out costs more than it saves, for example a single file under a few hundred lines | Four subagents reading one file is slower than one pass |
+
+In either case read one persona file from `agents/` at a time, apply that lens
+in full before moving to the next, keep the same return contract, and record in
+the plan's scope section that the lenses ran in sequence and why. Do not blend
+the lenses into one general pass.
 
 ### Step 4: Ground every finding
 
@@ -171,60 +180,27 @@ The slug is kebab-case and names the target, for example
 Plans are working documents and are not committed. Never `git add` the file,
 and never stage `docs/plans/` or `.plans/`.
 
-Structure, in this order:
+Read `template.md` from this skill's directory and fill it in. It is the
+single source for the plan's shape; do not restructure it, and do not add
+sections it does not have. `execute-plan` writes status back into the same
+file, so the columns and the status vocabulary must be the template's.
 
-```markdown
-# <Target> audit, <date>
-
-## Scope
-
-What was audited, which paths were excluded and why, which personas ran,
-the branch and commit audited, and what was read. Name the exclusions the
-user asked for.
-
-## Findings
-
-| ID | Severity | Location | Finding | Suggested fix |
-|----|----------|----------|---------|---------------|
-| A1 | Critical | `packages/core/src/verify.ts:42` | Secret compared with `===` | Use `timingSafeEqual` on equal-length buffers |
-| A2 | High | `packages/aws/src/client.ts:17` | Provider imports the GCP provider's config type | Move the shared type to `internal/types` |
-
-## Detail
-
-### A1: <finding title>
-
-**Severity:** Critical
-**Location:** `packages/core/src/verify.ts:42`
-
-Evidence: the cited lines, quoted.
-
-Why it matters: the concrete consequence, not a general principle.
-
-Suggested fix: what to change, and what to run to prove it.
-
-### A2: ...
-
-## Remediation order
-
-1. A1, A4 - <one subagent task, one sitting>
-2. A2 - ...
-
-## Unverified
-
-Anything that could not be grounded, labelled as not confirmed.
-```
-
-Rules for the plan body:
+Rules the template does not state for you:
 
 - IDs are stable, sequential, and prefixed `A`: `A1`, `A2`, `A3`. Never renumber
-  them after writing, because `execute-plan` references them.
+  them after writing, because `execute-plan` references them by name.
+- Persona ids such as `PE1`, `SEC1`, `TE1` and `TW1` are working ids from the
+  subagent returns. Assign each surviving finding an `A` id once, when writing
+  the plan; the persona id does not appear in the plan.
 - Each remediation item is sized to one subagent task: one concern, one area,
   independently verifiable. Split anything larger. Group items only when they
   touch the same file and must move together.
 - Order remediation by severity first, then by dependency: a fix that unblocks
   another comes first.
-- Every suggested fix names the verification command from the repo's own
-  `package.json` scripts. Never invent a command.
+- Every suggested fix and every remediation entry names the verification
+  command from the repo's own `package.json` scripts. Never invent a command.
+- Every finding starts at `not started`. The audit never writes any other
+  status.
 - No emoji. Sparing em-dashes. No model names or AI identifiers.
 
 ### Step 7: Report back
@@ -280,10 +256,11 @@ the recommendation.
 | Reporting a finding with no line number | Cite `path:line` or drop the finding. |
 | Reporting what a library or a spec "usually" does | Read the dependency source or quote the specification text and cite the section. |
 | Reporting a problem that is not in this codebase | Verify the symbol exists with `grep -rn` before writing it down. Unverifiable items go under "Unverified", labelled. |
-| Running one general-purpose pass instead of parallel personas | Fan out one subagent per lens in a single message. Fan-out is the default. |
+| Running one general-purpose pass instead of parallel personas | Fan out one subagent per lens in a single message. Fan-out is the default. Without subagents, run one persona file at a time and say so in the plan's scope. |
 | Merging the security and test lenses into one persona | One lens per persona. Merged lenses drop findings from both. |
 | Auditing paths the user told you to ignore | Exclude them from every persona prompt and record the exclusion in the plan's scope. |
 | Renumbering findings between drafts | IDs are stable once written. `execute-plan` references `A1`, `A2` by name. |
+| Writing the plan from memory of the structure instead of the template | Read `template.md` from this skill's directory and fill it in. The columns and status vocabulary must match, because `execute-plan` writes into them. |
 | A remediation item too big for one subagent | Split until each item is one concern in one area, independently verifiable. |
 | Inventing a verification command | Read `package.json` scripts and cite those. Workspace coverage usually needs `pnpm --filter <pkg> test:ci --project <project>`. |
 | Flagging a documented, deliberate decision as a defect | Read `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` first. |

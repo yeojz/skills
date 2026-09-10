@@ -14,7 +14,10 @@ commentary and no release-type opinion reaches the PR, that the title is a
 Conventional Commit subject because the repo squash-merges, and that an existing
 body is never overwritten without showing the change first.
 
-Template: `templates/pr-body.md`.
+Template: `template.md`, in the same directory as this SKILL.md. Locate it
+through the skill directory this SKILL.md was loaded from. Codex resolves
+relative paths in a SKILL.md relative to its directory too, so no
+agent-specific path is needed.
 
 ## Modes
 
@@ -128,7 +131,7 @@ anywhere.
 | Narration of how the change was arrived at, what was tried first, what the session did | The reviewer wants the change, not its history |
 | Security-review commentary, threat notes, "no vulnerabilities found" | Belongs in a review, not in the PR body |
 | An opinion on release type, version bump, patch/minor/major, "safe to release" | That decision belongs to the repo owner |
-| Claude session links, `claude.ai/...` URLs | House rule |
+| Agent session links, in any form | House rule |
 | Model names or any AI identifier, generated-by trailers | House rule |
 | Emoji, in the title or the body | House rule |
 
@@ -227,4 +230,4 @@ State plainly:
 | Leaving an ignored advisory or pinned version unmentioned | Record what was ignored, why, and when to revisit it. |
 | Patching the old body when the approach changed | Regenerate from the current diff so stale claims do not survive. |
 | Opening the PR ready for review by default | `--draft` unless the user says otherwise. |
-| A Claude session link, model name, or emoji anywhere in the title or body | House rule. Strip before writing. |
+| An agent session link, model name, or emoji anywhere in the title or body | House rule. Strip before writing. |

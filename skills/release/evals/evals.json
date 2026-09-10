@@ -55,7 +55,7 @@
     },
     {
       "id": 4,
-      "prompt": "The publish workflow failed on /tmp/eval-release-4-ws. The log says: remote: Permission to acme/toolkit.git denied to github-actions[bot]. fatal: unable to access 'https://github.com/acme/toolkit/': The requested URL returned error: 403",
+      "prompt": "The publish workflow failed on /tmp/eval-release-4-ws. The log says: remote: Permission to example/example.git denied to github-actions[bot]. fatal: unable to access 'https://github.com/example/example/': The requested URL returned error: 403",
       "expected_output": "Agent identifies the 403 as a permissions problem, not a transient failure, and does not re-run the job. It reads the workflow file and reports the specific things to check: the job's permissions block needs contents: write (plus pull-requests: write if it opens the version PR), the repository Settings > Actions > General > Workflow permissions may be read-only or inherited from the org, the 'Allow GitHub Actions to create and approve pull requests' setting is separate and must be on, branch protection on main can reject a bot push even with write scope, and any PAT or app token may have expired. It notes that a GITHUB_TOKEN push does not trigger downstream workflows. It does not edit the workflow file until the user says which fix to apply, since several of these are repository settings only the owner can change.",
       "files": [],
       "expectations": [

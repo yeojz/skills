@@ -4,12 +4,14 @@ Never appears in a PR body:
 - chat narrative or session commentary
 - security-review commentary
 - release-type opinions (that decision belongs to the repo owner)
-- Claude session links
+- agent session links
 - model names or any AI identifier
 
 PRs squash-merge, so the PR title becomes the commit on `main`. The title
 follows Conventional Commits. Open the PR as a draft unless told otherwise.
-Keep all three sections below, in this order, and add none.
+Summary is always present. Omit the Trade-offs and Follow-ups sections
+entirely when there is nothing to say under them: no empty heading, no `None.`,
+no filler. Keep the order below and add no other sections.
 -->
 
 ## Summary
@@ -27,7 +29,7 @@ diff, not from how the work happened.>
 - <chosen approach> over <alternative>: <what this buys, what it gives up>
 - <constraint accepted>: <the cost it leaves behind>
 
-<Or, when there were none: `None.`>
+<Omit this whole section when there were none.>
 
 ## Follow-ups
 
@@ -36,4 +38,4 @@ diff, not from how the work happened.>
 - <deferred work> - <why it is out of scope here>
 - <known gap> - <issue or branch that will pick it up>
 
-<Or, when there are none: `None.`>
+<Omit this whole section when there are none.>

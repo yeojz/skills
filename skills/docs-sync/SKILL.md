@@ -211,15 +211,10 @@ Resolution rules:
   source of truth for what the repo actually requires.
 - CI is the source of truth for what is actually exercised. If CI and `engines`
   disagree, that is a real inconsistency to report, not something to average.
-- Detect the package manager from the lock file, never from the prose in the
-  README that may itself be the stale thing.
-
-| Lock file | Install | Run |
-|---|---|---|
-| `pnpm-lock.yaml` | `pnpm install` | `pnpm <script>` |
-| `package-lock.json` | `npm install` | `npm run <script>` |
-| `yarn.lock` | `yarn install` | `yarn <script>` |
-| `bun.lockb` or `bun.lock` | `bun install` | `bun run <script>` |
+- Detect the package manager from the lock file as `verify` Step 2 does: the
+  lock file decides, never assume, and never trust the prose in the README
+  that may itself be the stale thing. The install and run commands follow from
+  it.
 
 Report every disagreement with the file and the line number for each side, so
 the reader can see both halves without opening anything.

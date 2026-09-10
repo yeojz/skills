@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Please pause and write a handoff as context is getting low. We're halfway through the auth refresh work.",
-      "expected_output": "Runs the git state commands first, writes docs/plans/YYYY-MM-DD-HHMM-handoff-auth-refresh.md from templates/handoff.md, records that the branch has unpushed commits with the ahead count, lists completed items with the command output that proves each, lists remaining work in order with file paths and acceptance checks, and ends with a self-contained paste-ready prompt in a fenced block.",
+      "expected_output": "Runs the git state commands first, writes docs/plans/YYYY-MM-DD-HHMM-handoff-auth-refresh.md from the template.md that sits beside the handoff SKILL.md, records that the branch has unpushed commits with the ahead count, lists completed items with the command output that proves each, lists remaining work in order with file paths and acceptance checks, and ends with a self-contained paste-ready prompt in a fenced block.",
       "files": [],
       "expectations": [
         "Runs git branch --show-current, git status -sb, git status --short, git log --oneline main..HEAD and a git diff --stat before writing any prose",

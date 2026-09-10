@@ -70,10 +70,9 @@ branch before editing.
 
 ### Step 2: Start from the template
 
-Read `templates/handoff.md` and fill it in. Do not restructure it and do not add
-sections it does not have. If the template is missing, use its section order:
-Situation, Repo and branch, Completed, Remaining, Files touched, Verification,
-Open questions and decisions owed, Next session prompt.
+Read `template.md` from this skill's directory, the directory this `SKILL.md`
+was loaded from, and fill it in. Do not restructure it and do not add sections
+it does not have.
 
 Write to:
 
@@ -172,7 +171,7 @@ It must contain:
 
 | Element | Example |
 |---|---|
-| Absolute repo path | `/Users/<user>/Repo/<org>/<repo>` |
+| Absolute repo path | `<absolute path to the repo>` |
 | Branch, and the base it came from | `on branch feat/auth-refresh-tokens, based on main` |
 | Where the detail lives | `Read docs/plans/2026-09-10-2231-handoff-auth-refresh-tokens.md first` |
 | The first command to run | `Start by running: pnpm --filter auth test` |
@@ -185,7 +184,7 @@ off". Name the file path instead.
 Short form, when the user asked for two or three instructions:
 
 ```text
-Resume in /Users/<user>/Repo/<org>/<repo> on branch feat/auth-refresh-tokens.
+Resume in <absolute path to the repo> on branch feat/auth-refresh-tokens.
 Read docs/plans/2026-09-10-2231-handoff-auth-refresh-tokens.md first; it has the
 state, the remaining work in order, and the acceptance check for each item.
 Start by running pnpm --filter auth test to confirm the baseline, then do

@@ -28,8 +28,30 @@ how they get checked.
 
 ### Step 1: Get the page running and loaded
 
-Never critique from source alone. Find the dev command from the repo's scripts,
-start it, and load the actual URL.
+Prerequisite: a browser automation tool the agent can drive. This skill is
+written against the `mcp__Claude_Browser__*` tools (`preview_start`,
+`navigate`, `resize_window`, `javascript_tool`, `read_console_messages`,
+`computer`, `read_page`) and a `.claude/launch.json` entry for the dev server.
+Another browser tool with the same capabilities, loading a URL, resizing the
+viewport, running script in the page and reading the console, can stand in for
+it; substitute its calls where this skill names those.
+
+Check for the tool before anything else. If no browser automation tool is
+available, stop and say which capability is missing. Then offer reduced mode,
+and only reduced mode:
+
+| Static check, from source | How |
+|---|---|
+| Contrast ratios | Compute from the colour token values in the theme or CSS, for each light and dark pair |
+| Font sizes | Read the type scale in the source and confirm every UI size resolves to at least `1rem` |
+| Overflow | Grep for fixed widths, `min-w-`, `w-[...]px` and unwrapped tables that exceed 375px |
+
+Label every reduced-mode result "not verified in a browser". Reduced mode never
+produces the Step 4 verification block, and the words fixed, done and working
+stay off the table until the page has been loaded and measured in a browser.
+
+Never critique from source alone when a browser is available. Find the dev
+command from the repo's scripts, start it, and load the actual URL.
 
 ```bash
 cat package.json | jq -r '.scripts | to_entries[] | "\(.key)\t\(.value)"'
@@ -44,7 +66,8 @@ attached:
 
 If no dev server exists and the surface is a static file, load the file URL. If
 the page cannot be loaded at all, say so and stop; do not substitute a reading
-of the JSX for a critique.
+of the JSX for a critique. Reduced mode above is the only source-only work this
+skill permits, and it is offered, not assumed.
 
 ### Step 2: Mode 1, critique against the fixed checklist
 
@@ -320,6 +343,7 @@ named. Wait for the pick. Then apply Step 3, then Step 4.
 | Mistake | Fix |
 |---|---|
 | Claiming a visual fix works without loading the page | Load the URL in the browser tooling, measure, paste the verification block |
+| Running the static checks and reporting them as verified | Without a browser tool, stop, name the missing capability, and label every reduced-mode result "not verified in a browser" |
 | Judging contrast by eye or from the source colour tokens | Read `getComputedStyle` colours and compute the ratio, in light and in dark |
 | Reporting "no horizontal scroll" from a screenshot | Compare `documentElement.scrollWidth` against `clientWidth` at 375px and name the culprit element |
 | Stacking a fourth attempt on a failing visual bug | Stop at 3, report each observation, offer the revert as option A |

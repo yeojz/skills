@@ -72,21 +72,13 @@ If the current branch is already a feature branch, skip to step 3 and say so.
 
 ### Step 3: Detect the package manager
 
-Never assume. Check for a lock file in the repo root, or the nearest ancestor
-that has a `package.json`:
-
-| Lock file | Package manager |
-|---|---|
-| `pnpm-lock.yaml` | `pnpm` |
-| `bun.lockb` or `bun.lock` | `bun` |
-| `yarn.lock` | `yarn` |
-| `package-lock.json` | `npm` |
+Detect the package manager from the lock file as `verify` Step 2 does: the lock
+file decides, never assume. Look in the repo root, or the nearest ancestor that
+has a `package.json`.
 
 If no lock file is present, read the `packageManager` field in `package.json`.
-If that is also absent, ask rather than guessing.
-
-A `pnpm-lock.yaml` means `pnpm`, even if `bun` or `npm` is faster to type. Do
-not mix package managers in one repo.
+If that is also absent, ask rather than guessing. Do not mix package managers
+in one repo.
 
 If there is no `package.json` at all, skip steps 4 to 6.
 
@@ -131,7 +123,7 @@ Show the user the current state before staging:
 git status
 ```
 
-Never stage these, whatever `git add -A` would pick up:
+Never stage these, however they show up in the status output:
 
 | Path | Reason |
 |---|---|
@@ -143,12 +135,19 @@ Honour an explicit exclusion too. When the user says something like
 "commit all unstaged changes, ignore `notes.local.md`", that path is excluded
 for this run.
 
-Stage everything else, then unstage the excluded paths:
+Stage by naming paths. Never run `git add -A` or `git add .`: the house rules
+forbid it, and the repo's own PreToolUse hook denies it whenever an unignored
+`docs/plans/` file exists. List every changed and untracked path, drop the
+excluded ones, and add what remains:
 
 ```bash
-git add -A
-git reset -- .claude docs/plans .plans <user-excluded-paths>
+git status --porcelain -uall | cut -c4- \
+  | grep -v -E '^(\.claude/|docs/plans/|\.plans/)' \
+  | xargs git add --
 ```
+
+Add one more `grep -v -x -F '<path>'` before the `xargs` for each
+user-excluded path.
 
 Show the staged list and confirm it looks right before committing:
 
@@ -185,7 +184,7 @@ not this skill. Read `settings.json` before composing the message:
 | Setting | Effect on the message |
 |---|---|
 | `includeCoAuthoredBy` is `false` | Add no `Co-Authored-By` trailer |
-| `includeCoAuthoredBy` is `true` or absent | Add `Co-Authored-By: Claude <noreply@anthropic.com>` |
+| `includeCoAuthoredBy` is `true` or absent | Add the harness default co-author trailer. Its value comes from the settings the harness documents, not from this skill |
 | `attribution.commit` is a non-empty string | Use that as the trailer instead |
 | `attribution.commit` is an empty string | Add no trailer |
 
@@ -193,11 +192,14 @@ Check both the project and the user settings file, project first:
 
 ```bash
 cat .claude/settings.json 2>/dev/null
-cat ~/.claude/settings.json
+cat ~/.claude/settings.json 2>/dev/null
 ```
 
-Never put a Claude session link, a model name, or any other AI identifier in the
-subject or body.
+When running under an agent that has no such settings file (for example
+Codex), skip the attribution lookup and add no trailer.
+
+Never put an agent session link, a model name, or any other AI identifier in
+the subject or body.
 
 Commit, bounded at 3 attempts:
 
@@ -241,40 +243,19 @@ Opening a PR is externally visible and hard to take back, so it carries its own
 confirmation rather than inheriting the one given for the push. Make the ask
 explicit every time.
 
-PR title is a Conventional Commit subject. The repo squash-merges, so the PR
-title becomes the commit on the default branch, and CI rejects titles that do
-not match the convention.
+Run the `pr-desc` skill in create mode and use the title and body it hands
+back. It writes both from the diff, keeps the title a Conventional Commit
+subject, and decides which body sections appear. Do not restate or override its
+rules here.
 
-PR body has exactly three sections and nothing else:
-
-```markdown
-## Summary
-
-What changed and why, in a few sentences.
-
-## Trade-offs
-
-The decisions taken and what was given up. "None" if there genuinely were none.
-
-## Follow-ups
-
-What is deliberately left for later. "None" if there is nothing.
-```
-
-Strip all of the following. They are not part of the body:
-
-| Do not include | Why |
-|---|---|
-| `## Test Plan` | Verification already happened in step 6 |
-| Chat narrative, step-by-step story of the session | Not useful to a reviewer |
-| Security-review commentary | Belongs in a review, not the PR body |
-| Release-type or version-bump opinions | That decision belongs to the repo owner |
-| Claude session links, model names, AI identifiers | House rule |
+If `pr-desc` is unavailable, write the title as a Conventional Commit subject
+and the body as a `## Summary` section only, and say in the report that the
+skill was missing.
 
 Open as a draft unless the user says otherwise:
 
 ```bash
-gh pr create --draft --base <default-branch> --title "<conventional subject>" --body-file <file>
+gh pr create --draft --base <default-branch> --title "<title from pr-desc>" --body-file <file>
 ```
 
 ### Step 11: Report
@@ -299,14 +280,15 @@ State plainly:
 | Inventing `npx vitest run` or similar ad-hoc commands | Run the scripts defined in `package.json`. |
 | Using `--no-verify` to get past a hook | Never. Read the error, fix the root cause, re-stage, retry, max 3 attempts. |
 | Retrying a failing hook indefinitely | Stop at 3 attempts and report what is blocking. |
-| Staging `.claude/`, `docs/plans/` or `.plans/` | Unstage them after `git add -A`, every time. |
+| Running `git add -A` or `git add .` | Forbidden by the house rules and denied by the hook. Filter `git status --porcelain -uall`, then `git add --` the named paths. |
+| Staging `.claude/`, `docs/plans/` or `.plans/` | Drop them from the status list before `git add --`, every time. |
 | Committing with nothing staged | Check `git status` first; report "nothing to commit". |
 | Choosing the wrong type, such as `feat` for a refactor | Match intent: user-visible is `feat`/`fix`, internal is `refactor`/`chore`. |
 | Pushing because the commit succeeded | Push is a separate step with its own confirmation. |
 | Opening a PR because the push succeeded | PR is a separate step with its own confirmation. |
-| Putting a `## Test Plan` in the PR body | Summary, trade-offs, follow-ups only. |
+| Writing the PR body in this skill | Run `pr-desc` in create mode and use the title and body it hands back. |
 | Adding release-type or version opinions to the PR | That is the repo owner's decision. |
 | A non-conventional PR title | Squash-merge makes it the commit on `main`; CI rejects it. |
 | Opening a PR ready for review by default | Open as a draft unless told otherwise. |
-| Claude as commit author, or a session link in the body | Repo owner is the author. Never put a session link or model name in the message. |
+| The agent as commit author, or a session link in the body | Repo owner is the author. Never put a session link or model name in the message. |
 | Adding a `Co-Authored-By` trailer that settings turned off | Read `includeCoAuthoredBy` and `attribution.commit` first. Settings decide attribution, not this skill. |

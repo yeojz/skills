@@ -291,10 +291,15 @@ repo has a publish workflow.
 git checkout -b chore/release-version-packages
 pnpm changeset version
 pnpm install --lockfile-only
-git add -A
-git reset -- .claude docs/plans .plans
+git status --porcelain -uall | cut -c4- \
+  | grep -v -E '^(\.claude/|docs/plans/|\.plans/)' \
+  | xargs git add --
 git diff --staged --name-status
 ```
+
+Stage named paths only. `git add -A` is forbidden by the house rules and the
+repo's PreToolUse hook denies it whenever an unignored `docs/plans/` file
+exists.
 
 Commit with a conventional subject, then open the PR after a confirmation:
 

@@ -65,19 +65,19 @@ report.
 
 ### Step 2: Detect the package manager
 
-Never assume. Read the lock file in the repo root, or the nearest ancestor that
-has a `package.json`:
+Detect the package manager from the lock file as `verify` Step 2 does: the lock
+file decides, never assume. If no lock file is present, read the
+`packageManager` field in `package.json`. If that is also absent, ask rather
+than guessing. Never mix package managers in one repo.
 
-| Lock file | Package manager | Audit command |
-|---|---|---|
-| `pnpm-lock.yaml` | `pnpm` | `pnpm audit` |
-| `bun.lockb` or `bun.lock` | `bun` | `bun audit` |
-| `yarn.lock` | `yarn` | `yarn npm audit` |
-| `package-lock.json` | `npm` | `npm audit` |
+The audit command follows from the package manager:
 
-If no lock file is present, read the `packageManager` field in `package.json`.
-If that is also absent, ask rather than guessing. Never mix package managers in
-one repo.
+| Package manager | Audit command |
+|---|---|
+| `pnpm` | `pnpm audit` |
+| `bun` | `bun audit` |
+| `yarn` | `yarn npm audit` |
+| `npm` | `npm audit` |
 
 Record the exact version too, because settings names move between majors:
 

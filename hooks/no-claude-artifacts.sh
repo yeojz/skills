@@ -1,84 +1,147 @@
 #!/usr/bin/env bash
 # PreToolUse hook (matcher: Bash).
 #
-# Blocks any git staging or commit that would include Claude Code working
-# artifacts. These stay local and never reach a commit.
+# Blocks any git call that would stage or commit Claude Code working artifacts.
+# These stay local and never reach a commit.
+#
+# The decision is delegated to git. The arguments of the command are replayed
+# through `git add --dry-run` and `git commit --dry-run --porcelain`, and the
+# paths git reports are matched against the forbidden pattern. Deciding what a
+# token means by how it is spelled cannot survive globs, pathspec magic, parent
+# directories or `-A`; asking git costs one process and resolves all of them.
+# A dry run touches neither the index nor the object store and runs no hooks.
 #
 # Reads the PreToolUse event JSON on stdin. Exit 0 allows, exit 2 denies.
 set -uo pipefail
 
-# Deny rather than fail open: without python3 the guard cannot inspect the call.
+payload="$(cat)"
+
+# Cheap pre-filter, so an ordinary shell call does not pay for a python start-up.
+case "$payload" in
+  *git*) ;;
+  *) exit 0 ;;
+esac
+
+# Deny rather than fail open, but only for calls that mention git: a missing
+# interpreter must not block every Bash call in the session.
 if ! command -v python3 >/dev/null 2>&1; then
   echo "Blocked: no-claude-artifacts hook needs python3 on PATH to inspect git calls." >&2
   exit 2
 fi
 
-FORBIDDEN_RE='(^|/)\.claude(/|$)|(^|/)docs/plans(/|$)|(^|/)\.plans(/|$)'
+inspector="$(cat <<'PY'
+"""Decide whether a Bash tool call would stage or commit a Claude working artifact.
 
-payload="$(cat)"
+Reads the PreToolUse payload on stdin. Exits 2 with a reason on stderr to deny
+the call, exits 0 to allow it.
+"""
 
-read_field() {
-  printf '%s' "$payload" | python3 -c '
-import json, sys
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-cur = data
-for key in sys.argv[1].split("."):
-    if not isinstance(cur, dict):
-        sys.exit(0)
-    cur = cur.get(key)
-    if cur is None:
-        sys.exit(0)
-print(cur if isinstance(cur, str) else "")
-' "$1" 2>/dev/null
-}
-
-command_line="$(read_field tool_input.command)"
-cwd="$(read_field cwd)"
-
-# Cheap pre-filter before spending a python start-up on every shell call.
-case "$command_line" in
-  *git*) ;;
-  *) exit 0 ;;
-esac
-
-[ -n "$cwd" ] && cd "$cwd" 2>/dev/null || true
-
-# Tokenise the command line so text inside a commit message, a `./` prefix or
-# a wrapper such as `command`, `env` or `git -C` cannot fool a substring match.
-# Prints RELEVANT when a git add, stage or commit is present, SWEEP when it
-# would pull in every dirty path, and one PATH line per named path that exists.
-# An unparseable line (unbalanced quotes) prints nothing and is allowed.
-analysis="$(python3 - "$command_line" <<'PY'
+import json
 import os
+import re
 import shlex
+import subprocess
 import sys
 
-SEPARATOR_CHARS = set("();<>|&")
-REDIRECTS = {"<", ">", ">>", "<<", "<&", ">&", "&>", "<<<", ">|"}
-WRAPPERS = {"command", "env", "sudo"}
-GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
-ADD_SWEEP_FLAGS = {"-A", "--all", "-u", "--update", "--no-ignore-removal"}
-COMMIT_VALUE_OPTIONS = {"-m", "-F", "--message", "--file"}
+FORBIDDEN = re.compile(r"(^|/)(\.claude|docs/plans|\.plans)(/|$)")
+
+GIT_TIMEOUT_SECONDS = 5
+MAX_SHELL_DEPTH = 3
+MAX_REPORTED = 20
+
+SEPARATOR_CHARS = set("();<>|&\n")
+REDIRECTIONS = {"<", ">", ">>", "<<", "<&", ">&", "&>", "<<<", ">|"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
+DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
+SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
+
+WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "stdbuf",
+            "nice", "ionice", "xargs"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+
+GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
+                          "--exec-path", "--config-env"}
+STAGING_SUBCOMMANDS = {"add", "stage"}
+
+# --dry-run refuses to run beside these, and none of them change which paths the
+# command puts in play.
+ADD_FLAGS_DROPPED = {"--dry-run", "--interactive", "--patch", "--edit", "--verbose"}
+ADD_LETTERS_DROPPED = "nipev"
+# These would reshape the porcelain report this hook has to read.
+COMMIT_FLAGS_DROPPED = {"--dry-run", "--porcelain", "--patch", "--short", "--long", "--null"}
+COMMIT_LETTERS_DROPPED = "pz"
+
+ADD_REPORT = re.compile(r"^(?:add|remove) '(.*)'$")
+STAGED_STATUS = "MADRCU"
 
 
-def tokenise(line):
-    lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+class GitMissing(Exception):
+    """git is not on PATH, so no command in this call can stage anything."""
+
+
+class Unresolvable(Exception):
+    """git could not answer for this call, so the working tree is all we have."""
+
+
+def strip_comments(line):
+    """Drop each unquoted `# ...` run, the way a shell does, keeping the newline.
+
+    The lexer cannot do this itself: its commenter would swallow the newline and
+    with it every command on the following lines.
+    """
+    kept = []
+    quote = ""
+    index = 0
+    at_word_start = True
+    while index < len(line):
+        char = line[index]
+        index += 1
+        if quote:
+            kept.append(char)
+            if char == quote:
+                quote = ""
+            continue
+        if char == "\\":
+            kept.append(char)
+            if index < len(line):
+                kept.append(line[index])
+                index += 1
+            at_word_start = False
+            continue
+        if char in "'\"":
+            quote = char
+            kept.append(char)
+            at_word_start = False
+            continue
+        if char == "#" and at_word_start:
+            while index < len(line) and line[index] != "\n":
+                index += 1
+            continue
+        kept.append(char)
+        at_word_start = char in " \t\n;|&()"
+    return "".join(kept)
+
+
+def lex(line):
+    """Tokenise a command line, keeping newlines as command separators."""
+    lexer = shlex.shlex(strip_comments(line), posix=True,
+                        punctuation_chars="();<>|&\n")
     lexer.whitespace_split = True
+    lexer.whitespace = " \t\r"
+    lexer.commenters = ""
     return list(lexer)
 
 
 def simple_commands(tokens):
+    """Split a token stream on separators, newlines and subshell parentheses."""
     current = []
-    skip_next = False
+    drop_next = False
     for token in tokens:
-        if skip_next:
-            skip_next = False
+        if drop_next:
+            drop_next = False
             continue
-        if token in REDIRECTS:
-            skip_next = True
+        if token in REDIRECTIONS:
+            drop_next = True
             continue
         if token and set(token) <= SEPARATOR_CHARS:
             if current:
@@ -90,135 +153,255 @@ def simple_commands(tokens):
         yield current
 
 
-def is_assignment(token):
-    return "=" in token and not token.startswith("-")
+def peel_wrappers(argv):
+    """Drop leading assignments and wrapper programs such as env, sudo or nohup.
 
-
-def git_subcommand(words):
-    index = 0
-    while index < len(words) and (words[index] in WRAPPERS or is_assignment(words[index])):
-        index += 1
-    if index >= len(words) or words[index] != "git":
-        return None, []
-    index += 1
-    while index < len(words) and words[index].startswith("-"):
-        option = words[index]
-        index += 1
-        if option in GIT_VALUE_OPTIONS:
-            index += 1
-    if index >= len(words):
-        return None, []
-    return words[index], words[index + 1:]
-
-
-def is_short_cluster(token):
-    return token.startswith("-") and not token.startswith("--") and len(token) > 1
-
-
-def inspect_add(args):
-    sweep = False
-    paths = []
-    options_done = False
-    for token in args:
-        if not options_done and token == "--":
-            options_done = True
+    Also reports whether the command was reached through xargs, whose pathspecs
+    arrive on a pipe this hook cannot see.
+    """
+    rest = list(argv)
+    via_xargs = False
+    while rest:
+        name = os.path.basename(rest[0])
+        if ASSIGNMENT.match(rest[0]):
+            rest.pop(0)
             continue
-        if not options_done and token.startswith("-"):
-            if token in ADD_SWEEP_FLAGS or (is_short_cluster(token) and set("Au") & set(token[1:])):
-                sweep = True
-            continue
-        if os.path.normpath(token) == ".":
-            sweep = True
-            continue
-        if os.path.exists(token):
-            paths.append(token)
-    return sweep, paths
-
-
-def inspect_commit(args):
-    skip_next = False
-    for token in args:
-        if skip_next:
-            skip_next = False
-            continue
-        if token == "--":
+        if name not in WRAPPERS:
             break
-        if token in ("-a", "--all"):
-            return True
-        if token in COMMIT_VALUE_OPTIONS:
-            skip_next = True
+        via_xargs = via_xargs or name == "xargs"
+        rest.pop(0)
+        while rest and (rest[0].startswith("-") or DURATION.match(rest[0])
+                        or ASSIGNMENT.match(rest[0])):
+            rest.pop(0)
+    return rest, via_xargs
+
+
+def shell_script_argument(argv):
+    """Return the script string of an `sh -c` or `bash -c` call, else None."""
+    if not argv or os.path.basename(argv[0]) not in SHELLS:
+        return None
+    for index, token in enumerate(argv[1:], start=1):
+        if not token.startswith("-") or token.startswith("--"):
             continue
-        if is_short_cluster(token):
-            for letter in token[1:]:
-                if letter == "a":
-                    return True
-                if letter in "mF":
-                    skip_next = token.endswith(letter)
-                    break
-    return False
+        if "c" in token[1:] and index + 1 < len(argv):
+            return argv[index + 1]
+    return None
+
+
+def git_call(argv, directory):
+    """Return (subcommand, args, directory) for a git invocation, else None."""
+    if os.path.basename(argv[0]) != "git":
+        return None
+    index = 1
+    while index < len(argv) and argv[index].startswith("-"):
+        option = argv[index]
+        index += 1
+        if option == "-C" and index < len(argv):
+            directory = os.path.join(directory, argv[index])
+            index += 1
+        elif option.startswith("-C") and len(option) > 2:
+            directory = os.path.join(directory, option[2:])
+        elif option in GIT_OPTIONS_WITH_VALUE:
+            index += 1
+    if index >= len(argv):
+        return None
+    return argv[index], argv[index + 1:], os.path.normpath(directory)
+
+
+def plan_checks(command_line, directory, depth=0):
+    """Collect every git add, stage or commit the command line would run."""
+    checks = []
+    for words in simple_commands(lex(command_line)):
+        argv, via_xargs = peel_wrappers(words)
+        if not argv:
+            continue
+        script = shell_script_argument(argv)
+        if script is not None:
+            if depth < MAX_SHELL_DEPTH:
+                checks.extend(plan_checks(script, directory, depth + 1))
+            continue
+        if argv[0] == "cd" and len(argv) > 1:
+            directory = os.path.normpath(os.path.join(directory, argv[1]))
+            continue
+        call = git_call(argv, directory)
+        if call is None:
+            continue
+        subcommand, args, git_directory = call
+        if subcommand in STAGING_SUBCOMMANDS:
+            checks.append(("add", git_directory, args, via_xargs))
+        elif subcommand == "commit":
+            checks.append(("commit", git_directory, args, via_xargs))
+    return checks
+
+
+def run_git(directory, args):
+    """Run one read-only git call under a timeout, with locks and pager off."""
+    environment = dict(os.environ,
+                       GIT_OPTIONAL_LOCKS="0",
+                       GIT_PAGER="cat",
+                       GIT_EDITOR="true",
+                       GIT_TERMINAL_PROMPT="0")
+    try:
+        return subprocess.run(["git", "--no-pager", "-C", directory] + args,
+                              stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE,
+                              text=True,
+                              env=environment,
+                              timeout=GIT_TIMEOUT_SECONDS)
+    except FileNotFoundError:
+        raise GitMissing()
+    except (subprocess.TimeoutExpired, OSError):
+        raise Unresolvable()
+
+
+def drop_flags(args, long_flags, letters):
+    """Remove flags that a dry run refuses, keeping every pathspec and value."""
+    kept = []
+    for token in args:
+        if token in long_flags:
+            continue
+        if SHORT_CLUSTER.match(token):
+            remainder = "".join(c for c in token[1:] if c not in letters)
+            if remainder:
+                kept.append("-" + remainder)
+            continue
+        kept.append(token)
+    return kept
+
+
+def is_repository(directory):
+    return run_git(directory, ["rev-parse", "--git-dir"]).returncode == 0
+
+
+def has_pathspec(args):
+    return any(not token.startswith("-") for token in args if token != "--")
+
+
+def staged_by_add(directory, args, via_xargs):
+    """Ask git which paths `git add` with these arguments would put in the index."""
+    if via_xargs and not has_pathspec(args):
+        raise Unresolvable()
+    result = run_git(directory, ["add", "--dry-run"]
+                     + drop_flags(args, ADD_FLAGS_DROPPED, ADD_LETTERS_DROPPED))
+    return [match.group(1) for match in
+            (ADD_REPORT.match(line) for line in result.stdout.splitlines()) if match]
+
+
+def patch_mode(args):
+    return any(token in ("-p", "--patch")
+               or (SHORT_CLUSTER.match(token) and "p" in token[1:]) for token in args)
+
+
+def committed_by_commit(directory, args, via_xargs):
+    """Ask git which paths `git commit` with these arguments would record."""
+    if via_xargs and not has_pathspec(args):
+        raise Unresolvable()
+    result = run_git(directory, ["commit", "--dry-run", "--porcelain"]
+                     + drop_flags(args, COMMIT_FLAGS_DROPPED, COMMIT_LETTERS_DROPPED))
+    # Column one is the index status. An untracked (??) or worktree-only ( M)
+    # entry is reported but would not be committed, unless -p is picking hunks
+    # straight out of the working tree.
+    columns = (0, 1) if patch_mode(args) else (0,)
+    paths = []
+    for line in result.stdout.splitlines():
+        if len(line) > 3 and any(line[column] in STAGED_STATUS for column in columns):
+            paths.extend(unquote(part) for part in line[3:].split(" -> "))
+    return paths
+
+
+def dirty_paths(directory):
+    """Everything the working tree could contribute to a commit right now."""
+    staged = run_git(directory, ["diff", "--cached", "--name-only"]).stdout.splitlines()
+    status = run_git(directory, ["status", "--porcelain", "-uall"]).stdout.splitlines()
+    return staged + [unquote(line[3:]) for line in status if len(line) > 3]
+
+
+def unquote(path):
+    if len(path) > 1 and path.startswith('"') and path.endswith('"'):
+        return path[1:-1]
+    return path
+
+
+def deny(offenders, unparsed):
+    report = sorted(set(offenders))[:MAX_REPORTED]
+    print("Blocked: this would stage or commit Claude Code working artifacts.", file=sys.stderr)
+    print(file=sys.stderr)
+    for path in report:
+        print("  " + path, file=sys.stderr)
+    print(file=sys.stderr)
+    if unparsed:
+        print("The command could not be parsed, so the working tree was checked instead.",
+              file=sys.stderr)
+    print("These paths are never committed. Unstage them first:", file=sys.stderr)
+    print("  git reset HEAD -- .claude docs/plans .plans", file=sys.stderr)
+    print("and add them to .gitignore if they are not there already.", file=sys.stderr)
+    sys.exit(2)
+
+
+def forbidden(paths):
+    return [path for path in paths if FORBIDDEN.search(path)]
+
+
+def read_payload():
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        return "", ""
+    if not isinstance(payload, dict):
+        return "", ""
+    tool_input = payload.get("tool_input")
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    cwd = payload.get("cwd")
+    return (command if isinstance(command, str) else "",
+            cwd if isinstance(cwd, str) else "")
+
+
+def deny_if_any(offenders, unparsed):
+    if offenders:
+        deny(offenders, unparsed)
 
 
 def main():
+    command_line, cwd = read_payload()
+    if "git" not in command_line:
+        return
+    if cwd and not os.path.isdir(cwd):
+        print("Blocked: no-claude-artifacts hook was given cwd '%s', which does not exist."
+              % cwd, file=sys.stderr)
+        sys.exit(2)
+    directory = cwd or os.getcwd()
+
     try:
-        tokens = tokenise(sys.argv[1])
+        checks = plan_checks(command_line, directory)
     except ValueError:
+        # Unbalanced quotes. Fall back to the tree, and deny only a real offender.
+        if is_repository(directory):
+            deny_if_any(forbidden(dirty_paths(directory)), unparsed=True)
         return
-    relevant = False
-    sweep = False
-    paths = []
-    for words in simple_commands(tokens):
-        subcommand, args = git_subcommand(words)
-        if subcommand in ("add", "stage"):
-            relevant = True
-            found_sweep, found_paths = inspect_add(args)
-            sweep = sweep or found_sweep
-            paths.extend(found_paths)
-        elif subcommand == "commit":
-            relevant = True
-            sweep = sweep or inspect_commit(args)
-    if not relevant:
-        return
-    print("RELEVANT")
-    if sweep:
-        print("SWEEP")
-    for path in paths:
-        print("PATH " + path)
+
+    offenders = []
+    unparsed = False
+    for kind, check_directory, args, via_xargs in checks:
+        if not is_repository(check_directory):
+            continue
+        resolve = staged_by_add if kind == "add" else committed_by_commit
+        try:
+            offenders.extend(forbidden(resolve(check_directory, args, via_xargs)))
+        except Unresolvable:
+            unparsed = True
+            offenders.extend(forbidden(dirty_paths(check_directory)))
+    deny_if_any(offenders, unparsed)
 
 
-main()
+try:
+    main()
+except GitMissing:
+    pass
+except Unresolvable:
+    # Even the fallback could not run. Nothing observed, nothing to block.
+    pass
 PY
 )"
 
-printf '%s\n' "$analysis" | grep -qx RELEVANT || exit 0
-git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-
-# Anything already staged.
-candidates="$(git diff --cached --name-only 2>/dev/null || true)"
-
-# A sweep pulls in everything currently dirty. -uall stops git from collapsing
-# an untracked directory to its parent, which would hide the match.
-if printf '%s\n' "$analysis" | grep -qx SWEEP; then
-  candidates="$candidates
-$(git status --porcelain -uall 2>/dev/null | sed 's/^...//' || true)"
-fi
-
-# Paths named directly, so `git add docs/plans` is caught before anything is staged.
-candidates="$candidates
-$(printf '%s\n' "$analysis" | sed -n 's/^PATH //p')"
-
-offenders="$(printf '%s\n' "$candidates" | grep -E "$FORBIDDEN_RE" | sort -u | head -20 || true)"
-
-if [ -n "$offenders" ]; then
-  {
-    echo "Blocked: this would stage Claude Code working artifacts."
-    echo
-    echo "$offenders"
-    echo
-    echo "These paths are never committed. Unstage them first:"
-    echo "  git reset HEAD -- .claude docs/plans .plans"
-    echo "and add them to .gitignore if they are not there already."
-  } >&2
-  exit 2
-fi
-
-exit 0
+printf '%s' "$payload" | python3 -c "$inspector"

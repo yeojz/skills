@@ -131,23 +131,64 @@ Never stage these, however they show up in the status output:
 | `docs/plans/` | Plan files are working notes, not deliverables |
 | `.plans/` | Same |
 
+Those names are forbidden at any depth, not only at the repo root. The
+PreToolUse hook matches `(^|/)(\.claude|docs/plans|\.plans)(/|$)`, so
+`packages/x/docs/plans/note.md` is as forbidden as `docs/plans/note.md`.
+
 Honour an explicit exclusion too. When the user says something like
 "commit all unstaged changes, ignore `notes.local.md`", that path is excluded
 for this run.
 
-Stage by naming paths. Never run `git add -A` or `git add .`: the house rules
-forbid it, and the repo's own PreToolUse hook denies it whenever an unignored
-`docs/plans/` file exists. List every changed and untracked path, drop the
-excluded ones, and add what remains:
+Stage by naming the paths you changed. You made the edits, so you already know
+what they are. This is the main mechanism:
 
 ```bash
-git status --porcelain -uall | cut -c4- \
-  | grep -v -E '^(\.claude/|docs/plans/|\.plans/)' \
-  | xargs git add --
+git add -- src/client.ts "docs/adr/0004 retry policy.md"
 ```
 
-Add one more `grep -v -x -F '<path>'` before the `xargs` for each
-user-excluded path.
+Never run `git add -A` or `git add .`: the house rules forbid it, and the
+repo's own PreToolUse hook denies it whenever an unignored `docs/plans/` file
+exists.
+
+Then cross-check for anything you missed. This enumerates every changed,
+deleted and untracked path that differs from the index, with the artifact
+directories removed by git's own pathspec matching rather than by filtering
+text in the shell:
+
+```bash
+git -c core.quotepath=false ls-files -z --modified --others --exclude-standard -- \
+  ':(exclude,glob)**/.claude/**' ':(exclude,glob)**/.claude' \
+  ':(exclude,glob)**/docs/plans/**' ':(exclude,glob)**/docs/plans' \
+  ':(exclude,glob)**/.plans/**' ':(exclude,glob)**/.plans' \
+  | tr '\0' '\n'
+```
+
+Read that list. Add by name anything that belongs to this task and is not
+staged yet. When every remaining entry belongs, pipe the same enumeration into
+`git add` instead of retyping it:
+
+```bash
+git -c core.quotepath=false ls-files -z --modified --others --exclude-standard -- \
+  ':(exclude,glob)**/.claude/**' ':(exclude,glob)**/.claude' \
+  ':(exclude,glob)**/docs/plans/**' ':(exclude,glob)**/docs/plans' \
+  ':(exclude,glob)**/.plans/**' ':(exclude,glob)**/.plans' \
+  | xargs -0 git add --
+```
+
+Add one more `':(exclude)<path>'` pathspec for each user-excluded path.
+
+Why this shape and not a `grep` over `git status --porcelain` text:
+
+| Input | Text-filtered porcelain | `git ls-files -z` with exclude pathspecs |
+|---|---|---|
+| Renamed file | Porcelain emits `R  old -> new`. After `cut -c4-` that whole string reaches `git add`, which fails with `fatal: pathspec 'old' did not match any files` and drops every path after it | Emits the old and the new path as two records, both staged |
+| Path with a space | Survives the cut, but any exact-match filter needs `grep -x -F` per path | One NUL-delimited record, kept whole by `xargs -0` |
+| Non-ASCII path | C-quoted as `"caf\303\251.txt"`, and the escape reaches git literally, so nothing is staged | `-z` never quotes, and `core.quotepath=false` keeps the readable listing honest too |
+| `packages/x/docs/plans/note.md` | An anchored `^docs/plans/` filter lets it through, it gets staged, then the commit is denied by the hook | `:(exclude,glob)**/docs/plans/**` drops it at any depth, matching the hook |
+
+BSD `grep` has no `-z`, so on macOS there is no NUL-safe way to filter the list
+in the shell. Let git do the matching, and the skill and the hook stay agreed
+on what a path means.
 
 Show the staged list and confirm it looks right before committing:
 
@@ -280,8 +321,10 @@ State plainly:
 | Inventing `npx vitest run` or similar ad-hoc commands | Run the scripts defined in `package.json`. |
 | Using `--no-verify` to get past a hook | Never. Read the error, fix the root cause, re-stage, retry, max 3 attempts. |
 | Retrying a failing hook indefinitely | Stop at 3 attempts and report what is blocking. |
-| Running `git add -A` or `git add .` | Forbidden by the house rules and denied by the hook. Filter `git status --porcelain -uall`, then `git add --` the named paths. |
-| Staging `.claude/`, `docs/plans/` or `.plans/` | Drop them from the status list before `git add --`, every time. |
+| Running `git add -A` or `git add .` | Forbidden by the house rules and denied by the hook. Name the paths you changed and `git add --` them. |
+| Piping porcelain status through `cut -c4-` into `git add` | A rename arrives as `old -> new`, git rejects it, and every path after it is silently dropped. A non-ASCII path arrives C-quoted and stages nothing. Enumerate with `git ls-files -z` and `xargs -0` instead. |
+| Staging `.claude/`, `docs/plans/` or `.plans/` | Exclude them with `:(exclude,glob)**/docs/plans/**` style pathspecs, which match at any depth like the hook does. |
+| Filtering the artifact names with an anchored `^docs/plans/` | It misses `packages/x/docs/plans/note.md`, which then blocks the commit. Match unanchored, at any depth. |
 | Committing with nothing staged | Check `git status` first; report "nothing to commit". |
 | Choosing the wrong type, such as `feat` for a refactor | Match intent: user-visible is `feat`/`fix`, internal is `refactor`/`chore`. |
 | Pushing because the commit succeeded | Push is a separate step with its own confirmation. |

@@ -291,15 +291,41 @@ repo has a publish workflow.
 git checkout -b chore/release-version-packages
 pnpm changeset version
 pnpm install --lockfile-only
-git status --porcelain -uall | cut -c4- \
-  | grep -v -E '^(\.claude/|docs/plans/|\.plans/)' \
-  | xargs git add --
+```
+
+`pnpm changeset version` touches a known, small set of paths: the version and
+dependency ranges in each bumped `package.json`, the changeset files it
+consumed, and the lockfile. Stage those by name, because you know which ones
+they are:
+
+```bash
+git status --porcelain -uall
+git add -- packages/core/package.json packages/cli/package.json \
+  .changeset/tidy-pumas-swim.md pnpm-lock.yaml
 git diff --staged --name-status
 ```
 
-Stage named paths only. `git add -A` is forbidden by the house rules and the
-repo's PreToolUse hook denies it whenever an unignored `docs/plans/` file
-exists.
+`git add --` records the deleted changeset files as well as the modified ones,
+so a consumed changeset does not need separate handling.
+
+Then cross-check for anything the bump touched that you did not name. The
+artifact directories come out through git's own pathspec matching, at any
+depth, so this agrees with the PreToolUse hook:
+
+```bash
+git -c core.quotepath=false ls-files -z --modified --others --exclude-standard -- \
+  ':(exclude,glob)**/.claude/**' ':(exclude,glob)**/.claude' \
+  ':(exclude,glob)**/docs/plans/**' ':(exclude,glob)**/docs/plans' \
+  ':(exclude,glob)**/.plans/**' ':(exclude,glob)**/.plans' \
+  | tr '\0' '\n'
+```
+
+Stage named paths only. `git add -A` and `git add .` are forbidden by the house
+rules, and the repo's PreToolUse hook denies them whenever an unignored
+`docs/plans/` file exists. Do not filter porcelain status text with `grep`
+either: a rename arrives as `old -> new` and breaks `git add`, a non-ASCII path
+arrives C-quoted, and an anchored filter misses a nested `docs/plans/`. The
+`ship` skill's staging step carries the full reasoning.
 
 Commit with a conventional subject, then open the PR after a confirmation:
 
@@ -465,3 +491,4 @@ State plainly:
 | Putting a release-type opinion in the PR body | Recommend it in chat with reasoning. The PR body states facts only. |
 | Asserting "this must be a major" | The release type is the repo owner's decision. Recommend, never decide. |
 | Running the full test suite as part of the readiness checks | Delegate to the `verify` skill and reference its result. |
+| Staging the version bump by filtering porcelain status text | A rename breaks `git add`, a non-ASCII path arrives C-quoted, and an anchored artifact filter misses a nested `docs/plans/`. Name the bumped paths, then cross-check with `git ls-files -z` under `:(exclude,glob)` pathspecs. |

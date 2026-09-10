@@ -42,6 +42,17 @@ check '"git commit -m \"docs/plans in text\""' "commit message names a plan"   0
 check '"git add . "'                           "add dot sweeps"                2
 check '"git add src/a.ts README.md"'           "add several clean paths"       0
 check '"git add src && git commit -m x"'       "chained add of a clean path"   0
+check '"git add ./src/a.ts"'                   "add a dot-slash clean path"    0
+check '"git commit -m \"add -u flag docs\""'   "commit message contains -u"    0
+check '"git -C . add -A"'                      "add -A behind a global option" 2
+check '"command git add ."'                    "add dot behind command"        2
+check '"git stage docs/plans"'                 "stage a forbidden directory"   2
+check '"git add --all"'                        "add --all sweeps a plan file"  2
+check '"git add -- src/a.ts"'                  "add a clean path after --"     0
+
+printf 'docs/plans\n.claude\n' > "$FIXTURE/.gitignore"
+check '"git add -A"'                           "add -A with plan dir ignored"  0
+rm "$FIXTURE/.gitignore"
 
 git -C "$FIXTURE" add README.md
 check '"git commit -m \"chore: readme\""'      "commit, clean staging"         0
@@ -49,6 +60,10 @@ check '"git commit -m \"chore: readme\""'      "commit, clean staging"         0
 git -C "$FIXTURE" add -f docs/plans/x.md
 check '"git commit -m \"chore: oops\""'        "commit, plan file staged"      2
 check '"git commit -am \"chore: oops\""'       "commit -a, plan file staged"   2
+
+git -C "$FIXTURE" -c user.email=dev@example.com -c user.name=dev commit -q -m x
+echo edited >> "$FIXTURE/docs/plans/x.md"
+check '"git add -u"'                           "add -u with a modified plan"   2
 
 printf '\nload-project-rules.sh\n'
 printf '  %-52s' "emits context when CLAUDE.md is present"

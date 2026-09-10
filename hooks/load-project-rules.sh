@@ -5,6 +5,9 @@
 # a session, rather than only once someone notices they were skipped.
 set -uo pipefail
 
+# This hook only adds context, so a missing python3 is not worth blocking on.
+command -v python3 >/dev/null 2>&1 || exit 0
+
 payload="$(cat 2>/dev/null || true)"
 
 cwd="$(printf '%s' "$payload" | python3 -c '

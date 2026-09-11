@@ -1,9 +1,7 @@
 # UI conventions
 
 - Take icons from an icon library. Never hand-write an inline SVG icon.
-- Use `react-icons/lu` for interface icons.
-- Use `react-icons/si` for brand and product logos.
-- Build interactive components on Radix primitives.
+- Build interactive components on Radix primitives unless otherwise specified by the user.
 - Do not pull in a themed component kit for styling defaults.
 
 - Express type sizes in `rem`, anchored on the browser default.

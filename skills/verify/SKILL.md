@@ -8,9 +8,10 @@ description: Use when about to claim work is done, fixed, passing or complete, b
 ## Overview
 
 The completion gate for every other skill in this repo. It discovers the repo's
-real commands from `package.json`, runs them cheapest first, pastes the actual
-output and exit code for each, root-causes any failure instead of routing around
-it, and blocks the words done, fixed and passing until an evidence block exists.
+real commands from `package.json` or its Makefile, runs them cheapest first,
+pastes the actual output and exit code for each, root-causes any failure instead
+of routing around it, and blocks the words done, fixed and passing until an
+evidence block exists.
 
 The failure this exists to prevent is work reported as complete that was not.
 A summary sentence is not evidence. Command output is evidence.
@@ -58,7 +59,19 @@ Detect the package manager from the lock file, never from habit:
 | `yarn.lock` | `yarn` |
 | `bun.lockb` or `bun.lock` | `bun run` |
 
-Then build the coverage table, mapping each concern to a discovered script:
+When there is no `package.json`, read the `Makefile` instead. A repo with no
+JavaScript keeps its entry points there. List its targets:
+
+```bash
+grep -E '^[A-Za-z0-9_-]+:' Makefile | cut -d: -f1
+```
+
+The command prefix is then `make`, and a target runs as `make <target>`. If
+neither file exists, every row of the coverage table is "no script", and the
+report says so rather than inventing commands.
+
+Then build the coverage table, mapping each concern to a discovered script or
+Makefile target. The same names apply to both:
 
 | Concern | Script names to look for |
 |---|---|
@@ -68,6 +81,7 @@ Then build the coverage table, mapping each concern to a discovered script:
 | test | `test`, `test:ci`, `test:cov`, `coverage` |
 | build | `build`, `build:ci` |
 | cross-runtime | `test:bun`, `test:deno`, `test:platform-*`, `test:dist-*` |
+| validate | `validate`, `check` (a single repo-wide gate, common in a Makefile) |
 
 If a concern has no script, write "no script" in that row and move on. Do not
 substitute an invented equivalent such as a bare `tsc --noEmit` or `npx biome`
@@ -80,7 +94,7 @@ Fast failures must surface first, so run in this order:
 
 1. `typecheck`
 2. `lint`, then `format:check`
-3. `test`
+3. `test`, or `validate` when the repo exposes a single repo-wide gate
 4. `build`
 5. cross-runtime: `test:bun`, `test:deno`, `test:platform-*`, `test:dist-*`
 
@@ -93,6 +107,7 @@ Capture output and the exit code exactly:
 ```bash
 mkdir -p .verify-logs
 pnpm typecheck > .verify-logs/typecheck.log 2>&1; echo "exit=$?"
+make validate > .verify-logs/validate.log 2>&1; echo "exit=$?"
 tail -40 .verify-logs/typecheck.log
 ```
 
@@ -217,7 +232,7 @@ Every completion claim ends with this block, filled from real runs:
 ## Verification
 
 Scope: <whole repo | pnpm --filter @scope/pkg | --project <project>>
-Commands read from: <path/to/package.json>
+Commands read from: <path/to/package.json or Makefile>
 
 | Concern | Command | Exit | Result |
 |---|---|---|---|
@@ -256,3 +271,4 @@ Rules for the block:
 | Calling a rebase done because `git status` is clean | Prove upstream position, then run the tests on the rebased tree |
 | Reporting a `--filter` run as whole-repo verification | State the narrowed scope in the report block |
 | Claiming a fix for a command the user says still errors | Re-run that exact command and paste its output |
+| Reporting "no script" for every concern on a repo with no `package.json` | Read the `Makefile`. Its targets are the repo's declared commands. |

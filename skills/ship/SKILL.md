@@ -82,7 +82,17 @@ If no lock file is present, read the `packageManager` field in `package.json`.
 If that is also absent, ask rather than guessing. Do not mix package managers
 in one repo.
 
-If there is no `package.json` at all, skip steps 4 to 6.
+If there is no `package.json` at all, look for a `Makefile` at the repo root
+and list its targets:
+
+```bash
+grep -E '^[A-Za-z0-9_-]+:' Makefile | cut -d: -f1
+```
+
+The command prefix is then `make`. Steps 4 and 5 look for targets by the
+same names they look for as scripts, and step 6's verify reads the Makefile
+too. Only when neither file exists are steps 4 to 6 skipped, and the report
+says so.
 
 ### Step 4: Format
 
@@ -93,7 +103,9 @@ Read `package.json` scripts and run the repo's own script. Look for `format`,
 <pkg-manager> run format
 ```
 
-If no such script exists, skip silently. Never invent an ad-hoc
+Or `make format` when the repo's commands live in a Makefile.
+
+If no such script or target exists, skip silently. Never invent an ad-hoc
 `npx prettier --write .` style command.
 
 ### Step 5: Lint fix
@@ -105,17 +117,20 @@ Look for `lint:fix`, `lint-fix`, `fix`, or a script whose command contains
 <pkg-manager> run lint:fix
 ```
 
-If no such script exists, skip silently.
+Or `make lint-fix` when the repo's commands live in a Makefile.
+
+If no such script or target exists, skip silently.
 
 ### Step 6: Verify
 
 Delegate the full check to the `verify` skill before committing. It runs the
-repo's own lint, typecheck, test and build scripts and pastes real output.
+repo's own lint, typecheck, test and build scripts or Makefile targets and
+pastes real output.
 
-If `verify` is unavailable, run the repo's `package.json` scripts directly and
-paste the output. Either way, do not commit on top of a failing check: root-cause
-the failure, do not route around it, and do not weaken a test to make the suite
-green.
+If `verify` is unavailable, run the repo's `package.json` scripts or Makefile
+targets directly and paste the output. Either way, do not commit on top of a
+failing check: root-cause the failure, do not route around it, and do not
+weaken a test to make the suite green.
 
 ### Step 7: Stage with hygiene
 
@@ -306,6 +321,7 @@ State plainly:
 | Creating a git worktree to isolate the work | Never, unless the user asks for one in this session. Branch in the current folder. |
 | Using `bun` or `npm` in a repo with `pnpm-lock.yaml` | Detect from the lock file, then the `packageManager` field. Never assume. |
 | Inventing `npx vitest run` or similar ad-hoc commands | Run the scripts defined in `package.json`. |
+| Skipping verification because there is no `package.json` | Read the Makefile. Run its targets. Skip only when there is neither. |
 | Using `--no-verify` to get past a hook | Never. Read the error, fix the root cause, re-stage, retry, max 3 attempts. |
 | Retrying a failing hook indefinitely | Stop at 3 attempts and report what is blocking. |
 | Running `git add -A` or `git add .` | Forbidden by the house rules and denied by the hook. Name the paths you changed and `git add --` them. |

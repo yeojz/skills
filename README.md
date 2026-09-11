@@ -15,7 +15,7 @@ instruction file can use them. See Using this with Codex below.
 
 ## Install
 
-Requirements: `bash`, `git` and `python3`. `shellcheck` is optional;
+Requirements: `bash`, `git`, `make` and `python3`. `shellcheck` is optional;
 `validate.sh` uses it when present.
 
 ```bash
@@ -113,7 +113,7 @@ it.
 ./hooks/test-hooks.sh
 ```
 
-`./validate.sh` runs it, along with format checks over every skill, rule, agent
+`make validate` runs it, along with format checks over every skill, rule, agent
 and template, `bash -n` and `shellcheck` over every script, and a check that
 every skill is listed in this README. Run it before committing a change here.
 

@@ -138,6 +138,14 @@ else
   note "shellcheck not installed, static analysis skipped"
 fi
 
+printf '\nMakefile\n'
+# A dry run proves every target parses and names a script that exists.
+if make -n validate test install >/dev/null 2>&1; then
+  note "make targets parse"
+else
+  bad "Makefile: a target failed to parse, run 'make -n validate test install'"
+fi
+
 if [ "$fail" = 0 ]; then
   printf '\nAll checks passed\n'
 else

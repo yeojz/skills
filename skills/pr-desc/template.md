@@ -7,8 +7,9 @@ Never appears in a PR body:
 - agent session links
 - model names or any AI identifier
 
-PRs squash-merge, so the PR title becomes the commit on `main`. The title
-follows Conventional Commits. Open the PR as a draft unless told otherwise.
+PRs squash-merge, so the PR title becomes the commit on the default branch.
+The title follows Conventional Commits. Open the PR as a draft unless told
+otherwise.
 Summary is always present. Omit the Trade-offs and Follow-ups sections
 entirely when there is nothing to say under them: no empty heading, no `None.`,
 no filler. Keep the order below and add no other sections.

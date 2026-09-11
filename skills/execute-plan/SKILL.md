@@ -163,8 +163,8 @@ Honour a cadence the user names instead, and repeat it back at Step 2:
 | "no need to pause" | Commit per item without pausing, still one commit per item |
 
 One commit per item, Conventional Commits subject, referencing the item id in
-the body. Branch before the first edit; never edit on `main`. Never use
-`--no-verify`.
+the body. Branch before the first edit; never edit on the default branch. Never
+use `--no-verify`.
 
 If the user does not respond to a checkpoint, stop. Do not continue to the next
 item on the assumption that silence is approval.

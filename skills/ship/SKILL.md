@@ -9,9 +9,9 @@ description: Use when the user wants to save work to git, from branching through
 
 The branch-through-PR loop: branch first, run the repo's own scripts, verify,
 stage cleanly, write a conventional commit, then push and open a draft PR as
-separate confirmed steps. Guarantees that nothing is committed on `main`, no
-worktree is created, no `.claude/` or plan files are staged, and no push or PR
-happens without an explicit yes.
+separate confirmed steps. Guarantees that nothing is committed on the default
+branch, no worktree is created, no `.claude/` or plan files are staged, and no
+push or PR happens without an explicit yes.
 
 ## Modes
 
@@ -39,15 +39,17 @@ If a worktree skill or helper offers itself, decline it.
 
 ### Step 2: Branch-first gate
 
-This is a hard gate. Check the current branch and the repo's default branch:
+This is a hard gate. Read the default branch from the remote rather than from
+a local ref, because `origin/HEAD` is unset on many clones and the name may be
+`main`, `master`, `develop` or anything else:
 
 ```bash
 git rev-parse --abbrev-ref HEAD
-git symbolic-ref --quiet --short refs/remotes/origin/HEAD | sed 's|^origin/||'
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+echo "default branch: $base"
 ```
 
-If the current branch is the default branch (`main`, or `master` in an older
-repo), refuse to commit. Create a branch first:
+If the current branch is `$base`, refuse to commit. Create a branch first:
 
 ```bash
 git checkout -b <type>/<scope>-<description>
@@ -219,25 +221,8 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`,
 `ci`, `build`. Scope is the primary package or directory touched; omit it when
 the change is broad.
 
-Authorship: the repo owner is the author. Attribution follows the harness,
-not this skill. Read `settings.json` before composing the message:
-
-| Setting | Effect on the message |
-|---|---|
-| `includeCoAuthoredBy` is `false` | Add no `Co-Authored-By` trailer |
-| `includeCoAuthoredBy` is `true` or absent | Add the harness default co-author trailer. Its value comes from the settings the harness documents, not from this skill |
-| `attribution.commit` is a non-empty string | Use that as the trailer instead |
-| `attribution.commit` is an empty string | Add no trailer |
-
-Check both the project and the user settings file, project first:
-
-```bash
-cat .claude/settings.json 2>/dev/null
-cat ~/.claude/settings.json 2>/dev/null
-```
-
-When running under an agent that has no such settings file (for example
-Codex), skip the attribution lookup and add no trailer.
+Authorship: the git user is the author. Attribution follows the harness, not
+this skill. Never add a co-author trailer yourself.
 
 Never put an agent session link, a model name, or any other AI identifier in
 the subject or body.
@@ -245,7 +230,6 @@ the subject or body.
 Commit, bounded at 3 attempts:
 
 ```bash
-# Trailer argument included only when settings ask for one.
 git commit -m "<subject>" -m "<body>"
 ```
 
@@ -296,8 +280,11 @@ skill was missing.
 Open as a draft unless the user says otherwise:
 
 ```bash
-gh pr create --draft --base <default-branch> --title "<title from pr-desc>" --body-file <file>
+gh pr create --draft --title "<title from pr-desc>" --body-file <file>
 ```
+
+No `--base` flag: `gh` targets the repository's default branch when none is
+given, so passing one only adds a place to get it wrong.
 
 ### Step 11: Report
 
@@ -315,7 +302,7 @@ State plainly:
 
 | Mistake | Fix |
 |---|---|
-| Committing while on `main` or `master` | Hard gate. Create `<type>/<scope>-<description>` first, then commit. |
+| Committing while on the default branch | Hard gate. Detect it with `git ls-remote --symref origin HEAD`, then create `<type>/<scope>-<description>` and commit there. |
 | Creating a git worktree to isolate the work | Never, unless the user asks for one in this session. Branch in the current folder. |
 | Using `bun` or `npm` in a repo with `pnpm-lock.yaml` | Detect from the lock file, then the `packageManager` field. Never assume. |
 | Inventing `npx vitest run` or similar ad-hoc commands | Run the scripts defined in `package.json`. |
@@ -331,7 +318,7 @@ State plainly:
 | Opening a PR because the push succeeded | PR is a separate step with its own confirmation. |
 | Writing the PR body in this skill | Run `pr-desc` in create mode and use the title and body it hands back. |
 | Adding release-type or version opinions to the PR | That is the repo owner's decision. |
-| A non-conventional PR title | Squash-merge makes it the commit on `main`; CI rejects it. |
+| A non-conventional PR title | Squash-merge makes it the commit on the default branch; CI rejects it. |
 | Opening a PR ready for review by default | Open as a draft unless told otherwise. |
 | The agent as commit author, or a session link in the body | Repo owner is the author. Never put a session link or model name in the message. |
-| Adding a `Co-Authored-By` trailer that settings turned off | Read `includeCoAuthoredBy` and `attribution.commit` first. Settings decide attribution, not this skill. |
+| Adding a `Co-Authored-By` trailer yourself | Attribution belongs to the harness. Write the subject and body only. |

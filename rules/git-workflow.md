@@ -1,14 +1,14 @@
 # Git and PR workflow
 
 - Check the current branch before the first edit.
-- Create a branch before editing. Never edit on `main`.
-- If you have already edited on `main`, move the changes onto a new branch before committing.
-- Treat `main` as the default branch. Never assume, create or target `master`.
+- Detect the repo's default branch from `origin` with `git ls-remote --symref origin HEAD`. Never assume it is `main`.
+- Create a branch before editing. Never edit on the default branch.
+- If you have already edited on the default branch, move the changes onto a new branch before committing.
 - Do not create a git worktree unless explicitly asked.
 
 - Name branches `<type>/<scope>-<description>`.
 - Write commit subjects as Conventional Commits.
-- Write the PR title as a Conventional Commit subject (why: PRs squash-merge into main).
+- Write the PR title as a Conventional Commit subject (why: PRs squash-merge into the default branch).
 - Keep the commit body to why the change was made, not a list of touched files.
 
 - Limit the PR body to summary, trade-offs and follow-ups.
@@ -19,8 +19,7 @@
 - Open PRs as drafts unless told otherwise.
 
 - List the repo owner as the commit author.
-- Take attribution from the harness's attribution settings.
-- Add a co-author trailer only when those settings ask for one.
+- Attribution follows the harness. Never add a co-author trailer yourself.
 - Never include an agent session link in a commit message or PR body.
 
 - Never stage `.claude/`, `docs/plans/` or `.plans/`.

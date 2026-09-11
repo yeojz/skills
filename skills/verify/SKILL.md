@@ -176,10 +176,11 @@ A rebase that reports success and leaves conflicts behind is the same failure in
 another costume. After any history operation, prove the state:
 
 ```bash
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
 git status
 git log --oneline -10
-git log --oneline origin/main..HEAD
-git diff origin/main...HEAD --stat
+git log --oneline "origin/$base..HEAD"
+git diff "origin/$base...HEAD" --stat
 git diff --check
 ```
 
@@ -197,10 +198,12 @@ All of the following must hold before the operation is called complete:
 | No rebase in progress | `.git/rebase-merge` and `.git/rebase-apply` absent |
 | No unresolved paths | `git status` shows no `UU` or `both modified` |
 | No conflict markers left in files | `git diff --check` clean, grep finds none |
-| Branch sits on top of upstream | `git log --oneline origin/main..HEAD` lists only your commits |
-| The diff is the intended change | `git diff origin/main...HEAD --stat` matches what was worked on |
+| Branch sits on top of the default branch | `git log --oneline "origin/$base..HEAD"` lists only your commits |
+| The diff is the intended change | `git diff "origin/$base...HEAD" --stat` matches what was worked on |
 
-Fetch first if `origin/main` may be stale: `git fetch origin main`.
+`$base` is the default branch read from the remote, so the same commands work
+when it is `master`, `develop` or anything else. Fetch first if `origin/$base`
+may be stale: `git fetch origin "$base"`.
 
 Then run Steps 2 through 4 on the rebased tree. A rebase is not complete until
 the test commands pass on the rebased tree. Clean `git status` alone proves

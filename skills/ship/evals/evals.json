@@ -3,18 +3,18 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Commit and push my changes in /tmp/eval-ship-1-ws. It's a pnpm TypeScript project and I'm already on feat/parser-add-csv-reader. I added a CSV reader and a test for it. The repo's .claude/settings.json sets includeCoAuthoredBy to false.",
-      "expected_output": "Agent sees it is already on a feature branch and does not create a new one. Detects pnpm from pnpm-lock.yaml, runs 'pnpm run format' and 'pnpm run lint:fix', verifies with the repo's own scripts, shows git status and the staged file list, reads settings.json to decide attribution and, since includeCoAuthoredBy is false there, commits with a conventional subject such as 'feat(parser): add CSV reader' and no Co-Authored-By trailer, asks before pushing, and pushes only after the user agrees. Does not open a PR.",
+      "prompt": "Commit and push my changes in /tmp/eval-ship-1-ws. It's a pnpm TypeScript project and I'm already on feat/parser-add-csv-reader. I added a CSV reader and a test for it.",
+      "expected_output": "Agent sees it is already on a feature branch and does not create a new one. Detects pnpm from pnpm-lock.yaml, runs 'pnpm run format' and 'pnpm run lint:fix', verifies with the repo's own scripts, shows git status and the staged file list, commits with a conventional subject such as 'feat(parser): add CSV reader' and a body, adds no Co-Authored-By trailer of its own and leaves attribution to the harness, asks before pushing, and pushes only after the user agrees. Does not open a PR.",
       "files": [],
       "expectations": [
-        "Agent checks the current branch and confirms it is not main/master before committing",
+        "Agent checks the current branch and confirms it is not the repo's default branch before committing",
         "Agent does NOT create a new branch because the repo is already on a feature branch",
         "Agent does NOT create a git worktree",
         "Agent detects pnpm as the package manager, referencing pnpm-lock.yaml or the packageManager field",
         "Agent runs the repo's own format and lint fix scripts via pnpm rather than ad-hoc commands",
         "Agent shows git status and the staged file list before committing",
         "Agent uses a conventional commit subject under 72 characters",
-        "Agent reads settings.json for attribution and omits the Co-Authored-By trailer because includeCoAuthoredBy is false; no Claude session link or model name appears",
+        "Agent adds no Co-Authored-By trailer of its own and leaves attribution to the harness; no agent session link or model name appears",
         "Agent asks for confirmation before pushing rather than pushing automatically",
         "Agent does NOT open a pull request, since the user did not ask for one"
       ]

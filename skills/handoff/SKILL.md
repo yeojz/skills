@@ -43,14 +43,18 @@ Run all of these before writing a single line. A handoff written from memory is
 the exact failure this skill exists to prevent.
 
 ```bash
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
 git branch --show-current
 git status -sb
 git status --short
-git log --oneline main..HEAD
-git diff --stat @{upstream} 2>/dev/null || git diff --stat main...HEAD
+git log --oneline "$base..HEAD"
+git diff --stat @{upstream} 2>/dev/null || git diff --stat "$base...HEAD"
 git rev-list --left-right --count @{upstream}...HEAD 2>/dev/null
 gh pr view --json number,url,state,isDraft 2>/dev/null
 ```
+
+`$base` is the default branch read from the remote, so the same commands work
+when it is `master`, `develop` or anything else.
 
 Record the answers verbatim. In particular:
 
@@ -59,14 +63,14 @@ Record the answers verbatim. In particular:
 | Current branch | `git branch --show-current` | Repo and branch table, short prompt |
 | Pushed or not, ahead/behind counts | `git status -sb`, `git rev-list --left-right --count @{upstream}...HEAD` | Repo and branch table |
 | Uncommitted work | `git status --short` | Repo and branch table, Files touched |
-| Commits since the branch point | `git log --oneline main..HEAD` | Completed |
+| Commits since the branch point | `git log --oneline "$base..HEAD"` | Completed |
 | Size and shape of the change | `git diff --stat` against the upstream | Files touched |
 
 If there is no upstream, `@{upstream}` fails. Fall back to
-`git diff --stat main...HEAD` and record the branch as not pushed.
+`git diff --stat "$base...HEAD"` and record the branch as not pushed.
 
-If the branch is `main`, say so plainly in the handoff. The next session has to
-branch before editing.
+If the branch is the repo's default branch, say so plainly in the handoff. The
+next session has to branch before editing.
 
 ### Step 2: Start from the template
 
@@ -172,10 +176,10 @@ It must contain:
 | Element | Example |
 |---|---|
 | Absolute repo path | `<absolute path to the repo>` |
-| Branch, and the base it came from | `on branch feat/auth-refresh-tokens, based on main` |
+| Branch, and the base it came from | `on branch feat/auth-refresh-tokens, based on <default-branch>` |
 | Where the detail lives | `Read docs/plans/2026-09-10-2231-handoff-auth-refresh-tokens.md first` |
 | The first command to run | `Start by running: pnpm --filter auth test` |
-| The branch-first rule | `Create a branch before editing; never edit on main` |
+| The branch-first rule | `Create a branch before editing; never edit on the default branch` |
 
 It must not contain a reference to something the next session cannot see. No
 "the plan we discussed", no "as agreed earlier", no "continue where we left

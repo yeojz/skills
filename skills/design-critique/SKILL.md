@@ -119,8 +119,8 @@ distinct from the surface behind it.
 **Responsive.** Measured in Step 4 at a mobile width. No horizontal overflow,
 nothing clipped.
 
-**Icons.** From `react-icons/lu` for interface icons and `react-icons/si` for
-brand marks. Any inline SVG icon is a finding with a named replacement.
+**Icons.** From the icon library the project already uses. Any inline SVG
+icon is a finding with a named replacement from that library.
 
 ### Step 3: Mode 2, hold every proposal against the design document
 
@@ -349,7 +349,7 @@ named. Wait for the pick. Then apply Step 3, then Step 4.
 | Stacking a fourth attempt on a failing visual bug | Stop at 3, report each observation, offer the revert as option A |
 | Treating a revert as a failure | Present it as a legitimate outcome with the exact `git restore` command |
 | Drifting from the agreed design document | Read the document first, table every proposal as aligned or deviation, raise deviations before building |
-| Hand-writing an inline SVG icon | Take it from `react-icons/lu`, or `react-icons/si` for brand marks |
+| Hand-writing an inline SVG icon | Take it from the icon library the project already uses |
 | Answering "looks AI generated" with a palette swap alone | Walk the whole tells table: borders, grid rhythm, 100vh, reveals, hero shape, icons |
 | Offering "a better design" and implementing straight away | Two or three lettered directions naming palette, type and rhythm, with a recommendation |
 | Verifying at desktop width only | Check 375px and desktop; a mobile complaint is verified at mobile |

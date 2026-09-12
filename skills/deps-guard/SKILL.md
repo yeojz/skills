@@ -13,7 +13,7 @@ before it is adopted. Guarantees that no configuration key is written before its
 authoritative documentation has been fetched and cited, that a real upgrade is
 preferred over an override and an override over an ignore, that every ignore
 carries a reason and an expiry, that actions are pinned to commit SHAs rather
-than tags, and that nothing is edited on `main`.
+than tags, and that nothing is edited on the repo's default branch.
 
 ## Modes
 
@@ -656,7 +656,7 @@ user then asks to add the package, that is a new request and it starts at step 1
 | Pinning an action to a tag, a branch, or a short SHA | Pin to the full 40 character commit SHA of the latest release, with the version as a trailing comment. |
 | Reusing a SHA from memory or from another repo | Resolve it live per action, dereferencing annotated tag objects to the commit. |
 | Adding a third-party marketplace action without considering `gh` | Check for a `gh` CLI equivalent first, and say so explicitly when proposing the replacement. |
-| Editing on `main` instead of branching first | Hard gate in step 1. Create `<type>/<scope>-<description>` before touching a file. |
+| Editing on the default branch instead of branching first | Hard gate in step 1. Create `<type>/<scope>-<description>` before touching a file. |
 | Claiming the audit is clean without output | Re-run the audit and paste it, with before and after counts by severity. |
 | Skipping `verify` because the change is only YAML | A dependency or workflow change breaks builds silently. Always run step 6. |
 | Committing or opening the PR from this skill | Hand off to `ship`, which owns branch, commit and PR. |

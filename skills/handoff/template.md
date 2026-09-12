@@ -14,15 +14,16 @@ One paragraph only: what the work is, why it was started, and where it stopped. 
 |---|---|
 | Repo | <org/name or absolute path> |
 | Branch | <type/scope-description> |
-| Base branch | `main` |
+| Base branch | <default branch, as reported by `git ls-remote --symref origin HEAD`> |
 | Pushed | <pushed to `<remote>` / not pushed> |
 | Open PR | <#<number> or URL / none> |
 | Working tree | <clean / dirty, <n> files> |
 
 ```bash
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
 git status --short
 git branch --show-current
-git log --oneline main..HEAD
+git log --oneline "$base..HEAD"
 git status -sb
 gh pr view --json number,url,state,isDraft
 ```
@@ -50,7 +51,8 @@ In the order it should be done.
 - `<repo-relative path>`: <what changed in one line>
 
 ```bash
-git diff --stat main...HEAD
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+git diff --stat "$base...HEAD"
 git status --short
 ```
 
@@ -78,10 +80,10 @@ Present each of these as lettered options with a recommendation. Do not decide t
 ## Next session prompt
 
 ```text
-Resume work in <absolute repo path> on branch <type/scope-description>, based on main.
+Resume work in <absolute repo path> on branch <type/scope-description>, based on <default-branch>.
 
-Rules: create a branch before editing and never edit on main. If <type/scope-description>
-does not exist locally, create it from main. Do not create a git worktree.
+Rules: create a branch before editing and never edit on the default branch. If <type/scope-description>
+does not exist locally, create it from <default-branch>. Do not create a git worktree.
 
 Read the handoff at <repo-relative path to this file> before anything else. It holds
 the current state, the completed items with the command output that proves each one,

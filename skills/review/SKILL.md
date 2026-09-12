@@ -21,7 +21,7 @@ Three modes:
 
 | Mode | Trigger | Output |
 |---|---|---|
-| 1. Review a change | working tree, a branch against `main`, a PR number or URL | severity table plus per-finding detail, in the session |
+| 1. Review a change | working tree, a branch against the default branch, a PR number or URL | severity table plus per-finding detail, in the session |
 | 2. Sweep PR comments | "check the PR comments", "are the comments addressed", a pasted PR or `#discussion_r...` URL | thread ledger, replies posted, remaining count |
 | 3. Plain review | "do a general review", "without using the skill", "quick look" | prose notes, no personas, no table |
 
@@ -35,37 +35,42 @@ clear.
 | User says | Scope | Command |
 |---|---|---|
 | "my changes", "what I have so far", nothing committed | working tree | `git diff HEAD` plus `git status --short` |
-| "this branch", "against main", "before I push" | branch | `git diff origin/main...HEAD` |
+| "this branch", "against main", "before I push" | branch | `git diff "origin/$base...HEAD"` |
 | "the PR", a number, a PR URL | pull request | `gh pr diff <n>` |
 | a `#discussion_r...` URL | one review thread, Mode 2 | Step 6 |
 | "the comments", "are they addressed" | Mode 2 | Step 6 |
 | nothing identifiable, and the tree is dirty | working tree, say which you chose | |
-| nothing identifiable, and the tree is clean | branch against `main` | |
+| nothing identifiable, and the tree is clean | branch against the default branch | |
 
 Establish the ground truth first:
 
 ```bash
 git rev-parse --abbrev-ref HEAD
 git status --short
-git fetch origin main
-git log --oneline origin/main..HEAD
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+git fetch origin "$base"
+git log --oneline "origin/$base..HEAD"
 ```
+
+`$base` is the default branch read from the remote, so the same commands work
+when it is `master`, `develop` or anything else. Every later command in this
+skill reuses it.
 
 ### Step 2: Always use the three-dot form for a branch diff
 
 ```bash
-git diff origin/main...HEAD --stat
-git diff origin/main...HEAD
+git diff "origin/$base...HEAD" --stat
+git diff "origin/$base...HEAD"
 ```
 
 Three dots diffs against the merge base, so it shows only what this branch did.
-Two dots diffs against the current tip of `origin/main`, so every unrelated
+Two dots diffs against the current tip of `origin/$base`, so every unrelated
 commit that landed upstream since the branch started shows up as if it were
 part of the change. That produces findings about code the author never touched.
 
-Say which form was used and why in the report's scope line. When `origin/main`
-is stale the merge base is wrong, so `git fetch origin main` runs first, every
-time.
+Say which form was used and why in the report's scope line. When `origin/$base`
+is stale the merge base is wrong, so `git fetch origin "$base"` runs first,
+every time.
 
 For a pull request:
 
@@ -90,7 +95,7 @@ pass-through or a now-dead export gets missed. For every changed file:
    deliberate decision is not a finding.
 
 ```bash
-git diff origin/main...HEAD --name-only
+git diff "origin/$base...HEAD" --name-only
 grep -rn "<changedSymbol>" --include="*.ts" packages/ apps/ internal/
 grep -rn "from ['\"].*<changedModule>" --include="*.ts" .
 ```
@@ -124,7 +129,7 @@ do not stop at the first finding.
 For the new dependency row:
 
 ```bash
-git diff origin/main...HEAD -- '**/package.json'
+git diff "origin/$base...HEAD" -- '**/package.json'
 npm view <pkg> time.modified license
 pnpm why <pkg>
 ```
@@ -160,7 +165,7 @@ Print this. Do not write a file.
 ```markdown
 ## Review: <branch or PR>, <n> files, +<add>/-<del>
 
-Scope: `git diff origin/main...HEAD` (three-dot, so upstream commits are excluded)
+Scope: `git diff "origin/$base...HEAD"` (three-dot, so upstream commits are excluded)
 
 | ID | Severity | Location | Finding |
 |----|----------|----------|---------|
@@ -306,8 +311,8 @@ last report.
 
 | Mistake | Fix |
 |---------|-----|
-| Using a two-dot `git diff origin/main..HEAD` for a branch review | Use the three-dot form. Two dots pulls in unrelated upstream commits and produces findings about code the author never touched. |
-| Diffing without fetching first | `git fetch origin main` before every branch diff, or the merge base is stale and the scope is wrong. |
+| Using a two-dot `git diff "origin/$base..HEAD"` for a branch review | Use the three-dot form. Two dots pulls in unrelated upstream commits and produces findings about code the author never touched. |
+| Diffing without fetching first | `git fetch origin "$base"` before every branch diff, or the merge base is stale and the scope is wrong. |
 | Reporting a finding without a line reference | Cite `path:line` or drop the finding. |
 | Acting on a review comment without checking it is correct | Judge the comment against the code first. Wrong comments get a reasoned push-back on the thread, not a change. |
 | Scraping the pull request page for comments | Use `gh api` and the `reviewThreads` GraphQL query. The page hides collapsed and outdated threads. |

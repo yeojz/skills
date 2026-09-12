@@ -78,22 +78,27 @@ If the mechanism is semantic-release, there is no changeset to write. Say so,
 and explain that the bump comes from the Conventional Commit subjects on the
 branch. Then stop unless the user asks for something else.
 
-### Step 2: Read the actual diff against `main`
+### Step 2: Read the actual diff against the default branch
 
 Derive the impact from code, never from the chat history or the branch name.
-Use the three-dot form so the comparison is against the merge base, not against
-whatever `main` has drifted to:
+Detect the default branch from the remote rather than assuming `main`, then
+use the three-dot form so the comparison is against the merge base, not against
+whatever the default branch has drifted to:
 
 ```bash
-git fetch origin main
-git diff --stat origin/main...HEAD
-git diff origin/main...HEAD
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+git fetch origin "$base"
+git diff --stat "origin/$base...HEAD"
+git diff "origin/$base...HEAD"
 ```
+
+`$base` is the default branch detected here. Every later command in this skill
+that references it reuses that value.
 
 Also list which workspace packages are touched:
 
 ```bash
-git diff --name-only origin/main...HEAD | sed -n 's|^\(packages\|apps\|internal\)/\([^/]*\)/.*|\1/\2|p' | sort -u
+git diff --name-only "origin/$base...HEAD" | sed -n 's|^\(packages\|apps\|internal\)/\([^/]*\)/.*|\1/\2|p' | sort -u
 ```
 
 If the diff is empty, stop and report that there is nothing to release. Do not
@@ -103,7 +108,7 @@ Pay particular attention to the published surface, because that is what decides
 the bump:
 
 ```bash
-git diff origin/main...HEAD -- '**/package.json' '**/src/index.ts' '**/*.d.ts'
+git diff "origin/$base...HEAD" -- '**/package.json' '**/src/index.ts' '**/*.d.ts'
 ```
 
 ### Step 3: Classify the semver impact per package
@@ -330,13 +335,16 @@ arrives C-quoted, and an anchored filter misses a nested `docs/plans/`. The
 Commit with a conventional subject, then open the PR after a confirmation:
 
 ```bash
-gh pr create --draft --base main \
+gh pr create --draft \
   --title "chore(release): version packages" \
   --body-file <file>
 ```
 
+No `--base` is passed because `gh pr create` targets the repository's default
+branch when the flag is omitted.
+
 PR title is a Conventional Commit subject, because the repo squash-merges and
-the title becomes the commit on `main`.
+the title becomes the commit on the default branch.
 
 PR body is summary, trade-offs, follow-ups. It states which packages move and to
 which versions, as fact read from the diff. It carries no opinion about whether
@@ -391,7 +399,7 @@ Preconditions, checked and pasted before asking any of them:
 git status --porcelain
 git rev-parse --abbrev-ref HEAD
 git fetch origin
-git rev-list --left-right --count origin/main...HEAD
+git rev-list --left-right --count "origin/$base...HEAD"
 ```
 
 | Condition | Action |
@@ -437,9 +445,9 @@ grep -n 'permissions:' -A 5 .github/workflows/*.yml
 3. The setting **Allow GitHub Actions to create and approve pull requests**,
    which is separate and must be on for a workflow that opens the version PR.
 
-4. Branch protection on `main`. A protected branch rejects a bot push even with
-   `contents: write`. The fix is an allowance for the bot, or routing the change
-   through a PR instead of a direct push.
+4. Branch protection on the default branch. A protected branch rejects a bot
+   push even with `contents: write`. The fix is an allowance for the bot, or
+   routing the change through a PR instead of a direct push.
 
 5. If the workflow uses a PAT or an app token instead of `GITHUB_TOKEN`, check
    that the token has not expired and still carries the scopes above.
@@ -470,13 +478,13 @@ State plainly:
 | Mistake | Fix |
 |---|---|
 | Writing a changeset file before showing its content | Show the full file, ask, wait for a yes. Every time, without exception. |
-| Assuming a bump level from the branch name or the chat | Derive it from `git diff origin/main...HEAD`, per package, with reasoning. |
+| Assuming a bump level from the branch name or the chat | Derive it from `git diff "origin/$base...HEAD"`, per package, with reasoning. |
 | Publishing without a dry run | Run `pnpm publish --dry-run` and read the tarball contents first. |
 | Re-running a 403'd release job | A 403 for `github-actions[bot]` is permissions. Check the `permissions` block, then the repo Actions settings. |
 | Generating a changelog the repo did not ask for | No package-level `CHANGELOG.md` and no migration guide unless already configured or requested. |
 | Assuming Changesets because it is a pnpm workspace | Read `.changeset/config.json`, `.releaserc*` or whatever bespoke release config the repo keeps before acting. |
 | Ignoring a `fixed` group when classifying | A patch on one member moves the whole group. Name every affected package. |
-| Using two-dot `git diff main..HEAD` | Three dots compares against the merge base; two dots picks up unrelated drift on `main`. |
+| Using two-dot `git diff "$base..HEAD"` | Three dots compares against the merge base; two dots picks up unrelated drift on the default branch. |
 | Calling a defaulted new parameter breaking | If existing calls compile and behave the same, it is a minor. Say why. |
 | Deflating a genuine break to keep it a minor | A removed export or a changed default is a major. Do not soften it. |
 | Checking exports against `src/` instead of the tarball | `pnpm pack`, extract, then resolve. That is what a consumer installs. |

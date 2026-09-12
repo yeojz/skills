@@ -36,17 +36,21 @@ create mode into an edit of a live PR on your own initiative.
 The body is written from what the diff shows. Nothing else is a source.
 
 ```bash
-git symbolic-ref --quiet --short refs/remotes/origin/HEAD | sed 's|^origin/||'
-git fetch origin <default-branch>
-git diff origin/<default-branch>...HEAD --stat
-git diff origin/<default-branch>...HEAD
-git log origin/<default-branch>..HEAD --format='%s'
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+git fetch origin "$base"
+git diff "origin/$base...HEAD" --stat
+git diff "origin/$base...HEAD"
+git log "origin/$base..HEAD" --format='%s'
 ```
 
-Use the three-dot form. `origin/main...HEAD` diffs against the merge base, so it
-shows only this branch's work. The two-dot form `origin/main..HEAD` folds in
-everything that landed on `main` since the branch started and produces a body
-describing other people's changes.
+`base` is the remote's default branch, detected once and reused in every
+command below. Never hard-code a branch name here: repos use `main`, `master`,
+`develop` and others.
+
+Use the three-dot form. `origin/$base...HEAD` diffs against the merge base, so
+it shows only this branch's work. The two-dot form `origin/$base..HEAD` folds
+in everything that landed on the default branch since the branch started and
+produces a body describing other people's changes.
 
 If the diff is empty, stop and report that there is nothing to describe.
 
@@ -195,8 +199,11 @@ gh pr edit <number> --title "<conventional subject>" --body-file <file>
 Create, draft unless the user says otherwise:
 
 ```bash
-gh pr create --draft --base <default-branch> --title "<conventional subject>" --body-file <file>
+gh pr create --draft --title "<conventional subject>" --body-file <file>
 ```
+
+No `--base` is passed: without it, `gh` targets the repository's default branch,
+which is the same branch step 1 detected.
 
 When called by `ship`, hand the title and body back and let `ship` run its own
 PR-creation confirmation. Do not open the PR yourself in that case.
@@ -219,8 +226,8 @@ State plainly:
 | Mistake | Fix |
 |---|---|
 | Adding a `## Test Plan` or verification checklist | Summary, Trade-offs, Follow-ups only. Verification lives in CI and the `verify` skill. |
-| Using `git diff origin/main..HEAD` (two dots) | Use three dots. Two dots pulls in commits that landed on `main` and describes other people's work. |
-| A title that is not a Conventional Commit subject | Squash-merge makes the title the commit on `main`, and CI rejects it. `<type>(<scope>): <subject>`, under 72 chars. |
+| Using `git diff origin/$base..HEAD` (two dots) | Use three dots. Two dots pulls in commits that landed on the default branch and describes other people's work. |
+| A title that is not a Conventional Commit subject | Squash-merge makes the title the commit on the default branch, and CI rejects it. `<type>(<scope>): <subject>`, under 72 chars. |
 | Saying the change is a patch, minor, or "safe to release" | That is the repo owner's decision. Cut the sentence. |
 | Running `gh pr edit` before showing the before and after | Print both, name what is removed, ask, then write. |
 | Writing the body from the session transcript | Read the diff and the commit subjects. If it is not in the diff, it is not in the body. |

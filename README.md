@@ -3,13 +3,14 @@
 Portable coding-agent setup: skills, always-on rules, review agents and hooks.
 Clone it on any machine, run `./install.sh`, and they all behave the same.
 
-Everything is symlinked into `~/.claude`, so `git pull` here updates every
-machine without reinstalling.
+Everything is symlinked into `~/.claude` (and, for the `codex` target, into
+`~/.codex`), so `git pull` here updates every machine without reinstalling.
 
-The hooks target Claude Code, which owns the hook contract. Skills are written
-in the `SKILL.md` format that both Claude Code and Codex load. The rules, agent
-personas and templates are plain markdown, so any agent that reads an
-instruction file can use them. See Using this with Codex below.
+The hooks run under Claude Code's hook contract, which Codex's wire format
+also matches. Skills are written in the `SKILL.md` format that both Claude
+Code and Codex load. The rules, agent personas and templates are plain
+markdown, so any agent that reads an instruction file can use them. See Using
+this with Codex below.
 
 ---
 
@@ -28,19 +29,23 @@ Then start a new Claude Code session so the rules and hooks load.
 
 | Command | Effect |
 |---|---|
-| `./install.sh` | Install or refresh every symlink and merge the settings entries |
+| `./install.sh` | Install or refresh Claude Code (the default target) |
+| `./install.sh codex` | Install or refresh Codex CLI instead |
+| `./install.sh claude codex` | Install or refresh both |
+| `./install.sh --no-skills` | Install everything except `skills/`, for when something else (e.g. `npx skills add`) owns them |
 | `./install.sh --dry-run` | Print what would change, touch nothing |
-| `./install.sh --uninstall` | Remove this repo's symlinks and settings entries |
+| `./install.sh --uninstall` | Remove this repo's symlinks and settings entries from the given target(s) |
 
 The installer never overwrites a file it did not create. An existing file, or a
 symlink that points somewhere else, is skipped and reported; only a dangling
-link is replaced. `settings.json` is backed up to `~/.claude/.install-backup/`
-before any merge that changes it, and only this repo's own hook and permission entries are
-added or removed.
+link is replaced. Claude's `settings.json` and Codex's `hooks.json` are each
+backed up to a `.install-backup/` directory beside them before any merge that
+changes them, and only this repo's own hook and permission entries are added
+or removed.
 
-Set `CLAUDE_CONFIG_DIR` to install somewhere other than `~/.claude`. When
-`~/.codex` exists (or `CODEX_HOME` points at one), skills and agents are linked
-there too, aliased back to the same files in this repo.
+Set `CLAUDE_CONFIG_DIR` to install somewhere other than `~/.claude`, and
+`CODEX_HOME` to install somewhere other than `~/.codex`. The `codex` target
+creates that directory if it does not exist yet.
 
 ---
 
@@ -123,11 +128,12 @@ every skill is listed in this README. Run it before committing a change here.
 
 ## Using this with Codex
 
-Skills need no extra step. When `./install.sh` detects a Codex directory it
-mirrors the Claude side there, linking `skills/*` into `~/.codex/skills` and
-`agents/*.md` into `~/.codex/agents`; when it does not, it says so. Both are
-symlinks back into this repo, so the two runtimes read one source of truth and
-a `git pull` updates both.
+Run `./install.sh codex` (or `./install.sh claude codex` for both). It mirrors
+the Claude side into `$CODEX_HOME` (`~/.codex` by default), creating the
+directory if it does not exist yet: `skills/*` into `~/.codex/skills`,
+`agents/*.md` into `~/.codex/agents`, and the hooks into `~/.codex/hooks.json`.
+All of it is symlinked or merged back into this repo, so the two runtimes read
+one source of truth and a `git pull` updates both.
 
 Codex loads `~/.codex/skills/<name>/SKILL.md` with the same `name` and
 `description` frontmatter, so the same files serve both. It has no documented
@@ -147,9 +153,12 @@ That writes every file in `rules/` into `AGENTS.md` in the target repo, between
 delimiter comments. Re-running replaces only the generated block, so anything
 you wrote by hand around it survives. Edit the rules here and re-run to update.
 
-Hooks and the settings fragment are Claude Code only for now. Codex's hook wire
-format matches (PreToolUse, SessionStart, `hookSpecificOutput`, exit 2 denies),
-so wiring them in is a follow-up rather than a rewrite.
+Codex's hook wire format matches Claude Code's (PreToolUse, SessionStart,
+`hookSpecificOutput`, exit 2 denies), so the same two hook scripts run under
+either runtime; only the settings fragment's `permissions` block is Claude
+Code only, since Codex's `hooks.json` has no such key. Codex still requires a
+one-time review before a hook it did not ship runs: open Codex and run
+`/hooks` to inspect and trust the entries this installer added.
 
 The agent personas under `agents/` are ordinary prompts, and the templates are
 ordinary markdown, so pointing another agent at one works by hand.

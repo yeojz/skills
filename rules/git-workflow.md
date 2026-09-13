@@ -4,7 +4,10 @@
 - Detect the repo's default branch from `origin` with `git ls-remote --symref origin HEAD`. Never assume it is `main`.
 - Create a branch before editing. Never edit on the default branch.
 - If you have already edited on the default branch, move the changes onto a new branch before committing.
-- Do not create a git worktree unless explicitly asked.
+- Give every task its own branch in its own worktree under `.claude/worktrees/`, so the main checkout stays clean.
+- Before creating a worktree, check `git worktree list` and the branch list for one that already belongs to the task, and reuse it.
+- Ask, with lettered options, when more than one existing branch or worktree could be the task's.
+- Never use a bare `git stash`; the stash is shared across worktrees.
 
 - Name branches `<type>/<scope>-<description>`.
 - Write commit subjects as Conventional Commits.

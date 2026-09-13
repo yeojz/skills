@@ -9,7 +9,7 @@
       "expectations": [
         "Agent checks the current branch and confirms it is not the repo's default branch before committing",
         "Agent does NOT create a new branch because the repo is already on a feature branch",
-        "Agent does NOT create a git worktree",
+        "Agent reads git worktree list, finds the branch's existing worktree or works in the current one, and does NOT create a second worktree for the same branch",
         "Agent detects pnpm as the package manager, referencing pnpm-lock.yaml or the packageManager field",
         "Agent runs the repo's own format and lint fix scripts via pnpm rather than ad-hoc commands",
         "Agent shows git status and the staged file list before committing",
@@ -22,12 +22,12 @@
     {
       "id": 2,
       "prompt": "I finished the retry logic in /tmp/eval-ship-2-ws. Please commit it.",
-      "expected_output": "The repo is sitting on main. Agent refuses to commit on main, creates a branch named per Conventional Commits such as feat/client-add-retry-logic, works directly in the folder without a worktree, then formats, lint-fixes, verifies, stages with .claude/ and docs/plans/ excluded, and commits. Does not push and does not open a PR because neither was asked for.",
+      "expected_output": "The repo is sitting on main. Agent refuses to commit on main, creates a branch named per Conventional Commits such as feat/client-add-retry-logic, creates it in its own worktree under .claude/worktrees/ after checking git worktree list for an existing one, then formats, lint-fixes, verifies, stages with .claude/ and docs/plans/ excluded, and commits. Does not push and does not open a PR because neither was asked for.",
       "files": [],
       "expectations": [
         "Agent detects that the current branch is main and refuses to commit on it",
         "Agent creates a new branch before committing, named <type>/<scope>-<description>",
-        "Agent does NOT create a git worktree and works in the existing folder",
+        "Agent checks git worktree list before creating, then creates the branch in a worktree under .claude/worktrees/ and works from there",
         "Agent runs the repo's package.json scripts for format and lint fix",
         "Agent excludes .claude/, docs/plans/ and .plans/ from the staged files",
         "Agent commits with a conventional commit message on the new branch",

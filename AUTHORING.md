@@ -11,6 +11,10 @@ Every skill is a directory under `skills/` containing `SKILL.md` and
 `evals/evals.json`. A skill that fills in a document also carries its
 `template.md` in the same directory.
 
+Write a skill for a judgment call. Anything `validate.sh` or a hook can check
+mechanically belongs there instead: a check never skips a step and costs no
+context.
+
 `SKILL.md` starts with YAML frontmatter, exactly two keys:
 
 ```markdown
@@ -20,8 +24,23 @@ description: Use when <situation>. Triggers on requests like "<phrase>", "<phras
 ---
 ```
 
+Name the skill for the action it performs, verb first where that reads as an
+instruction (`verify`, `execute-plan`), and keep it short.
+
 The `description` is the only thing the model sees before deciding to load the
-skill, so it must name concrete trigger phrases drawn from real usage.
+skill, so it must name concrete trigger phrases drawn from real usage: the
+requests, symptoms and error strings a user actually types, plus their
+synonyms. It says when to use the skill, never what the skill does. A
+description that summarises the workflow becomes a shortcut: the model follows
+the summary instead of loading the body. A skill whose body called for two
+reviews got one, because its description said "code review between tasks".
+
+Keep the whole frontmatter under 1024 characters and aim the description near
+500. `validate.sh` does not check this, so measure it yourself:
+
+```bash
+awk 'NR==1{next} /^---$/{exit} {print}' skills/<name>/SKILL.md | wc -c
+```
 
 The body follows this shape:
 
@@ -50,11 +69,20 @@ and Workflow, with a table naming each mode and one section per mode after it.
 Rules for the body:
 
 - Numbered steps with real commands in fenced `bash` blocks.
+- A diagram only for a decision the steps do not make obvious. Linear flow is
+  a numbered list.
+- One complete example in the language the repo uses, not one per language.
 - Use tables for lookup data (lock file to package manager, flag to meaning).
 - State what to do when a step does not apply, rather than leaving it open.
 - Bound every retry loop with a number and say what to do when it is exhausted.
 - No emoji.
 - Sparing em-dashes.
+
+A supporting file sits beside `SKILL.md` when it is a reusable script or
+reference material over about 100 lines; a pattern under about 50 lines stays
+inline. Point to it from `SKILL.md` by relative path, for example
+`see reference.md`. Never use an `@path` reference: it force-loads the file
+into every session that loads the skill.
 
 ## Eval format
 
@@ -81,6 +109,11 @@ paired with behaviour that can be checked by reading the transcript.
 
 Three to five evals per skill. Each `expectations` entry must be checkable by
 reading a transcript.
+
+Evals are the test, so write them before the skill. Run each prompt without the
+skill and note where the model went wrong; each `expectations` line then
+asserts the observable behaviour that corrects one of those failures. An
+expectation that would also pass without the skill proves nothing.
 
 ## Rule format
 

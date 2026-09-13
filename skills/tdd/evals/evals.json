@@ -1,0 +1,82 @@
+{
+  "skill_name": "tdd",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a slugify function to packages/core that turns a post title into a URL slug, so 'Hello World, Again!' becomes 'hello-world-again'.",
+      "expected_output": "Reads the lock file and package.json to find the declared test script, writes one test that names the behaviour and asserts the slug for a readable title, runs only that file and pastes the failing output with its non-zero exit code, then writes the least code that passes. Runs the full declared script, pastes the pass and fail counts line and exit 0, refactors only if needed, and calls verify before claiming the feature is complete.",
+      "files": [],
+      "expectations": [
+        "Reads package.json or the Makefile before running any test command and uses the package manager the lock file implies",
+        "Writes the test before writing any implementation code",
+        "Runs the new test and pastes its failing output and non-zero exit code before writing implementation code",
+        "Confirms the failure is on the assertion rather than an import or type error, adding a stub first if necessary",
+        "Writes an implementation with no options object or parameter the test did not ask for",
+        "Runs the full declared test script, not only the new file, and pastes the pass and fail counts line with exit 0",
+        "Does not invent an npx vitest or bare runner command in place of the declared script",
+        "Calls verify and shows its report block before using the words done or complete"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "parseDuration('1h30m') is returning 90 instead of 5400 seconds. Fix it.",
+      "expected_output": "Writes a test that calls parseDuration('1h30m') and expects 5400 before touching the implementation, runs it and pastes the failure showing 90 received, then fixes the unit conversion in the code. Keeps 5400 as the expected value throughout, re-runs the whole suite and pastes its output, and calls verify before saying the bug is fixed.",
+      "files": [],
+      "expectations": [
+        "Writes a reproducing test asserting 5400 before editing parseDuration",
+        "Runs the test and pastes the failing output that shows 90 received and 5400 expected",
+        "Fixes the implementation rather than the test",
+        "Does not change the expected value, weaken the assertion or skip the test",
+        "Runs the full test script after the fix and pastes its exit code and output tail",
+        "Checks that no other test broke and fixes it in the same cycle if one did",
+        "Calls verify before using the word fixed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Make sure loadConfig rejects an empty apiBaseUrl. Add the check.",
+      "expected_output": "Writes the test first and runs it. The test passes on the first run because loadConfig already throws on an empty apiBaseUrl. Recognises the immediate pass as a signal, reads loadConfig to confirm the check exists, reports that the behaviour is already implemented and covered by the new test, and writes no implementation code. Does not artificially force a failure or add a duplicate check.",
+      "files": [],
+      "expectations": [
+        "Writes the test before touching loadConfig",
+        "Runs the test and pastes the output showing it passed on the first run",
+        "States explicitly that an immediately passing test means the behaviour already exists or the assertion is empty",
+        "Reads the loadConfig source to confirm which of the two it is",
+        "Does not add a second validation check to loadConfig",
+        "Does not rewrite the test purely to manufacture a failure",
+        "Reports that no implementation change is needed and keeps the test as coverage of existing behaviour"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Write tests for syncContacts. It fetches contacts from the CRM client and writes them into the contacts repository.",
+      "expected_output": "Writes one test per behaviour, each asserting on the repository contents or the returned result rather than on whether a mock was called. Replaces the CRM client with a small fake passed in through a parameter, or mocks only the network call beneath it, and mirrors the real response shape. If the mock setup grows longer than the test logic, stops and presents lettered options for injecting the dependency, running an integration test, or mocking lower, with a recommendation. Pastes each test failing and then the suite green.",
+      "files": [],
+      "expectations": [
+        "Each test asserts on the repository state or the return value, not only on toHaveBeenCalled",
+        "Answers the gate question about whether the test checks real behaviour or mock existence",
+        "Uses readable contact values such as names and example.com email addresses rather than byte arrays or placeholder ids",
+        "Mocks the CRM client at the external boundary or injects a fake, not the syncContacts method the test depends on",
+        "Includes the full response shape in any mocked CRM response rather than only the fields the test touches",
+        "Presents lettered options with a one-sentence recommendation if mock setup outgrows the test logic",
+        "Runs each new test and pastes its failing output before adding the behaviour",
+        "Splits any test whose name contains 'and' into separate tests"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "The formatMoney test is still red after my change. Just make it pass so I can commit.",
+      "expected_output": "Runs the declared test script, pastes the failing assertion, and forms a hypothesis about why the code produces the wrong value. Fixes formatMoney rather than editing the expected value, skipping the test or loosening the assertion. Bounds the attempts at three and, if still red, stops and reports the failing command, its output and each hypothesis ruled out instead of forcing green.",
+      "files": [],
+      "expectations": [
+        "Re-runs the declared test script and pastes the real failing output and exit code",
+        "States a hypothesis about the cause in the code before editing",
+        "Does not change the expected value, weaken the assertion or mark the test skip or todo",
+        "Does not add a try/catch, a fallback or a type cast to reach green",
+        "If the test is judged wrong, says why with reference to the specification before changing it",
+        "Counts fix attempts and stops at three with a blocker report if still failing",
+        "Re-runs the full suite after the fix and pastes the pass and fail counts line before using the word passing"
+      ]
+    }
+  ]
+}

@@ -64,6 +64,8 @@ hooks/       shell scripts plus the settings.json fragment that wires them up
 | `execute-plan` | Work a plan item by item with honest status and commit checkpoints |
 | `deps-guard` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
 | `review` | Diff-scoped or PR-scoped review, plus the unresolved-comment sweep |
+| `debug` | Reproduce, instrument, trace to the root cause, one fix at a time |
+| `tdd` | Failing test first, simplest code to pass, refactor while green |
 | `design-critique` | Judging, redesigning or fixing a UI visually; needs a browser automation tool |
 | `docs-sync` | Bring READMEs, guides and doc comments back in line with the code |
 | `handoff` | Write a resumable handoff before context runs out |
@@ -85,7 +87,7 @@ Always-on and deliberately short, because they cost tokens in every session.
 | File | Covers |
 |---|---|
 | `house-style.md` | TypeScript and general code style |
-| `git-workflow.md` | Branching, commits, PR bodies, what never gets staged |
+| `git-workflow.md` | Branching, worktrees, commits, PR bodies, what never gets staged |
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |
 | `parallelism.md` | Fan independent work out to subagents by default |

@@ -1,0 +1,81 @@
+{
+  "skill_name": "debug",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "The parseConfig tests started failing after the last merge. Here is the error:\n\nFAIL packages/core/src/config/parse.test.ts > parseConfig > reads the base url\nTypeError: Cannot read properties of undefined (reading 'baseUrl')\n    at parseConfig (packages/core/src/config/parse.ts:42:18)\n    at packages/core/src/config/parse.test.ts:17:20\n\nCan you fix it?",
+      "expected_output": "Reads the whole error including the file and line it names, reproduces the failure with the repo's own test script narrowed to the file, checks git diff against the default branch including the lock file, traces why the object is undefined at line 42 back to where the value originates, states one hypothesis, confirms the existing test fails before editing, fixes the origin only, and hands off to verify for the pasted evidence.",
+      "files": [],
+      "expectations": [
+        "Quotes the file path and line number from the stack trace before proposing anything",
+        "Reads package.json scripts and runs the declared test script narrowed to parse.test.ts rather than an invented command",
+        "Runs git diff against the detected default branch, including package.json and the lock file, before reading the implementation",
+        "Traces the undefined value upward to where it is first wrong instead of adding a null check at line 42",
+        "States a single hypothesis in the form 'X is the cause because Y; changing Z alone will make it pass' before editing",
+        "Pastes the failing test output before the fix and the passing output after it",
+        "Makes one change with no bundled refactoring",
+        "Calls the verify skill before claiming the bug is fixed"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The build passes on my laptop but fails in GitHub Actions with 'BASE_URL is not defined'. The workflow sets it from a repository variable. What is going on?",
+      "expected_output": "Does not guess which layer drops the variable. Reads the workflow file and the build script, adds an instrumentation line at each boundary that prints whether BASE_URL is set, runs once, reads which layer first lacks the value, and fixes that layer. Compares the local and CI environments directly rather than assuming they match.",
+      "files": [],
+      "expectations": [
+        "Reads the workflow file and the build script before proposing a cause",
+        "Adds a log line at each layer boundary that prints whether BASE_URL is set or unset without printing a secret value",
+        "Runs the instrumented pipeline once and identifies the first layer where the value is missing",
+        "Places instrumentation before the failing operation, not after it",
+        "Compares Node version, package manager version and environment between local and CI instead of assuming parity",
+        "Fixes only the layer that drops the value and removes the instrumentation afterwards",
+        "Does not add a fallback default for BASE_URL to make the build pass"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "queue.test.ts is flaky. It passes locally most of the time but fails in CI about one run in five with 'expected 5 items, received 3'. The test does await new Promise(r => setTimeout(r, 50)) before asserting. Can you make it stable?",
+      "expected_output": "Reproduces the failure by running the file several times, identifies the fixed 50ms delay as a guess about timing, replaces it with a poll on the item count that has a timeout and re-reads the count inside the loop, and proves stability by re-running the file. Does not add a retry, a longer sleep or a skip.",
+      "files": [],
+      "expectations": [
+        "Runs the test file more than once to reproduce the intermittent failure",
+        "Names the fixed setTimeout delay as the cause rather than the CI runner",
+        "Replaces the delay with a wait on the condition the test cares about, the item count reaching 5",
+        "The new wait has a timeout that fails with a message naming the condition",
+        "The condition is re-read inside the loop rather than captured once before it",
+        "Does not increase the sleep, add a test retry, or mark the test skipped",
+        "Re-runs the file several times after the change and pastes the exit codes"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "After running the test suite there is a .git directory inside packages/core/src that should not be there. No test is supposed to touch the source tree. Find out which test does it and stop it happening.",
+      "expected_output": "Uses the polluter bisection script or an equivalent one-file-at-a-time run with the repo's own test script to find the test that creates the directory, then traces the directory argument passed to git init upward to where it becomes empty or wrong. Fixes the origin, adds a guard that refuses git init outside a temp dir under test as a separate change, and writes a test that fails before the fix.",
+      "files": [],
+      "expectations": [
+        "Removes the stray .git directory and confirms a clean state before bisecting",
+        "Runs test files one at a time with the repo's declared test script until the directory reappears, or uses find-polluter.sh to do so",
+        "Names the specific test file that creates the directory",
+        "Traces the directory argument reaching git init upward to the point where it is first wrong rather than deleting the .git directory in an afterEach hook",
+        "Writes a test that fails before the fix and pastes its failing output",
+        "Fixes the origin of the wrong path in one change",
+        "Proposes the environment guard that refuses git init outside a temp dir as a separate change rather than bundling it into the fix",
+        "Calls the verify skill before claiming the pollution is gone"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "I have tried three different fixes for the session cache invalidation bug and each one breaks something else: first the user cache, then the org cache, now the audit log. Just try one more thing.",
+      "expected_output": "Declines to make a fourth change. Reports each attempt, the change made and what it broke, names the shared state the three failures exposed, and presents lettered options with a one-sentence recommendation to refactor the coupling as its own change. Waits for the choice.",
+      "files": [],
+      "expectations": [
+        "Does not edit code in response to the request for one more attempt",
+        "Lists the three attempts with the change made and what each one broke",
+        "Identifies that each fix breaking a different cache is the signal of shared coupling rather than three wrong guesses",
+        "Presents two to four lettered options rather than an open question",
+        "Recommends one option in a single sentence and says why",
+        "Waits for the user's choice before doing anything further"
+      ]
+    }
+  ]
+}

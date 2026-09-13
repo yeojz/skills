@@ -60,8 +60,9 @@ Dependency work is `chore`, `fix` or `ci`:
 | Action pinning, workflow hardening | `ci/actions-pin-to-sha` |
 | Install-time settings | `chore/supply-chain-minimum-release-age` |
 
-Do not create a git worktree. Do not stash. If the checkout is blocked, stop and
-report.
+Create the branch in its own worktree under `.claude/worktrees/`, as the
+`ship` skill's step 1 describes, reusing one that already belongs to this
+advisory. Do not stash. If the checkout is blocked, stop and report.
 
 ### Step 2: Detect the package manager
 

@@ -83,7 +83,8 @@ Present each of these as lettered options with a recommendation. Do not decide t
 Resume work in <absolute repo path> on branch <type/scope-description>, based on <default-branch>.
 
 Rules: create a branch before editing and never edit on the default branch. If <type/scope-description>
-does not exist locally, create it from <default-branch>. Do not create a git worktree.
+does not exist locally, create it from <default-branch>. Work in its worktree under .claude/worktrees/;
+enter the existing one if `git worktree list` shows it, otherwise create it.
 
 Read the handoff at <repo-relative path to this file> before anything else. It holds
 the current state, the completed items with the command output that proves each one,

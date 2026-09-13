@@ -9,9 +9,9 @@ description: Use when the user wants to save work to git, from branching through
 
 The branch-through-PR loop: branch first, run the repo's own scripts, verify,
 stage cleanly, write a conventional commit, then push and open a draft PR as
-separate confirmed steps. Guarantees that nothing is committed on the default
-branch, no worktree is created, no `.claude/` or plan files are staged, and no
-push or PR happens without an explicit yes.
+separate confirmed steps. Guarantees that every task runs on its own branch in
+its own worktree, nothing is committed on the default branch, no `.claude/` or
+plan files are staged, and no push or PR happens without an explicit yes.
 
 ## Modes
 
@@ -28,14 +28,51 @@ upgrade a mode on your own initiative.
 
 ## Workflow
 
-### Step 1: Never create a worktree
+### Step 1: Work in the task's worktree
 
-Work directly in the current folder. Do not run `git worktree add`, do not
-suggest a worktree, and do not switch to an existing one, unless the user
-explicitly asks for a worktree in this session. Branching is the isolation
-mechanism here.
+Every task gets its own branch in its own worktree under `.claude/worktrees/`,
+so the main checkout stays clean and two tasks never share a tree. Reuse before
+creating: a task that was started earlier already has one.
 
-If a worktree skill or helper offers itself, decline it.
+```bash
+git worktree list --porcelain
+git branch --list "*<scope>*"
+git check-ignore -q .claude || echo ".claude/ is not ignored"
+```
+
+Match on the task's scope word, the `<scope>` from the branch naming in step 2.
+
+| Found | Do |
+|---|---|
+| One worktree whose branch matches | Enter it. In Claude Code, `EnterWorktree` with its `path`; elsewhere, `cd` into it |
+| One branch matches but has no worktree | Add a worktree for that branch under `.claude/worktrees/` and enter it |
+| More than one candidate | Ask, with lettered options, which one is this task's |
+| None | Create one, below |
+
+In Claude Code, create with the `EnterWorktree` tool and a `name` in the
+`<type>/<scope>-<description>` form. It creates `.claude/worktrees/<name>`
+from the remote's default branch and moves the session there. It names the
+branch `worktree-<name>` with each `/` turned into `+`, which breaks the
+branch naming rule, so rename the branch straight away:
+
+```bash
+git branch -m <type>/<scope>-<description>
+```
+
+Under an agent without that tool, do the same with git and work from the new
+directory:
+
+```bash
+git worktree add -b <type>/<scope>-<description> .claude/worktrees/<type>+<scope>-<description> "origin/$base"
+```
+
+`$base` is the default branch detected in step 2. If `.claude/` is not ignored
+in this repo, stop before creating anything and offer to add it to
+`.gitignore` or to `.git/info/exclude`; the staging hook refuses `.claude/`
+either way, but an untracked worktree directory shows up in every status.
+
+The stash is shared across every worktree of the repo, so never run a bare
+`git stash`. Set work aside with a temporary commit instead.
 
 ### Step 2: Branch-first gate
 
@@ -318,7 +355,8 @@ State plainly:
 | Mistake | Fix |
 |---|---|
 | Committing while on the default branch | Hard gate. Detect it with `git ls-remote --symref origin HEAD`, then create `<type>/<scope>-<description>` and commit there. |
-| Creating a git worktree to isolate the work | Never, unless the user asks for one in this session. Branch in the current folder. |
+| Creating a second worktree for a task that has one | Read `git worktree list` first. Reuse the match; ask when more than one could be it. |
+| Leaving the branch as `worktree-<name>` after `EnterWorktree` | Rename it to `<type>/<scope>-<description>` before the first commit. |
 | Using `bun` or `npm` in a repo with `pnpm-lock.yaml` | Detect from the lock file, then the `packageManager` field. Never assume. |
 | Inventing `npx vitest run` or similar ad-hoc commands | Run the scripts defined in `package.json`. |
 | Skipping verification because there is no `package.json` | Read the Makefile. Run its targets. Skip only when there is neither. |

@@ -32,6 +32,7 @@ Then start a new Claude Code session so the rules and hooks load.
 | `./install.sh` | Install or refresh Claude Code (the default target) |
 | `./install.sh codex` | Install or refresh Codex CLI instead |
 | `./install.sh claude codex` | Install or refresh both |
+| `./install.sh --no-skills` | Install everything except `skills/`, for when something else (e.g. `npx skills add`) owns them |
 | `./install.sh --dry-run` | Print what would change, touch nothing |
 | `./install.sh --uninstall` | Remove this repo's symlinks and settings entries from the given target(s) |
 

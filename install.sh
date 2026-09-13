@@ -11,6 +11,7 @@
 #   ./install.sh                 install or refresh Claude Code (default)
 #   ./install.sh codex           install or refresh Codex CLI instead
 #   ./install.sh claude codex    install or refresh both
+#   ./install.sh --no-skills     skip skills/, e.g. when `npx skills add` owns them
 #   ./install.sh --dry-run       print what would change, touch nothing
 #   ./install.sh --uninstall     remove this repo's symlinks and settings entries
 #
@@ -34,14 +35,16 @@ FRAGMENT="$REPO_DIR/hooks/settings.fragment.json"
 
 DRY_RUN=0
 UNINSTALL=0
+NO_SKILLS=0
 TARGETS=()
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --uninstall) UNINSTALL=1 ;;
+    --no-skills) NO_SKILLS=1 ;;
     claude|codex) TARGETS+=("$arg") ;;
-    -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -292,7 +295,11 @@ fi
 
 if [ "$WANT_CLAUDE" = 1 ]; then
   step "Claude Code: skills"
-  link_into "$REPO_DIR/skills" "$CLAUDE_DIR/skills" '*'
+  if [ "$NO_SKILLS" = 1 ]; then
+    info "skipped (--no-skills)"
+  else
+    link_into "$REPO_DIR/skills" "$CLAUDE_DIR/skills" '*'
+  fi
 
   step "Claude Code: rules"
   link_into "$REPO_DIR/rules" "$CLAUDE_DIR/rules" '*.md'
@@ -325,7 +332,11 @@ if [ "$WANT_CODEX" = 1 ]; then
     # from here. It has no documented agents directory, so those links exist
     # to make the persona files resolvable on disk for a skill that reads one
     # directly. Rules stay Claude-only: Codex reads AGENTS.md instead.
-    link_into "$REPO_DIR/skills" "$CODEX_DIR/skills" '*'
+    if [ "$NO_SKILLS" = 1 ]; then
+      info "skills skipped (--no-skills)"
+    else
+      link_into "$REPO_DIR/skills" "$CODEX_DIR/skills" '*'
+    fi
     link_into "$REPO_DIR/agents" "$CODEX_DIR/agents" '*.md'
 
     if [ "$UNINSTALL" = 1 ]; then

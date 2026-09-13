@@ -6,10 +6,12 @@ template formats and the house facts every skill assumes.
 Before opening a pull request:
 
 ```bash
-./validate.sh
+make validate
 ```
 
-It must pass. CI runs the same script on every push and pull request.
+It must pass. CI runs the same target on every push and pull request. The
+Makefile also exposes `make test` for the hook suite alone and `make install`
+for the installer.
 
 - Name branches `<type>/<scope>-<description>`.
 - Write the PR title as a Conventional Commit subject. PRs squash-merge, so the

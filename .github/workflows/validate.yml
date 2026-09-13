@@ -16,4 +16,4 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-      - run: ./validate.sh
+      - run: make validate

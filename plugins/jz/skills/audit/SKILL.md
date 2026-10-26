@@ -84,15 +84,16 @@ a documented, deliberate decision is not a finding.
 
 Fan-out is the default, not an optimisation. Launch all applicable personas in
 a single message so they run concurrently. Each persona is a subagent type
-defined by a file under `agents/`; launch that type and give each one the same
+defined by a file under the plugin's `agents/` directory, named `jz:<name>`
+when this repo is installed as a plugin; launch that type and give each one the same
 scope, the same exclusions, and the same grounding rules from Step 4.
 
 | Persona | Subagent type | Looks for |
 |---|---|---|
-| Principal engineer | `principal-engineer` | layering violations, module boundaries, duplication, dead code, over-engineering, abstractions with one implementation, dependency injection done as a global or a singleton, provider implementations bleeding into each other or into core, missing argument pass-through, non-null assertions, `any`, `enum`, deprecated aliases kept for no reason |
-| Security engineer | `security-engineer` | input validation and parsing, secret handling and logging, comparison of secrets that is not constant time, injection vectors including shell, SQL, path traversal and prototype pollution, unsafe deserialisation, supply chain: new or unmaintained dependencies, transitive risk, unpinned GitHub Actions, install scripts |
-| Test engineer | `test-engineer` | uncovered branches, tests that assert nothing or only assert a mock was called, a rejecting branch with no negative test, tests that pass because of a workaround, shared mutable fixture state, skipped or `.only` tests, coverage thresholds not met |
-| Technical writer | `technical-writer` | README and guide drift against real exports, code examples that call something that is not exported, CLI examples that disagree with real `--help` output, dead links, stale version numbers, secrets or real domains in examples |
+| Principal engineer | `jz:principal-engineer` | layering violations, module boundaries, duplication, dead code, over-engineering, abstractions with one implementation, dependency injection done as a global or a singleton, provider implementations bleeding into each other or into core, missing argument pass-through, non-null assertions, `any`, `enum`, deprecated aliases kept for no reason |
+| Security engineer | `jz:security-engineer` | input validation and parsing, secret handling and logging, comparison of secrets that is not constant time, injection vectors including shell, SQL, path traversal and prototype pollution, unsafe deserialisation, supply chain: new or unmaintained dependencies, transitive risk, unpinned GitHub Actions, install scripts |
+| Test engineer | `jz:test-engineer` | uncovered branches, tests that assert nothing or only assert a mock was called, a rejecting branch with no negative test, tests that pass because of a workaround, shared mutable fixture state, skipped or `.only` tests, coverage thresholds not met |
+| Technical writer | `jz:technical-writer` | README and guide drift against real exports, code examples that call something that is not exported, CLI examples that disagree with real `--help` output, dead links, stale version numbers, secrets or real domains in examples |
 
 Drop a persona only when it has nothing to read, for example the test engineer
 in a repo with no test directory, and say so in the plan's scope section.
@@ -115,7 +116,7 @@ Run the lenses yourself, in sequence, in exactly two cases:
 | The host agent cannot launch subagents, for example a runtime without multi-agent mode | There is nothing to fan out to |
 | The target is small enough that fan-out costs more than it saves, for example a single file under a few hundred lines | Four subagents reading one file is slower than one pass |
 
-In either case read one persona file from `agents/` at a time, apply that lens
+In either case read one persona file from the plugin's `agents/` directory at a time, apply that lens
 in full before moving to the next, keep the same return contract, and record in
 the plan's scope section that the lenses ran in sequence and why. Do not blend
 the lenses into one general pass.

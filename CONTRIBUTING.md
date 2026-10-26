@@ -10,8 +10,9 @@ make validate
 ```
 
 It must pass. CI runs the same target on every push and pull request. The
-Makefile also exposes `make test` for the hook suite alone and `make install`
-for the installer.
+Makefile also exposes `make test` for the hook suite alone. When the Claude
+Code CLI is on `PATH`, `make validate` also runs `claude plugin validate` over
+the marketplace and the plugin.
 
 - Name branches `<type>/<scope>-<description>`.
 - Write the PR title as a Conventional Commit subject. PRs squash-merge, so the

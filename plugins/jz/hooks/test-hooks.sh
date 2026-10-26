@@ -5,6 +5,7 @@
 set -uo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export HOOK_DIR
 FIXTURE="$(mktemp -d)"
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -123,5 +124,65 @@ rm "$FIXTURE/CLAUDE.md"
 out="$(printf '{"hook_event_name":"SessionStart","how":"startup","cwd":"%s"}' "$FIXTURE" \
   | "$HOOK_DIR/load-project-rules.sh" 2>/dev/null)"
 if [ -z "$out" ]; then echo "PASS"; else echo "FAIL, expected no output"; fail=1; fi
+
+printf '\nconfirm-remote-writes.sh\n'
+ask() {
+  # ask <json-quoted command> <label> <expected: ask|allow>
+  printf '  %-52s' "$2"
+  local out
+  out="$(printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "$FIXTURE" \
+    | "$HOOK_DIR/confirm-remote-writes.sh" 2>/dev/null)"
+  local got=allow
+  printf '%s' "$out" | grep -q '"permissionDecision": "ask"' && got=ask
+  if [ "$got" = "$3" ]; then
+    echo "$got PASS"
+  else
+    echo "$got FAIL, expected $3"
+    fail=1
+  fi
+}
+
+ask '"ls -la"'                                  "benign command"                 allow
+ask '"git status"'                              "git status"                     allow
+ask '"git push"'                                "plain push"                     allow
+ask '"git push --set-upstream origin x"'        "push with upstream"             allow
+ask '"gh pr view 5"'                            "gh pr view"                     allow
+ask '"gh pr checks 5"'                          "gh pr checks"                   allow
+ask '"echo gh pr create"'                       "gh pr create inside echo"       allow
+ask '"gh pr create --draft --title t"'          "gh pr create"                   ask
+ask '"gh pr merge 5 --squash"'                  "gh pr merge"                    ask
+ask '"git status && gh pr create -d"'           "gh pr create after &&"          ask
+ask '"git push --force"'                        "push --force"                   ask
+ask '"git push -f origin x"'                    "push -f"                        ask
+ask '"git push -fu origin x"'                   "push -fu cluster"               ask
+ask '"git push --force-with-lease=x:abc"'       "push --force-with-lease=ref"    ask
+ask '"git push origin --force-with-lease"'      "push remote then lease"         ask
+ask '"git push --force-if-includes"'            "push --force-if-includes"       ask
+ask '"git push origin +main"'                   "push plus refspec"              ask
+ask '"git -C . push -f"'                        "push -f behind git -C"          ask
+ask '"nohup git push --force"'                  "push behind nohup"              ask
+ask '"/usr/bin/gh pr merge 5"'                  "gh through an absolute path"    ask
+
+printf '\nload-house-rules.sh\n'
+printf '  %-52s' "emits every rule file as context"
+out="$(printf '{"hook_event_name":"SessionStart","how":"startup","cwd":"%s"}' "$FIXTURE" \
+  | "$HOOK_DIR/load-house-rules.sh" 2>/dev/null)"
+if printf '%s' "$out" | python3 -c "
+import json,sys,glob,os
+d=json.load(sys.stdin)
+ctx=d['hookSpecificOutput']['additionalContext']
+assert d['hookSpecificOutput']['hookEventName']=='SessionStart'
+assert 'House rules' in ctx
+rules=sorted(glob.glob(os.path.join(os.environ['HOOK_DIR'],'..','rules','*.md')))
+assert rules, 'no rule files found'
+for r in rules:
+    first=open(r,encoding='utf-8').readline().strip()
+    assert first in ctx, first+' missing'
+" 2>/dev/null; then
+  echo "PASS"
+else
+  echo "FAIL"
+  fail=1
+fi
 
 exit "$fail"

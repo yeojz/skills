@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "jz",
+  "description": "House skills, always-on rules, review personas and hooks: verify before done, ship through a draft PR, audit then execute a plan, grill a design before code.",
+  "author": {
+    "name": "Gerald Yeo",
+    "url": "https://github.com/yeojz"
+  },
+  "homepage": "https://github.com/yeojz/skills",
+  "repository": "https://github.com/yeojz/skills",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "workflow",
+    "verification",
+    "review",
+    "hooks"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "jz"
+      }
+    }
+  }
+}

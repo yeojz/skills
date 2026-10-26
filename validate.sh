@@ -84,9 +84,9 @@ printf '\nTemplates\n'
 # Templates live beside the skill that uses them; a top-level directory
 # would drift out of sync with the skill, so it must not come back.
 [ -d templates ] && bad "top-level templates/ must not exist, templates live at skills/<name>/template.md"
-for f in skills/*/template.md; do
+for f in skills/*/template.md skills/*/template-*.md; do
   [ -e "$f" ] || break
-  label="$(basename "$(dirname "$f")")/template.md"
+  label="$(basename "$(dirname "$f")")/$(basename "$f")"
   head -1 "$f" | grep -q '^---$' && bad "$label: templates must not have frontmatter"
   emoji_free "$f" || bad "$label: contains emoji"
   note "$label"

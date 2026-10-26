@@ -1,0 +1,70 @@
+{
+  "skill_name": "grill",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "grill me on this plan: move the CLI's vault commands behind a plugin interface so third parties can add their own storage backends.",
+      "expected_output": "The agent reads the repo's instruction files and glossary, fans out subagents for facts about the current CLI and storage code, then asks the first round: numbered questions, each with three or four lettered options, the recommendation first with a one-sentence reason and the trade-off that decides it. It stops and waits. No code is written and no files are created in decision mode.",
+      "files": [],
+      "expectations": [
+        "Reads CONTEXT.md, AGENTS.md or CLAUDE.md, CONTRIBUTING.md and docs/adr before the first question",
+        "Dispatches at least one read-only subagent for a fact about the existing code instead of asking the user for it",
+        "Every question in the round is numbered and offers three or four lettered options with the recommendation first",
+        "Each question names the trade-off that decides between its options",
+        "The round ends with the agent waiting; it does not answer its own questions or continue to a second round in the same reply",
+        "No source file, CONTEXT.md or ADR is written"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "kick off a new serverless OpenID Connect provider library in this empty repo, with docs. The old oidclib repo at ../oidclib is a reference but not the truth.",
+      "expected_output": "The agent creates a task branch in its own worktree before writing anything, reads the predecessor for facts only, runs the interview in rounds, writes CONTEXT.md the turn the first term is resolved, writes an ADR only for a decision that is hard to reverse, surprising and a real trade-off, records the other decisions in docs/design.md with their round and letter, adds a Standing orders section to AGENTS.md, and seeds docs/roadmap.md rows with depends on, owns, builds, you see, done means and review gate. It hands back the files written, the ADR-tier list and the first fully scoped row, and does not commit.",
+      "files": [],
+      "expectations": [
+        "A task branch exists in its own worktree before the first file is written; nothing is written on the default branch",
+        "Facts taken from the predecessor repository are named as such and no decision is copied from it",
+        "CONTEXT.md is written in the same turn the first term is resolved, not at the end",
+        "At least one decision is recorded in docs/design.md rather than as an ADR, and any ADR written satisfies all three tests",
+        "AGENTS.md gains a Standing orders section",
+        "docs/roadmap.md rows carry depends on, owns, builds, you see, done means and review gate, with not scoped where the interview has not settled a field",
+        "The hand-back lists the ADR-tier list and names the first fully scoped roadmap row",
+        "No commit is made; ship is offered instead"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Q3: not sure, does our test runner support --project? Just pick whatever works.",
+      "expected_output": "The agent does not accept the user's guess or ask them to find out. It reads package.json and the vitest config, or dispatches a subagent to, answers the fact itself, and re-asks the decision that depended on it with the fact stated.",
+      "files": [],
+      "expectations": [
+        "The agent reads package.json or the test runner config, or dispatches a subagent to, rather than asking the user",
+        "The reply states the fact found with the file that shows it",
+        "The decision that depended on the fact is re-asked as a lettered question, or stated as an assumption if only one option remains"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The account should be able to have several users, and each user logs in with their account credentials.",
+      "expected_output": "The agent spots that account and user are being used for two different things and for the same thing within one sentence, names the conflict against the glossary or proposes canonical terms, invents a concrete scenario that probes the boundary, and in kickoff mode writes the resolved terms into CONTEXT.md with the avoided words listed.",
+      "files": [],
+      "expectations": [
+        "The agent names the term conflict explicitly and asks which meaning is intended",
+        "The agent proposes canonical terms and lists the alternatives as avoided",
+        "A concrete scenario is used to probe the boundary between the two concepts",
+        "In kickoff mode CONTEXT.md is updated in the same turn the terms are resolved"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "ok proceed with implementation",
+      "expected_output": "With questions still open on the frontier, the agent does not start implementing. It lists what is still open, states the assumptions it would otherwise have to make, and asks the user either to answer or to confirm the shared understanding explicitly. If the frontier is empty, it summarises the settled tree and the assumptions and asks for confirmation before handing over to implementation.",
+      "files": [],
+      "expectations": [
+        "No code is written in response to the prompt while frontier questions remain",
+        "The open questions are listed by number",
+        "The assumptions stated in earlier round preambles are listed for the user to object to",
+        "Implementation starts only after the user confirms the shared understanding"
+      ]
+    }
+  ]
+}

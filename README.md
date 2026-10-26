@@ -78,6 +78,7 @@ hooks/       shell scripts plus the settings.json fragment that wires them up
 | `naming` | Lettered naming options with trade-offs, then rename everywhere |
 | `pr-desc` | Regenerate a PR body from the diff alone |
 | `release` | Version PR, changeset, label gate, publish |
+| `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land |
 
 `verify` is the one the others depend on. It is what stops "done" from meaning
 "probably done".

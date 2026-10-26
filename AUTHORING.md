@@ -9,7 +9,8 @@ editing a skill, rule, agent or template.
 
 Every skill is a directory under `skills/` containing `SKILL.md` and
 `evals/evals.json`. A skill that fills in a document also carries its
-`template.md` in the same directory.
+`template.md` in the same directory; one that fills more than one kind of
+document names them `template-<kind>.md`.
 
 Write a skill for a judgment call. Anything `validate.sh` or a hook can check
 mechanically belongs there instead: a check never skips a step and costs no
@@ -131,8 +132,9 @@ include `Edit` or `Write`. Findings use an id prefix per persona, such as `PE`,
 
 ## Template format
 
-A template is plain markdown with no frontmatter, saved as `template.md` inside
-the skill directory that fills it in. There is no top-level `templates/`.
+A template is plain markdown with no frontmatter, saved as `template.md`, or
+`template-<kind>.md` when there are several, inside the skill directory that
+fills it in. There is no top-level `templates/`.
 
 ---
 

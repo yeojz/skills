@@ -136,6 +136,7 @@ injects them at session start.
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |
 | `parallelism.md` | Fan independent work out to subagents by default |
+| `models.md` | Which model tier does coordination, review, scoped implementation and scans |
 
 ### Hooks
 
@@ -147,6 +148,8 @@ also sets.
 |---|---|---|
 | `no-claude-artifacts.sh` | PreToolUse on Bash | Blocks any staging or commit that would include `.claude/`, `docs/plans/` or `.plans/` |
 | `confirm-remote-writes.sh` | PreToolUse on Bash | Asks before `gh pr create`, `gh pr merge` and any force push, including `--force-with-lease`, `-f` clusters and a `+refspec` |
+| `rebase-not-merge.sh` | PreToolUse on Bash | Blocks merging the default branch into a feature branch, or pulling it without `--rebase`; rebase instead |
+| `no-restricted-words.sh` | PreToolUse on Bash | Blocks a commit message, PR body, review or comment that carries an emoji, an agent attribution trailer, a session link, a model version slug, or a word listed under a `## Restricted words` heading in the repo's `AGENTS.md` or `CLAUDE.md` |
 | `load-house-rules.sh` | SessionStart | Injects the rule files as context, since a plugin cannot ship always-on instructions |
 | `load-project-rules.sh` | SessionStart | Surfaces `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` at session start |
 
@@ -181,7 +184,7 @@ plugins can still get the rules:
 ./make-agents-md.sh --help
 ```
 
-That writes every file in `plugins/jz/rules/` into `AGENTS.md` in the target
+That writes every file in `plugins/jz/rules/` except `models.md` into `AGENTS.md` in the target
 repo, between delimiter comments. Re-running replaces only the generated block,
 so anything you wrote by hand around it survives. Edit the rules here and
 re-run to update.

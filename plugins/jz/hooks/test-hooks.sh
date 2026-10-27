@@ -184,6 +184,12 @@ ask '"env --block-signal gh pr create"'          "gh behind bare --block-signal"
 ask '"env --default-signal=TERM git push -f"'    "push behind --default-signal=SIG" ask
 ask '"xargs -i git push --force"'                "push behind xargs -i"           ask
 ask '"xargs -l git push -f"'                     "push behind xargs -l"           ask
+ask '"xargs --eof git push --force"'             "push behind bare --eof"         ask
+ask '"xargs --max-lines git push --force"'       "push behind bare --max-lines"   ask
+ask '"xargs --eof=END git push -f"'              "push behind --eof=END"          ask
+ask '"xargs --max-lines=2 git push"'             "plain push behind --max-lines=2" allow
+ask '"xargs -E END git push --force"'            "push behind xargs -E with a value" ask
+ask '"xargs -L 2 git push"'                      "plain push behind xargs -L"     allow
 
 printf '\nload-house-rules.sh\n'
 printf '  %-52s' "emits every rule file as context"

@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Write the PR description for my branch in /tmp/eval-pr-desc-1-ws. It's feat/auth-add-refresh-tokens, three commits, and no PR exists yet.",
-      "expected_output": "Agent reads the branch diff with the three-dot form against origin/main plus the commit subjects, then proposes a Conventional Commit title such as 'feat(auth): add refresh token rotation' under 72 characters. Body contains a short Summary and a Trade-offs section drawn from the diff; Follow-ups is omitted because the diff shows nothing deferred. No test plan, no session narrative, no release-type opinion. Agent shows the full title and body and, if it creates the PR at all, creates it as a draft.",
+      "expected_output": "Agent reads the branch diff with the three-dot form against origin/main plus the commit subjects, then proposes a Conventional Commit title such as 'feat(auth): add refresh token rotation' under 72 characters. Body contains a short Summary and a Trade-offs section drawn from the diff; Follow-ups is omitted because the diff shows nothing deferred. Nothing ran in this session, so Verification is omitted too and the report says so; the agent does not run the test suite itself to fill it. No test plan, no session narrative, no release-type opinion. Agent shows the full title and body and, if it creates the PR at all, creates it as a draft.",
       "files": [],
       "expectations": [
         "Agent runs git diff with the three-dot form (origin/main...HEAD), not the two-dot form",
@@ -12,7 +12,9 @@
         "Proposed title is a Conventional Commit subject with a scope taken from the primary package touched",
         "Proposed title is under 72 characters and contains no emoji or issue number",
         "Body contains a Summary section written from the diff rather than a file-by-file change log",
-        "Body contains no '## Test Plan', verification checklist, or 'how to test' prose",
+        "Body contains no '## Test Plan' section and no how-to-test checklist",
+        "Body has no Verification section, because nothing ran in the session, and the report says it was omitted for that reason",
+        "Agent does NOT run the test suite or the gate itself to fill Verification",
         "Body contains no narration of how the change was arrived at during the session",
         "Body contains no opinion about release type, version bump, or whether it is safe to release",
         "Body contains no Claude session link, model name, AI identifier, or emoji",
@@ -23,18 +25,19 @@
     {
       "id": 2,
       "prompt": "The approach has changed, so can you update the PR description? It's PR #412 in /tmp/eval-pr-desc-2-ws. We dropped the polling and went with a webhook instead.",
-      "expected_output": "Agent runs 'gh pr view 412' to read the existing title and body, then regenerates both from the current diff of the PR head branch rather than patching the old text. It prints the existing title and body next to the proposed ones, names what is being removed (including the now-stale polling description), asks for confirmation, and only after a yes runs 'gh pr edit 412' with a body file.",
+      "expected_output": "Agent runs 'gh pr view 412' to read the existing title and body, then regenerates both from the current diff of the PR head branch rather than patching the old text. Verification bullets in the old body that cite runs on the polling head are dropped, since they proved another tree; the section is rebuilt from runs on the current head or omitted. It prints the existing title and body next to the proposed ones, names what is being removed (including the now-stale polling description), asks for confirmation, and only after a yes runs 'gh pr edit 412' with a body file.",
       "files": [],
       "expectations": [
         "Agent reads the existing PR body with gh pr view before writing anything",
         "Agent regenerates the body from the current diff instead of editing the old text in place",
         "Agent uses the three-dot diff form against the base branch",
         "Stale claims about the old polling approach do not survive into the new body",
+        "Verification bullets from runs on the earlier head do not survive into the new body",
         "Agent shows a before and after of the title and body",
         "Agent names what is being removed from the old body",
         "Agent asks for confirmation before running gh pr edit and waits for a yes",
         "Agent does NOT run gh pr edit before that confirmation",
-        "New body still contains only Summary, Trade-offs and Follow-ups, omitting any of the latter two that have nothing to say"
+        "New body still contains only Summary, Trade-offs, Follow-ups and Verification, omitting any that have nothing real to say"
       ]
     },
     {
@@ -56,16 +59,33 @@
     {
       "id": 4,
       "prompt": "Please be more succinct in the PR body for /tmp/eval-pr-desc-4-ws, and do not put a test plan in it. It's a fix branch for the CSV parser.",
-      "expected_output": "Agent writes a short body from the diff with a Summary of a few lines and drops Trade-offs and Follow-ups if the diff shows nothing to put there. It produces no test plan, no verification checklist, and no 'how I tested this' bullets anywhere, including under another heading. Title is a Conventional Commit subject such as 'fix(parser): handle empty rows in CSV reader'. Before and after shown if a PR body already exists, and confirmation requested before any remote write.",
+      "expected_output": "Agent writes a short body from the diff with a Summary of a few lines and drops Trade-offs and Follow-ups if the diff shows nothing to put there. It produces no test plan, no how-to-test checklist, and no 'how I tested this' bullets anywhere, including under another heading. If runs from this session exist, Verification keeps one line per run with command, head and exit code and is not cut for brevity; if nothing ran, it is omitted. Title is a Conventional Commit subject such as 'fix(parser): handle empty rows in CSV reader'. Before and after shown if a PR body already exists, and confirmation requested before any remote write.",
       "files": [],
       "expectations": [
         "Final body contains no '## Test Plan' section",
-        "Final body contains no verification checklist, test steps, or 'how I tested' bullets under any heading",
+        "Final body contains no how-to-test checklist, test steps, or 'how I tested' bullets under any heading",
+        "Any Verification section present lists only commands that ran in the session, each with an exit code, and is not padded or invented to fill the heading",
         "Summary is a short paragraph or a few bullets, not a per-file change log",
         "Trade-offs and Follow-ups are omitted rather than filled with filler when the diff shows nothing for them",
         "Title is a Conventional Commit subject under 72 characters with a scope from the touched package",
         "Agent sources the body from the diff, not from the session transcript",
         "Agent asks for confirmation before any gh pr edit or gh pr create"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "ship is calling you in create mode for /tmp/eval-pr-desc-5-ws. Branch feat/ledger-add-export was pushed as a1b2c3d. The verify block says pnpm typecheck exit 0, pnpm lint exit 0, pnpm test exit 0 with '142 passed', and build has no script. Hand back the title and body.",
+      "expected_output": "Agent reads the three-dot diff and the commit subjects, writes the title and the Summary, Trade-offs and Follow-ups from the diff, and fills Verification from the verify block it was handed: one bullet each for pnpm typecheck, pnpm lint and pnpm test, each naming a1b2c3d and its exit code, with '142 passed' copied as the test result line. No bullet for build, which did not run. It does not run any of the commands itself and does not cite CI. It hands the title and body back to ship without running gh pr create, and the report lists the three bullets and the head they ran on.",
+      "files": [],
+      "expectations": [
+        "Agent reads the diff with the three-dot form and the commit subjects before writing",
+        "Verification contains one bullet per command in the verify block, each naming the command, the head a1b2c3d and the exit code",
+        "The test bullet copies '142 passed' from the output rather than saying 'passes'",
+        "Verification has no bullet for build, which had no script and did not run",
+        "Agent does NOT run typecheck, lint or test itself to produce the section",
+        "Verification does not cite CI or claim CI passed",
+        "Agent hands the title and body back to ship and does NOT run gh pr create",
+        "Report names the Verification bullets and the head they ran on"
       ]
     }
   ]

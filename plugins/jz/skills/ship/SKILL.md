@@ -1,17 +1,21 @@
 ---
 name: ship
-description: Use when the user wants to save work to git, from branching through to a pull request. Triggers on requests like "commit", "commit and push", "commit, push and open pr", "branch, commit and open pr", "push this", "save my work to git", or when a feature or fix is finished and needs to be persisted.
+description: Use when the user wants to save work to git, from branching through to a pull request and its merge. Triggers on requests like "commit", "commit and push", "commit, push and open pr", "push, draft PR, gate on a clean checkout, mark ready", "mark the PR ready", "main has moved, rebase", "PR 12 merged, clean up", "save my work to git", or when a feature or fix is finished and needs to be persisted.
 ---
 
 # ship
 
 ## Overview
 
-The branch-through-PR loop: branch first, run the repo's own scripts, verify,
-stage cleanly, write a conventional commit, then push and open a draft PR as
-separate confirmed steps. Guarantees that every task runs on its own branch in
-its own worktree, nothing is committed on the default branch, no `.claude/` or
-plan files are staged, and no push or PR happens without an explicit yes.
+The branch-through-merge loop: branch first, run the repo's own scripts,
+verify, stage cleanly, write a conventional commit, then on one go-ahead push,
+open a draft PR, gate the pushed head on a clean detached checkout and mark the
+PR ready. Rebases the branch when the default branch moves and cleans up once
+the PR merges. Guarantees that every task runs on its own branch in its own
+worktree, nothing is committed on the default branch, no `.claude/` or plan
+files are staged, no push, PR or ready flip happens without a go-ahead that
+named it, the body is refreshed by `pr-desc` on every push that changes the
+diff, and ready is never flipped on the strength of a run in the working tree.
 
 ## Modes
 
@@ -19,12 +23,30 @@ Pick the mode from what the user asked for. Do not do more than they asked.
 
 | User asked | Mode | Runs steps |
 |---|---|---|
-| "commit", "commit my changes", "save my work to git" | commit only | 1-8 |
-| "commit and push", "push this" | commit and push | 1-9 |
-| "commit, push and open pr", "branch, commit and open pr" | commit, push, PR | 1-10 |
+| "commit", "commit my changes", "save my work to git" | commit only | 1-8, 15 |
+| "commit and push", "push this" | commit and push | 1-9, 15 |
+| "commit, push and open pr", "branch, commit and open pr" | commit, push, PR | 1-10, 15 |
+| "push, draft PR, gate on a clean checkout, mark ready", "push and mark ready" | ship to ready | 1-12, 15 |
+| "main has moved, rebase", "rebase onto main and push", the app's offer to merge the base branch in | rebase after upstream merge | 13, 15 |
+| "PR 12 merged, clean up", "merged" | post-merge cleanup | 14, 15 |
 
 If the mode is ambiguous, do the commit and ask before going further. Never
-upgrade a mode on your own initiative.
+upgrade a mode on your own initiative: "commit" never becomes a push, and a
+push never becomes a PR or a ready flip.
+
+### One go-ahead covers what it names
+
+A request that names push, PR and ready in one sentence is the answer to each
+of those asks. "push, draft PR, gate on a clean checkout, mark ready" runs
+steps 9 to 12 with no question between them, and "commit and push" runs the
+push without asking again. The separate asks in steps 9 and 10 are for a
+request that stopped short, such as "commit", and then grows: each further
+remote write gets its own question, and a yes to one does not carry to the
+next.
+
+The `confirm-remote-writes.sh` hook still asks the harness before
+`gh pr create` and before any force push. That prompt is the host's. It is not
+a reason to ask a second time in prose.
 
 ## Workflow
 
@@ -162,7 +184,8 @@ If no such script or target exists, skip silently.
 
 Delegate the full check to the `verify` skill before committing. It runs the
 repo's own lint, typecheck, test and build scripts or Makefile targets and
-pastes real output.
+pastes real output. Keep its report block: steps 9 and 10 hand it to `pr-desc`,
+which turns it into the Verification section of the PR body.
 
 If `verify` is unavailable, run the repo's `package.json` scripts or Makefile
 targets directly and paste the output. Either way, do not commit on top of a
@@ -296,9 +319,10 @@ On a pre-commit hook failure:
 5. After 3 failed attempts, stop. Report what is blocking the commit and what
    you tried. Do not keep retrying and do not bypass.
 
-### Step 9: Push, only after confirmation
+### Step 9: Push, then refresh the body
 
-Ask first, in plain words, and wait for a yes:
+Without a go-ahead that named the push, ask first in plain words and wait for a
+yes:
 
 > Commit `<sha>` is on `<branch>`. Push to `origin`?
 
@@ -310,20 +334,38 @@ git push --set-upstream origin <branch>
 
 Never push to the default branch.
 
-### Step 10: Open a PR, only after separate confirmation
+Then check whether the branch already has a PR:
 
-Pushing is not permission to open a PR. Ask again and wait for a yes:
+```bash
+gh pr view <branch> --json number,isDraft,state,url
+```
+
+When it does, and the push changed the diff, run the `pr-desc` skill in update
+mode. Hand it the `verify` report block from step 6 and the pushed head sha,
+so the Summary describes the diff that is on the remote now and Verification
+cites the runs on this head rather than on the one before. `pr-desc` shows the
+before and after and asks before editing; that ask is its own and stands.
+
+A push changes the diff when it carries a new or amended commit. A rebase that
+replayed the same commits onto a new base did not, and the body stands as it
+is. When there is no PR yet, the body is written at step 10.
+
+### Step 10: Open a draft PR
+
+Without a go-ahead that named the PR, ask and wait for a yes:
 
 > Open a draft PR from `<branch>` into `<default-branch>`?
 
-Opening a PR is externally visible and hard to take back, so it carries its own
-confirmation rather than inheriting the one given for the push. Make the ask
-explicit every time.
+Pushing is not permission to open a PR. Opening one is externally visible and
+hard to take back, so when the request did not name it, it carries its own
+confirmation rather than inheriting the one given for the push.
 
 Run the `pr-desc` skill in create mode and use the title and body it hands
-back. It writes both from the diff, keeps the title a Conventional Commit
-subject, and decides which body sections appear. Do not restate or override its
-rules here.
+back. Hand it the `verify` report block from step 6 and the pushed head sha.
+It writes the title and the Summary, Trade-offs and Follow-ups from the diff,
+fills Verification from the runs it was handed, keeps the title a Conventional
+Commit subject, and decides which sections appear. Do not restate or override
+its rules here.
 
 If `pr-desc` is unavailable, write the title as a Conventional Commit subject
 and the body as a `## Summary` section only, and say in the report that the
@@ -338,7 +380,164 @@ gh pr create --draft --title "<title from pr-desc>" --body-file <file>
 No `--base` flag: `gh` targets the repository's default branch when none is
 given, so passing one only adds a place to get it wrong.
 
-### Step 11: Report
+Draft is the default in ship-to-ready mode too. The flip in step 12 is the
+review signal, and it waits for the gate in step 11.
+
+### Step 11: Gate the pushed head on a clean detached checkout
+
+Step 6 proved the working tree. It did not prove the commit that reached the
+remote: an unstaged edit, an untracked file or a stale `node_modules` can make
+the working tree pass where the pushed head fails. Check that head out detached
+into a throwaway worktree and run the gate there.
+
+```bash
+git fetch origin "<branch>"
+head="$(git rev-parse "origin/<branch>")"
+[ "$head" = "$(git rev-parse HEAD)" ] || echo "local HEAD differs from origin/<branch>"
+gate_dir="$(mktemp -d)"
+git worktree add --detach "$gate_dir" "$head"
+```
+
+Inside `$gate_dir`, install from the lock file when the repo has one, with
+`pnpm install --frozen-lockfile` or the equivalent for the package manager
+step 3 detected, then run the `verify` skill's Steps 2 to 4 there: discover
+the commands from `package.json` or the Makefile, run them cheapest first,
+capture each exit code. Write the logs under the task worktree, not under the
+throwaway one:
+
+```bash
+mkdir -p .verify-logs
+( cd "$gate_dir" && make validate ) > .verify-logs/gate.log 2>&1; echo "exit=$?"
+tail -40 .verify-logs/gate.log
+```
+
+Remove the throwaway worktree whatever the result:
+
+```bash
+git worktree remove --force "$gate_dir"
+git worktree prune
+```
+
+On a failing gate, stay draft. Root-cause it with `verify` Step 5 in the task
+worktree, commit the fix, and return to step 9: the fix is a new push, so the
+body is refreshed and the gate runs again on the new head. Bound this at 3
+rounds, then stop and report what is blocking.
+
+On a green gate, hand the run and the head sha to `pr-desc` in refresh mode,
+so the Verification section carries the detached run next to the step 6 one.
+Nothing else in the body changes, so `pr-desc` writes it without a second
+before-and-after.
+
+### Step 12: Mark ready
+
+Flip the PR from draft to ready only when both hold:
+
+- Step 11 passed on this head. A green run in the working tree does not count,
+  and neither does a gate on an earlier head.
+- The user or the brief said ready is the review signal: the go-ahead named it
+  ("mark ready"), or the brief that started the task said to flip ready once
+  the gate is green.
+
+```bash
+gh pr ready <number>
+```
+
+Without the second condition, stop at draft and say so in the report. The
+default stays draft. Where CI runs only on ready PRs, the gate coming first is
+what keeps a broken head from spending CI minutes.
+
+### Step 13: Rebase after an upstream merge
+
+Run this when the default branch has moved under the branch: another PR
+merged, CI failed in code the diff never touched, the app offers to merge the
+base branch in, or the user says to rebase. Rebase, never merge. The
+`rebase-not-merge.sh` hook denies `git merge <default-branch>` on a feature
+branch in any case.
+
+```bash
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+git fetch origin "$base" "<branch>"
+old="$(git rev-parse "origin/<branch>")"
+before="$(git rev-list --count "origin/$base..$old")"
+git rebase "origin/$base"
+```
+
+On a conflict, resolve it by reading both sides. Never take one side wholesale,
+and never `--skip` a commit to get through. If it cannot be resolved with what
+you know, `git rebase --abort` and report the conflicting paths.
+
+Then run `verify` Step 7 to prove the git state, and run the gate on the
+rebased tree. A rebase is not complete until the tests pass on the rebased
+tree; a clean `git status` proves nothing.
+
+Push with a lease on the exact old head, and say before the push what the
+remote will see:
+
+```bash
+after="$(git rev-list --count "origin/$base..HEAD")"
+echo "before=$before after=$after"
+git log --oneline "origin/$base..HEAD"
+git push --force-with-lease="<branch>:$old" origin <branch>
+```
+
+The statement is precise: `origin/<branch>` moves from `$old` to the new head,
+the same `$after` commits sit on it under new shas, and no commit is discarded.
+When `before` and `after` differ, name the commit the rebase dropped and why,
+such as a commit left empty because the base already carried its change,
+before pushing. The `confirm-remote-writes.sh` hook asks the harness before
+the push; a go-ahead that named the rebase and the push has answered it in
+prose already. If the lease fails, someone pushed to the branch since the
+fetch: fetch again, read what arrived, and never fall back to a bare
+`--force`.
+
+A rebase that replayed the same commits did not change the diff, so the body
+stands. One that resolved a conflict may have: compare
+`git diff "origin/$base...HEAD" --stat` with what the body describes and run
+`pr-desc` in update mode when it differs. If the PR was already ready, run
+step 11 again on the new head and report the result.
+
+### Step 14: Clean up after the merge
+
+Run this when the PR has merged: the user says so, or the app's PR monitor
+reports it. Prove the merge before touching anything. A message saying
+"merged" is a claim, not a state.
+
+```bash
+gh pr view <number> --json state,mergedAt,mergeCommit,headRefName
+```
+
+`state` must read `MERGED`. If it reads anything else, stop and report it.
+
+Then work from the main checkout rather than from inside the worktree being
+removed:
+
+```bash
+main_checkout="$(git worktree list --porcelain | awk 'NR==1 { print $2 }')"
+git -C "$main_checkout" worktree remove ".claude/worktrees/<name>"
+git -C "$main_checkout" branch -D <branch>
+git -C "$main_checkout" fetch --prune origin
+git ls-remote --heads origin <branch>
+```
+
+The repo squash-merges, so the branch's commits are not ancestors of the
+default branch and `git branch -d` refuses them. The `MERGED` state above is
+the proof that makes `-D` safe. If `ls-remote` still lists the remote branch,
+GitHub did not delete it on merge, so delete it with
+`git -C "$main_checkout" push origin --delete <branch>`. The "merged" go-ahead
+covers that push: the branch is disposable once its PR has landed.
+
+Write the hand-over note where the brief says notes go. Without a brief, write
+a short note under `docs/plans/`, never committed. The note carries the PR
+number and merge commit, what landed in one or two lines, and what is left for
+the next phase.
+
+Prove the cleanup with the output of the commands, not with an empty listing
+alone: `git branch -D` prints `Deleted branch <name> (was <sha>)`, and
+`git worktree list` afterwards no longer shows the path. An empty
+`git branch --list <branch>` on its own is not evidence that a deletion
+happened.
+
+### Step 15: Report
 
 State plainly:
 
@@ -348,7 +547,15 @@ State plainly:
 - The commit message and sha
 - Any hook retries and what was root-caused
 - Push result, or that push was not requested
+- Whether `pr-desc` refreshed the body, or that the diff did not change
 - PR URL and draft status, or that no PR was requested
+- The gate on the detached checkout: head sha, command, exit code and the tail
+  of its output, or that it was not run
+- Whether the PR was marked ready, or why it stayed draft
+- After a rebase: the old and new head, the commit count before and after, and
+  that no commit was discarded
+- After a cleanup: the `MERGED` state, the `Deleted branch` line, and the
+  worktree list
 
 ## Common Mistakes
 
@@ -368,11 +575,22 @@ State plainly:
 | Filtering the artifact names with an anchored `^docs/plans/` | It misses `packages/x/docs/plans/note.md`, which then blocks the commit. Match unanchored, at any depth. |
 | Committing with nothing staged | Check `git status` first; report "nothing to commit". |
 | Choosing the wrong type, such as `feat` for a refactor | Match intent: user-visible is `feat`/`fix`, internal is `refactor`/`chore`. |
-| Pushing because the commit succeeded | Push is a separate step with its own confirmation. |
-| Opening a PR because the push succeeded | PR is a separate step with its own confirmation. |
-| Writing the PR body in this skill | Run `pr-desc` in create mode and use the title and body it hands back. |
+| Pushing after a request that said only "commit" | Push is its own remote write. Ask, and wait for the yes. |
+| Opening a PR after a request that said only "commit and push" | The PR is a further remote write. Ask again; the push's yes does not carry. |
+| Asking three times after one sentence that named push, PR and ready | One go-ahead answers everything it names. Run steps 9 to 12 and report. |
+| Leaving the body as it was after a push that changed the diff | Run `pr-desc` in update mode with the verify block and the new head. |
+| Writing the PR body in this skill | Run `pr-desc` and use the title and body it hands back. |
 | Adding release-type or version opinions to the PR | That is the repo owner's decision. |
 | A non-conventional PR title | Squash-merge makes it the commit on the default branch; CI rejects it. |
 | Opening a PR ready for review by default | Open as a draft unless told otherwise. |
+| Marking ready on the strength of the task worktree's green run | The gate runs on a clean detached checkout of the pushed head. Only that run flips ready. |
+| Marking ready when nobody said ready is the signal | Default stays draft. Flip only when the go-ahead or the brief named it. |
+| Gating one head and flipping ready on another | Re-run step 11 after every push. A gate proves the head it ran on. |
+| Merging the default branch into the branch | Rebase onto `origin/$base`. The hook denies the merge anyway. |
+| `git push --force` after a rebase | `--force-with-lease=<branch>:<old-sha>`, after stating that no commit is discarded, with the counts to show it. |
+| Calling the rebase done because `git status` is clean | `verify` Step 7, then the gate on the rebased tree. |
+| Cleaning up on the word "merged" alone | `gh pr view` must read `MERGED` first. |
+| `git worktree remove` from inside the worktree | Run it from the main checkout with `git -C`. |
+| An empty `git branch --list` offered as proof of deletion | Paste the `Deleted branch` line and the worktree list after. |
 | The agent as commit author, or a session link in the body | Repo owner is the author. Never put a session link or model name in the message. |
 | Adding a `Co-Authored-By` trailer yourself | Attribution belongs to the harness. Write the subject and body only. |

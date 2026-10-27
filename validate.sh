@@ -193,12 +193,12 @@ done
 
 for f in "$PLUGIN"/hooks/*.py; do
   [ -e "$f" ] || continue
-  if python3 -m py_compile "$f" 2>/dev/null; then
-    note "$f compiles"
+  # Parse only, so nothing is written to a bytecode cache the host may not allow.
+  if python3 -c 'import ast, sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$f" 2>/dev/null; then
+    note "$f parses"
   else
-    bad "$f: does not compile"
+    bad "$f: does not parse"
   fi
-  rm -rf "$(dirname "$f")/__pycache__"
 done
 
 # Static analysis is optional so a fresh clone still validates without shellcheck.

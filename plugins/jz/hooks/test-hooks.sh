@@ -71,6 +71,7 @@ check '"git commit -m \"add -u flag docs\""'   "commit message contains -u"    0
 check '"git -C . add -A"'                      "add -A behind a global option" 2
 check '"command git add ."'                    "add dot behind command"        2
 check '"git add -- src/a.ts"'                  "add a clean path after --"     0
+check '"env -u X git add docs/plans"'           "add behind env -u with an operand" 2
 
 # Past the 64KB pipe buffer, where the old relevance check took SIGPIPE and
 # failed open. Every path exists, so git resolves the list rather than rejecting it.
@@ -170,6 +171,12 @@ ask '"git push origin main # --force in a comment"' "force only in a trailing co
 ask '"echo '"'"'example;git push --force origin main'"'"'"' "separator inside quotes"       allow
 ask '"git log --oneline\ngit push -f"'           "push -f on a second line"       ask
 ask '"git push --force-with-lease \\\n origin x"' "lease then a continuation"     ask
+ask '"env -u GITHUB_TOKEN gh pr create --draft"'  "gh behind env -u with an operand" ask
+ask '"timeout --signal TERM 30 git push --force"' "push behind timeout --signal"   ask
+ask '"sudo -u root git push -f"'                 "push behind sudo -u"            ask
+ask '"nice -n 5 git push --force"'               "push behind nice -n"            ask
+ask '"env -- gh pr merge 5"'                     "gh after a double dash"         ask
+ask '"timeout -s TERM 30 git push"'              "plain push behind timeout -s"   allow
 
 printf '\nload-house-rules.sh\n'
 printf '  %-52s' "emits every rule file as context"

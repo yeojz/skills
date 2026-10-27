@@ -18,6 +18,24 @@ DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
 
 WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "stdbuf",
             "nice", "ionice", "xargs"}
+# Wrapper options whose value is the next token. An `--option=value` form is a
+# single token and needs no entry.
+WRAPPER_OPTIONS_WITH_VALUE = {
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string",
+            "--block-signal", "--default-signal", "--ignore-signal"},
+    "sudo": {"-u", "--user", "-g", "--group", "-C", "--close-from", "-D", "--chdir",
+             "-h", "--host", "-p", "--prompt", "-r", "--role", "-t", "--type",
+             "-U", "--other-user", "-T", "--command-timeout"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "nice": {"-n", "--adjustment"},
+    "ionice": {"-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid",
+               "-u", "--uid"},
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+    "time": {"-f", "--format", "-o", "--output"},
+    "xargs": {"-I", "-i", "--replace", "-n", "--max-args", "-L", "--max-lines",
+              "-l", "-P", "--max-procs", "-s", "--max-chars", "-d", "--delimiter",
+              "-E", "--eof", "-a", "--arg-file", "--process-slot-var"},
+}
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
 
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
@@ -122,9 +140,14 @@ def peel_wrappers(argv):
             break
         via_xargs = via_xargs or name == "xargs"
         rest.pop(0)
+        takes_value = WRAPPER_OPTIONS_WITH_VALUE.get(name, set())
         while rest and (rest[0].startswith("-") or DURATION.match(rest[0])
                         or ASSIGNMENT.match(rest[0])):
-            rest.pop(0)
+            option = rest.pop(0)
+            if option == "--":
+                break
+            if option in takes_value and rest:
+                rest.pop(0)
     return rest, via_xargs
 
 

@@ -18,11 +18,12 @@ DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
 
 WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "stdbuf",
             "nice", "ionice", "xargs"}
-# Wrapper options whose value is the next token. An `--option=value` form is a
-# single token and needs no entry.
+# Wrapper options whose value is always the next token. An `--option=value`
+# form is a single token and needs no entry. An option whose argument is
+# optional, such as env's --default-signal[=SIG] or xargs' -i[R], must stay out:
+# its bare form is followed by the executable, which must not be consumed.
 WRAPPER_OPTIONS_WITH_VALUE = {
-    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string",
-            "--block-signal", "--default-signal", "--ignore-signal"},
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
     "sudo": {"-u", "--user", "-g", "--group", "-C", "--close-from", "-D", "--chdir",
              "-h", "--host", "-p", "--prompt", "-r", "--role", "-t", "--type",
              "-U", "--other-user", "-T", "--command-timeout"},
@@ -32,9 +33,9 @@ WRAPPER_OPTIONS_WITH_VALUE = {
                "-u", "--uid"},
     "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
     "time": {"-f", "--format", "-o", "--output"},
-    "xargs": {"-I", "-i", "--replace", "-n", "--max-args", "-L", "--max-lines",
-              "-l", "-P", "--max-procs", "-s", "--max-chars", "-d", "--delimiter",
-              "-E", "--eof", "-a", "--arg-file", "--process-slot-var"},
+    "xargs": {"-I", "-n", "--max-args", "-L", "--max-lines", "-P", "--max-procs",
+              "-s", "--max-chars", "-d", "--delimiter", "-E", "--eof", "-a",
+              "--arg-file", "--process-slot-var"},
 }
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
 

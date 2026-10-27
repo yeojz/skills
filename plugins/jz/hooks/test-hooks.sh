@@ -72,6 +72,7 @@ check '"git -C . add -A"'                      "add -A behind a global option" 2
 check '"command git add ."'                    "add dot behind command"        2
 check '"git add -- src/a.ts"'                  "add a clean path after --"     0
 check '"env -u X git add docs/plans"'           "add behind env -u with an operand" 2
+check '"env --ignore-signal git add docs/plans"' "add behind bare --ignore-signal" 2
 
 # Past the 64KB pipe buffer, where the old relevance check took SIGPIPE and
 # failed open. Every path exists, so git resolves the list rather than rejecting it.
@@ -177,6 +178,12 @@ ask '"sudo -u root git push -f"'                 "push behind sudo -u"          
 ask '"nice -n 5 git push --force"'               "push behind nice -n"            ask
 ask '"env -- gh pr merge 5"'                     "gh after a double dash"         ask
 ask '"timeout -s TERM 30 git push"'              "plain push behind timeout -s"   allow
+ask '"env --default-signal git push --force"'    "push behind bare --default-signal" ask
+ask '"env --ignore-signal git push --force"'     "push behind bare --ignore-signal" ask
+ask '"env --block-signal gh pr create"'          "gh behind bare --block-signal"  ask
+ask '"env --default-signal=TERM git push -f"'    "push behind --default-signal=SIG" ask
+ask '"xargs -i git push --force"'                "push behind xargs -i"           ask
+ask '"xargs -l git push -f"'                     "push behind xargs -l"           ask
 
 printf '\nload-house-rules.sh\n'
 printf '  %-52s' "emits every rule file as context"

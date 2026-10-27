@@ -1,6 +1,7 @@
 .DS_Store
 node_modules/
 *.log
+__pycache__/
 
 # Claude Code working artifacts. Never committed, in this repo or any other.
 .claude/

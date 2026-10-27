@@ -191,6 +191,16 @@ for f in "${scripts[@]}"; do
   fi
 done
 
+for f in "$PLUGIN"/hooks/*.py; do
+  [ -e "$f" ] || continue
+  if python3 -m py_compile "$f" 2>/dev/null; then
+    note "$f compiles"
+  else
+    bad "$f: does not compile"
+  fi
+  rm -rf "$(dirname "$f")/__pycache__"
+done
+
 # Static analysis is optional so a fresh clone still validates without shellcheck.
 if command -v shellcheck >/dev/null 2>&1; then
   if shellcheck -S warning "${scripts[@]}"; then

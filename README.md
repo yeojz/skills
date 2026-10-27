@@ -59,12 +59,26 @@ repository's `AGENTS.md` instead.
 
 Earlier versions of this repo installed by symlinking into `~/.claude` and
 `~/.codex` with `install.sh`. Remove those links before installing the plugin,
-or every skill appears twice. From a checkout of the last commit that still
-has the installer:
+or every skill appears twice. The uninstaller only removes links that point
+into its own checkout, so run it from the checkout that created them, with the
+working tree clean, on the last commit that still has the old layout:
 
 ```bash
-git checkout 3adb7f1 -- install.sh && ./install.sh --uninstall claude codex && git checkout -- install.sh
+git checkout 3adb7f1
 ```
+
+```bash
+./install.sh --uninstall claude codex
+```
+
+```bash
+git checkout main
+```
+
+The first command puts the whole old layout back at the same path, the second
+removes the links and the settings entries, and the third returns to the
+current revision. If the links were created from a different clone, run the
+same three commands there.
 
 ---
 
@@ -135,6 +149,10 @@ also sets.
 | `confirm-remote-writes.sh` | PreToolUse on Bash | Asks before `gh pr create`, `gh pr merge` and any force push, including `--force-with-lease`, `-f` clusters and a `+refspec` |
 | `load-house-rules.sh` | SessionStart | Injects the rule files as context, since a plugin cannot ship always-on instructions |
 | `load-project-rules.sh` | SessionStart | Surfaces `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` at session start |
+
+The hooks that read a command line share one parser, `command_lines.py`, so a
+line continuation, a quoted separator, a trailing comment, a `timeout 30`
+wrapper or a `bash -c` script is read the way the shell will read it.
 
 The hooks have their own regression suite, which builds a throwaway repo and
 feeds each hook the payloads it will see. Exit 2 denies a tool call, exit 0

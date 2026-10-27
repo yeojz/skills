@@ -162,6 +162,14 @@ ask '"git push origin +main"'                   "push plus refspec"             
 ask '"git -C . push -f"'                        "push -f behind git -C"          ask
 ask '"nohup git push --force"'                  "push behind nohup"              ask
 ask '"/usr/bin/gh pr merge 5"'                  "gh through an absolute path"    ask
+ask '"git push origin \\\n  --force-with-lease"' "push with a line continuation"  ask
+ask '"gh pr create \\\n  --draft \\\n  --title t"'  "gh pr create across lines"      ask
+ask '"timeout 30 git push --force"'              "push behind timeout with a duration" ask
+ask '"bash -c \"git push --force\""'             "push inside bash -c"            ask
+ask '"git push origin main # --force in a comment"' "force only in a trailing comment" allow
+ask '"echo '"'"'example;git push --force origin main'"'"'"' "separator inside quotes"       allow
+ask '"git log --oneline\ngit push -f"'           "push -f on a second line"       ask
+ask '"git push --force-with-lease \\\n origin x"' "lease then a continuation"     ask
 
 printf '\nload-house-rules.sh\n'
 printf '  %-52s' "emits every rule file as context"

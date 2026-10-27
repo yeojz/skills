@@ -39,28 +39,20 @@ the call, exits 0 to allow it.
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
+
+sys.path.insert(0, sys.argv[1])
+from command_lines import (MAX_SHELL_DEPTH, git_call, lex, peel_wrappers,  # noqa: E402
+                           shell_script_argument, simple_commands)
 
 FORBIDDEN = re.compile(r"(^|/)(\.claude|docs/plans|\.plans)(/|$)")
 
 GIT_TIMEOUT_SECONDS = 5
-MAX_SHELL_DEPTH = 3
 MAX_REPORTED = 20
 
-SEPARATOR_CHARS = set("();<>|&\n")
-REDIRECTIONS = {"<", ">", ">>", "<<", "<&", ">&", "&>", "<<<", ">|"}
-ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
-DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
 SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 
-WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "stdbuf",
-            "nice", "ionice", "xargs"}
-SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
-
-GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
-                          "--exec-path", "--config-env"}
 STAGING_SUBCOMMANDS = {"add", "stage"}
 
 # --dry-run refuses to run beside these, and none of them change which paths the
@@ -81,131 +73,6 @@ class GitMissing(Exception):
 
 class Unresolvable(Exception):
     """git could not answer for this call, so the working tree is all we have."""
-
-
-def strip_comments(line):
-    """Drop each unquoted `# ...` run, the way a shell does, keeping the newline.
-
-    The lexer cannot do this itself: its commenter would swallow the newline and
-    with it every command on the following lines.
-    """
-    kept = []
-    quote = ""
-    index = 0
-    at_word_start = True
-    while index < len(line):
-        char = line[index]
-        index += 1
-        if quote:
-            kept.append(char)
-            if char == quote:
-                quote = ""
-            continue
-        if char == "\\":
-            kept.append(char)
-            if index < len(line):
-                kept.append(line[index])
-                index += 1
-            at_word_start = False
-            continue
-        if char in "'\"":
-            quote = char
-            kept.append(char)
-            at_word_start = False
-            continue
-        if char == "#" and at_word_start:
-            while index < len(line) and line[index] != "\n":
-                index += 1
-            continue
-        kept.append(char)
-        at_word_start = char in " \t\n;|&()"
-    return "".join(kept)
-
-
-def lex(line):
-    """Tokenise a command line, keeping newlines as command separators."""
-    lexer = shlex.shlex(strip_comments(line), posix=True,
-                        punctuation_chars="();<>|&\n")
-    lexer.whitespace_split = True
-    lexer.whitespace = " \t\r"
-    lexer.commenters = ""
-    return list(lexer)
-
-
-def simple_commands(tokens):
-    """Split a token stream on separators, newlines and subshell parentheses."""
-    current = []
-    drop_next = False
-    for token in tokens:
-        if drop_next:
-            drop_next = False
-            continue
-        if token in REDIRECTIONS:
-            drop_next = True
-            continue
-        if token and set(token) <= SEPARATOR_CHARS:
-            if current:
-                yield current
-            current = []
-            continue
-        current.append(token)
-    if current:
-        yield current
-
-
-def peel_wrappers(argv):
-    """Drop leading assignments and wrapper programs such as env, sudo or nohup.
-
-    Also reports whether the command was reached through xargs, whose pathspecs
-    arrive on a pipe this hook cannot see.
-    """
-    rest = list(argv)
-    via_xargs = False
-    while rest:
-        name = os.path.basename(rest[0])
-        if ASSIGNMENT.match(rest[0]):
-            rest.pop(0)
-            continue
-        if name not in WRAPPERS:
-            break
-        via_xargs = via_xargs or name == "xargs"
-        rest.pop(0)
-        while rest and (rest[0].startswith("-") or DURATION.match(rest[0])
-                        or ASSIGNMENT.match(rest[0])):
-            rest.pop(0)
-    return rest, via_xargs
-
-
-def shell_script_argument(argv):
-    """Return the script string of an `sh -c` or `bash -c` call, else None."""
-    if not argv or os.path.basename(argv[0]) not in SHELLS:
-        return None
-    for index, token in enumerate(argv[1:], start=1):
-        if not token.startswith("-") or token.startswith("--"):
-            continue
-        if "c" in token[1:] and index + 1 < len(argv):
-            return argv[index + 1]
-    return None
-
-
-def git_call(argv, directory):
-    """Return (subcommand, args, directory) for a git invocation, else None."""
-    if os.path.basename(argv[0]) != "git":
-        return None
-    index = 1
-    while index < len(argv) and argv[index].startswith("-"):
-        option = argv[index]
-        index += 1
-        if option == "-C" and index < len(argv):
-            directory = os.path.join(directory, argv[index])
-            index += 1
-        elif option.startswith("-C") and len(option) > 2:
-            directory = os.path.join(directory, option[2:])
-        elif option in GIT_OPTIONS_WITH_VALUE:
-            index += 1
-    if index >= len(argv):
-        return None
-    return argv[index], argv[index + 1:], os.path.normpath(directory)
 
 
 def plan_checks(command_line, directory, depth=0):
@@ -404,4 +271,4 @@ except Unresolvable:
 PY
 )"
 
-printf '%s' "$payload" | python3 -c "$inspector"
+printf '%s' "$payload" | python3 -B -c "$inspector" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -220,4 +220,149 @@ else
   fail=1
 fi
 
+printf '\nrebase-not-merge.sh\n'
+deny() {
+  # deny <json-quoted command> <label> <expected exit> <hook>
+  printf '  %-52s' "$2"
+  printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "$FIXTURE" \
+    | "$HOOK_DIR/$4" >/dev/null 2>&1
+  local got=$?
+  if [ "$got" = "$3" ]; then
+    echo "exit=$got PASS"
+  else
+    echo "exit=$got FAIL, expected $3"
+    fail=1
+  fi
+}
+
+# The fixture has no remote, so the hook falls back to the common default names.
+deny '"git status"'                              "git status"                     0 rebase-not-merge.sh
+deny '"git merge feature-x"'                     "merge a feature branch"         0 rebase-not-merge.sh
+deny '"git merge --abort"'                       "merge --abort"                  0 rebase-not-merge.sh
+deny '"git rebase origin/main"'                  "rebase onto main"               0 rebase-not-merge.sh
+deny '"git pull --rebase origin main"'           "pull --rebase main"             0 rebase-not-merge.sh
+deny '"git pull"'                                "plain pull of the upstream"     0 rebase-not-merge.sh
+deny '"git merge main"'                          "merge main"                     2 rebase-not-merge.sh
+deny '"git merge origin/main"'                   "merge origin/main"              2 rebase-not-merge.sh
+deny '"git merge --no-ff master"'                "merge --no-ff master"           2 rebase-not-merge.sh
+deny '"git pull origin main"'                    "pull main without rebase"       2 rebase-not-merge.sh
+deny '"git fetch && git merge origin/main"'      "merge main after &&"            2 rebase-not-merge.sh
+deny '"git -C . merge main"'                     "merge main behind git -C"       2 rebase-not-merge.sh
+deny '"git merge \\\n  origin/main"'             "merge main after a continuation" 2 rebase-not-merge.sh
+deny '"timeout 30 git merge main"'               "merge main behind timeout"      2 rebase-not-merge.sh
+deny '"echo '"'"'git merge main'"'"'"'            "merge main inside quotes"       0 rebase-not-merge.sh
+deny '"git merge feature # not main"'            "main only in a comment"         0 rebase-not-merge.sh
+deny '"git pull --rebase=false origin main"'     "pull main with --rebase=false"  2 rebase-not-merge.sh
+deny '"git pull --rebase --no-rebase origin main"' "pull main, --no-rebase last"   2 rebase-not-merge.sh
+deny '"git pull --no-rebase --rebase origin main"' "pull main, --rebase last"      0 rebase-not-merge.sh
+deny '"git pull --rebase=merges origin main"'    "pull main with --rebase=merges" 0 rebase-not-merge.sh
+git -C "$FIXTURE" config pull.rebase true
+deny '"git pull origin main"'                    "plain pull with pull.rebase=true" 0 rebase-not-merge.sh
+deny '"git -c pull.rebase=false pull origin main"' "pull main, -c false over config true" 2 rebase-not-merge.sh
+deny '"git -c pull.rebase=false pull --rebase origin main"' "pull main, --rebase over -c false" 0 rebase-not-merge.sh
+PULL_SETTING=false deny '"git --config-env pull.rebase=PULL_SETTING pull origin main"' "pull main, --config-env false over true" 2 rebase-not-merge.sh
+git -C "$FIXTURE" config --unset pull.rebase
+deny '"git -c pull.rebase=true pull origin main"' "pull main, -c true over unset config" 0 rebase-not-merge.sh
+deny '"git -c pull.rebase pull origin main"'     "pull main, bare -c pull.rebase"  0 rebase-not-merge.sh
+PULL_SETTING=true deny '"git --config-env=pull.rebase=PULL_SETTING pull origin main"' "pull main, --config-env true over unset" 0 rebase-not-merge.sh
+# branch.<current>.rebase outranks pull.rebase, as it does for git pull itself.
+FIXTURE_BRANCH="$(git -C "$FIXTURE" symbolic-ref --short HEAD)"
+git -C "$FIXTURE" config pull.rebase true
+git -C "$FIXTURE" config "branch.$FIXTURE_BRANCH.rebase" false
+deny '"git pull origin main"'                    "pull main, branch false over pull true" 2 rebase-not-merge.sh
+deny '"git pull --rebase origin main"'           "pull main, --rebase over branch false" 0 rebase-not-merge.sh
+deny "\"git -c branch.$FIXTURE_BRANCH.rebase=true pull origin main\"" "pull main, -c branch true over stored false" 0 rebase-not-merge.sh
+git -C "$FIXTURE" config pull.rebase false
+git -C "$FIXTURE" config "branch.$FIXTURE_BRANCH.rebase" true
+deny '"git pull origin main"'                    "pull main, branch true over pull false" 0 rebase-not-merge.sh
+deny '"git pull --no-rebase origin main"'        "pull main, --no-rebase over branch true" 2 rebase-not-merge.sh
+git -C "$FIXTURE" config --unset pull.rebase
+git -C "$FIXTURE" config --unset "branch.$FIXTURE_BRANCH.rebase"
+
+# A child repository whose default branch is stable, inside a fixture whose
+# default branch is main. Each command resolves the default where it runs.
+git init -q "$FIXTURE/child"
+echo c > "$FIXTURE/child/c.txt"
+git -C "$FIXTURE/child" add c.txt
+git -C "$FIXTURE/child" -c user.email=dev@example.com -c user.name=dev commit -q -m c
+git -C "$FIXTURE/child" update-ref refs/remotes/origin/stable HEAD
+git -C "$FIXTURE/child" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/stable
+git -C "$FIXTURE" update-ref refs/remotes/origin/main HEAD
+git -C "$FIXTURE" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+deny '"git merge origin/stable"'                 "merge stable in the main repo"  0 rebase-not-merge.sh
+deny '"git -C child merge origin/stable"'        "merge stable behind -C child"   2 rebase-not-merge.sh
+deny '"cd child && git merge origin/stable"'     "merge stable after cd child"    2 rebase-not-merge.sh
+deny '"git -C child merge origin/main"'          "merge main inside child"        0 rebase-not-merge.sh
+# A cd is scoped to its shell: a subshell restores the directory at `)`, a
+# pipeline element or a background job moves nothing, a brace group persists.
+deny '"(cd child && git status); git merge origin/main"' "merge main after a subshell cd" 2 rebase-not-merge.sh
+deny '"(cd child && git merge origin/stable)"'   "merge stable inside a subshell" 2 rebase-not-merge.sh
+deny '"echo $(cd child && git status); git merge origin/main"' "merge main after a substitution cd" 2 rebase-not-merge.sh
+deny '"cd child | git merge origin/main"'        "cd as a pipeline element"       2 rebase-not-merge.sh
+deny '"echo x | cd child; git merge origin/main"' "cd after a pipe"                2 rebase-not-merge.sh
+deny '"cd child & git merge origin/main"'        "cd as a background job"         2 rebase-not-merge.sh
+deny '"cd child && git merge origin/stable | cat"' "merge stable piped after cd"   2 rebase-not-merge.sh
+deny '"{ cd child; git merge origin/stable; }"'  "merge stable after cd in braces" 2 rebase-not-merge.sh
+deny '"{ cd child; git status; }; git merge origin/stable"' "merge stable after a brace group" 2 rebase-not-merge.sh
+
+printf '\nno-restricted-words.sh\n'
+printf '## Restricted words\n\n- oracle\n- predecessor\n' > "$FIXTURE/AGENTS.md"
+printf 'Summary with a tick \342\234\223 mark\n' > "$FIXTURE/body-emoji.md"
+printf 'Plain summary.\n\nCo-Authored-By: Claude <noreply@example.com>\n' > "$FIXTURE/body-trailer.md"
+printf 'Plain summary that mentions Claude Code and Codex as products.\n' > "$FIXTURE/body-clean.md"
+printf '{"body":"see claude://claude.ai/epitaxy/local_abc"}\n' > "$FIXTURE/input-link.json"
+
+deny '"git commit -m \"fix(core): handle empty input\""'          "plain commit message"           0 no-restricted-words.sh
+deny '"git commit -m \"docs: mention Claude Code and Codex\""'   "product names are allowed"      0 no-restricted-words.sh
+deny '"git commit -m \"feat: oracles plural is a different word\""' "restricted word inside a longer word" 0 no-restricted-words.sh
+deny '"gh pr view 5"'                                             "gh pr view"                     0 no-restricted-words.sh
+deny '"gh pr create --draft --body-file body-clean.md"'           "clean body file"                0 no-restricted-words.sh
+deny '"git commit -m \"feat: done ✅\""'                "commit message with an emoji"   2 no-restricted-words.sh
+deny '"git commit -m \"feat: x\" -m \"Co-Authored-By: Claude <a@example.com>\""' "attribution trailer in a commit" 2 no-restricted-words.sh
+deny '"git commit -m \"feat: tuned for claude-opus-5-5\""'        "model slug in a commit"         2 no-restricted-words.sh
+deny '"gh pr create --title t --body \"the oracle says\""'        "restricted word in a PR body"   2 no-restricted-words.sh
+deny '"gh pr comment 5 --body \"matches the predecessor repo\""'  "restricted word in a comment"   2 no-restricted-words.sh
+deny '"gh pr create --draft --body-file body-emoji.md"'           "emoji in a body file"           2 no-restricted-words.sh
+deny '"gh pr create --draft -F body-trailer.md"'                  "trailer in a body file via -F"  2 no-restricted-words.sh
+deny '"gh api repos/o/r/pulls/5/comments -f body=\"an Oracle again\""' "restricted word via gh api -f" 2 no-restricted-words.sh
+deny '"gh api --method POST repos/o/r/issues/5/comments --input input-link.json"' "session link via gh api --input" 2 no-restricted-words.sh
+deny '"gh pr review 5 --comment --body \"ok 👍\""'  "emoji in a review"              2 no-restricted-words.sh
+deny '"gh pr comment 5 \\\n  --body \"the oracle\""'   "restricted word after a continuation" 2 no-restricted-words.sh
+deny '"echo '"'"'git commit -m oracle'"'"'"'      "restricted word in echoed text" 0 no-restricted-words.sh
+deny '"git commit -am \"feat: oracle\""'          "restricted word via -am cluster" 2 no-restricted-words.sh
+deny '"git commit -sam \"feat: oracle\""'         "restricted word via -sam cluster" 2 no-restricted-words.sh
+deny '"git commit -a -m \"feat: fine\""'          "clean message after -a"         0 no-restricted-words.sh
+deny '"git commit -m \"feat: x\" --trailer \"Co-authored-by: Claude <a@example.com>\""' "attribution via --trailer" 2 no-restricted-words.sh
+deny '"git commit -m \"feat: x\" --trailer=Reviewed-by:dev"' "plain trailer"      0 no-restricted-words.sh
+python3 -c "import json;json.dump({'body':'Looks good '+chr(0x1f44d)},open('$FIXTURE/input-escaped.json','w'))"
+python3 -c "import json;json.dump({'body':'ok\n\nCo-Authored-By: Claude <a@example.com>'},open('$FIXTURE/input-trailer.json','w'))"
+python3 -c "import json;json.dump({'event':'COMMENT','body':'fine','comments':[{'path':'a','body':'the oracle'}]},open('$FIXTURE/input-nested.json','w'))"
+python3 -c "import json;json.dump({'body':'all fine here'},open('$FIXTURE/input-clean.json','w'))"
+deny '"gh api repos/o/r/issues/1/comments --input input-escaped.json"' "escaped emoji in JSON input" 2 no-restricted-words.sh
+deny '"gh api repos/o/r/issues/1/comments --input input-trailer.json"' "trailer in JSON input"     2 no-restricted-words.sh
+deny '"gh api repos/o/r/pulls/1/reviews --input input-nested.json"'    "restricted word in a nested review comment" 2 no-restricted-words.sh
+deny '"gh api repos/o/r/issues/1/comments --input input-clean.json"'   "clean JSON input"          0 no-restricted-words.sh
+mkdir -p "$FIXTURE/child"
+printf '## Restricted words\n\n- secretword\n' > "$FIXTURE/child/AGENTS.md"
+printf 'mentions secretword here\n' > "$FIXTURE/child/body.md"
+deny '"cd child && gh pr create --body-file body.md"' "body file resolved after cd child" 2 no-restricted-words.sh
+deny '"git -C child commit -m \"feat: secretword\""' "child policy behind -C child"    2 no-restricted-words.sh
+deny '"git commit -m \"feat: secretword\""'       "parent policy does not restrict it" 0 no-restricted-words.sh
+deny '"cd child && git commit -m \"feat: oracle\""' "parent policy not applied in child" 0 no-restricted-words.sh
+deny '"(cd child && git status); git commit -m \"feat: oracle\""' "parent policy after a subshell cd" 2 no-restricted-words.sh
+deny '"(cd child && git commit -m \"feat: secretword\")"' "child policy inside a subshell" 2 no-restricted-words.sh
+# src/ is an ordinary directory of the fixture repository: the root policy applies.
+printf 'the oracle\n' > "$FIXTURE/src/body.md"
+mkdir -p "$FIXTURE/src/deep"
+printf '## Restricted words\n\n- deepword\n' > "$FIXTURE/src/AGENTS.md"
+deny '"git -C src commit -am \"feat: oracle\""'  "root policy behind -C src"       2 no-restricted-words.sh
+deny '"cd src && git commit -am \"feat: oracle\""' "root policy after cd src"      2 no-restricted-words.sh
+deny '"cd src && gh pr create --body-file body.md"' "body file in src, root policy" 2 no-restricted-words.sh
+deny '"cd src/deep && git commit -m \"feat: deepword\""' "ancestor policy below the root" 2 no-restricted-words.sh
+deny '"cd src/deep && git commit -m \"feat: oracle\""' "root policy two levels down"  2 no-restricted-words.sh
+deny '"git commit -m \"feat: deepword\""'        "src policy not applied at the root" 0 no-restricted-words.sh
+deny '"cd src && git commit -m \"feat: fine\""'  "clean message in src"           0 no-restricted-words.sh
+rm -f "$FIXTURE"/input-*.json "$FIXTURE/child/AGENTS.md" "$FIXTURE/child/body.md" "$FIXTURE/src/body.md" "$FIXTURE/src/AGENTS.md"
+rm -f "$FIXTURE/AGENTS.md" "$FIXTURE"/body-*.md "$FIXTURE/input-link.json"
+
 exit "$fail"

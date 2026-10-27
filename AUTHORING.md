@@ -138,7 +138,9 @@ expectation that would also pass without the skill proves nothing.
 A rule file is plain markdown under `plugins/jz/rules/`: one H1, a flat list of
 imperative lines, no frontmatter, under 80 lines. Rules are always on and cost
 tokens in every session, so a line that a skill already enforces belongs in the
-skill, not here.
+skill, not here. `models.md` is the one rule that names models; it reaches a
+session through the hook only and `make-agents-md.sh` never writes it into a
+repository.
 
 ## Agent format
 
@@ -155,6 +157,30 @@ A template is plain markdown with no frontmatter, saved as `template.md`, or
 fills it in. There is no top-level `templates/`.
 
 ---
+
+## Enforcement
+
+A rule that nothing enforces is a correction waiting to recur. This table
+pairs each rule that has recurred with what now enforces it. A row whose
+enforcement is "nothing" and whose correction comes back is the next hook,
+lint or check to write, at the highest level that holds: structure, then a
+check that fails, then a test, with prose last.
+
+| Rule | Enforced by |
+|---|---|
+| Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts.sh`, PreToolUse |
+| Ask before `gh pr create`, `gh pr merge` and any force push | `confirm-remote-writes.sh`, PreToolUse |
+| Rebase onto the default branch, never merge it in | `rebase-not-merge.sh`, PreToolUse |
+| No emoji, attribution trailer, session link or model slug in commit or PR text | `no-restricted-words.sh`, PreToolUse |
+| A repository's own restricted words stay out of its PR text | `no-restricted-words.sh`, reading `## Restricted words` in `AGENTS.md` or `CLAUDE.md` |
+| Rules are read in every session | `load-house-rules.sh`, SessionStart |
+| Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
+| Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
+| Open as draft, mark ready only after the gate is green | nothing yet; `ship` describes it |
+| Model tier matches the job | nothing; `models.md` describes it |
+
+A repository lists its restricted words as bullets under a `## Restricted
+words` heading in `AGENTS.md` or `CLAUDE.md`, one word per bullet.
 
 ## House facts
 

@@ -106,8 +106,13 @@ def lex(line):
     return list(lexer)
 
 
-def simple_commands(tokens):
-    """Split a token stream on separators, newlines and subshell parentheses."""
+def command_segments(tokens):
+    """Yield each simple command as a list and each separator run as a string.
+
+    A separator run is a token made only of `;`, `|`, `&`, newlines and
+    parentheses, such as `&&`, `|` or `);`. The braces of a `{ ...; }` group
+    are dropped: they group commands without changing where they run.
+    """
     current = []
     drop_next = False
     for token in tokens:
@@ -121,10 +126,28 @@ def simple_commands(tokens):
             if current:
                 yield current
             current = []
+            yield token
+            continue
+        if token in {"{", "}"} and not current:
             continue
         current.append(token)
     if current:
         yield current
+
+
+def simple_commands(tokens):
+    """Split a token stream on separators, newlines and subshell parentheses."""
+    for segment in command_segments(tokens):
+        if isinstance(segment, list):
+            yield segment
+
+
+def is_pipe(separator):
+    return "|" in separator and separator != "||"
+
+
+def is_background(separator):
+    return separator == "&"
 
 
 def takes_separate_value(option, takes_value):
@@ -183,40 +206,99 @@ def shell_script_argument(argv):
     return None
 
 
-def git_call(argv, directory):
-    """Return (subcommand, args, directory) for a git invocation, else None."""
+def git_global_options(argv):
+    """Split a git invocation into (options, rest), or None for another program.
+
+    Options are (name, value) pairs, value None for a flag; rest starts at the
+    subcommand. An `--option=value` token is split into its two parts.
+    """
     if os.path.basename(argv[0]) != "git":
         return None
+    options = []
     index = 1
     while index < len(argv) and argv[index].startswith("-"):
-        option = argv[index]
+        token = argv[index]
         index += 1
-        if option == "-C" and index < len(argv):
-            directory = os.path.join(directory, argv[index])
+        if token in GIT_OPTIONS_WITH_VALUE:
+            options.append((token, argv[index] if index < len(argv) else ""))
             index += 1
-        elif option.startswith("-C") and len(option) > 2:
-            directory = os.path.join(directory, option[2:])
-        elif option in GIT_OPTIONS_WITH_VALUE:
-            index += 1
-    if index >= len(argv):
+        elif token.startswith("--") and "=" in token:
+            options.append(tuple(token.split("=", 1)))
+        else:
+            options.append((token, None))
+    return options, argv[index:]
+
+
+def git_call(argv, directory):
+    """Return (subcommand, args, directory) for a git invocation, else None."""
+    split = git_global_options(argv)
+    if split is None or not split[1]:
         return None
-    return argv[index], argv[index + 1:], os.path.normpath(directory)
+    options, rest = split
+    for name, value in options:
+        if name == "-C":
+            directory = os.path.join(directory, value)
+    return rest[0], rest[1:], os.path.normpath(directory)
 
 
-def commands_in(command_line, depth=0):
-    """Yield (argv, via_xargs) for every simple command, wrappers peeled.
+def git_config_overrides(argv):
+    """The `-c` and `--config-env` options of a git call, as tokens for another git call.
 
-    A `bash -c "..."` script is expanded in place, up to MAX_SHELL_DEPTH.
-    Raises ValueError on unbalanced quotes.
+    Passing them to a `git config` query makes git itself resolve the one-off
+    override over the stored value, the way the inspected command will.
     """
-    for words in simple_commands(lex(command_line)):
-        argv, via_xargs = peel_wrappers(words)
+    split = git_global_options(argv)
+    if split is None:
+        return []
+    passed = []
+    for name, value in split[0]:
+        if name in {"-c", "--config-env"} and value is not None:
+            passed.extend([name, value])
+    return passed
+
+
+def commands_with_directory(command_line, directory, depth=0):
+    """Yield (argv, via_xargs, directory) for every simple command.
+
+    Wrappers are peeled, a `bash -c "..."` script is expanded in place up to
+    MAX_SHELL_DEPTH, and a `cd` moves the directory the commands after it run
+    in, within its own shell scope: a `( ... )` subshell restores the outer
+    directory at `)`, and a `cd` that is a pipeline element or a background job
+    runs in a subshell of its own and moves nothing. `git -C` is not applied
+    here; git_call resolves it per call. Raises ValueError on unbalanced quotes.
+    """
+    scopes = [directory]
+    moved_to = None
+    previous_separator = ""
+    for segment in command_segments(lex(command_line)):
+        if isinstance(segment, str):
+            if moved_to is not None and not is_pipe(segment) and not is_background(segment):
+                scopes[-1] = moved_to
+            moved_to = None
+            for char in segment:
+                if char == "(":
+                    scopes.append(scopes[-1])
+                elif char == ")" and len(scopes) > 1:
+                    scopes.pop()
+            previous_separator = segment
+            continue
+        argv, via_xargs = peel_wrappers(segment)
         if not argv:
             continue
         script = shell_script_argument(argv)
         if script is not None:
             if depth < MAX_SHELL_DEPTH:
-                for inner in commands_in(script, depth + 1):
+                for inner in commands_with_directory(script, scopes[-1], depth + 1):
                     yield inner
             continue
+        if argv[0] == "cd" and len(argv) > 1:
+            if not is_pipe(previous_separator):
+                moved_to = os.path.normpath(os.path.join(scopes[-1], argv[1]))
+            continue
+        yield argv, via_xargs, scopes[-1]
+
+
+def commands_in(command_line, depth=0):
+    """Yield (argv, via_xargs) for every simple command, directory ignored."""
+    for argv, via_xargs, _ in commands_with_directory(command_line, ".", depth):
         yield argv, via_xargs

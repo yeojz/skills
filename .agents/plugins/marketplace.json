@@ -1,7 +1,7 @@
 {
-  "name": "yeojz",
+  "name": "yeojz-skills",
   "interface": {
-    "displayName": "yeojz"
+    "displayName": "yeojz-skills"
   },
   "plugins": [
     {

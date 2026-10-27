@@ -20,7 +20,7 @@ In a session:
 
 ```text
 /plugin marketplace add yeojz/skills
-/plugin install jz@yeojz
+/plugin install jz@yeojz-skills
 ```
 
 Or from a shell:
@@ -30,12 +30,12 @@ claude plugin marketplace add yeojz/skills
 ```
 
 ```bash
-claude plugin install jz@yeojz
+claude plugin install jz@yeojz-skills
 ```
 
 Start a new session so the rules and hooks load. Claude Code leaves
 auto-update off for third-party marketplaces, so to pick up new commits run
-`claude plugin marketplace update yeojz` and then `claude plugin update jz@yeojz`,
+`claude plugin marketplace update yeojz-skills` and then `claude plugin update jz@yeojz-skills`,
 or turn auto-update on for the marketplace under `/plugin`.
 
 ### Codex
@@ -45,7 +45,7 @@ codex plugin marketplace add yeojz/skills
 ```
 
 ```bash
-codex plugin add jz@yeojz
+codex plugin add jz@yeojz-skills
 ```
 
 Then start a new session. `codex plugin marketplace upgrade` refreshes the

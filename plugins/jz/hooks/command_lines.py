@@ -24,6 +24,8 @@ WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "stdbuf",
 # form is a single token and needs no entry. An option whose argument is
 # optional, such as env's --default-signal[=SIG] or xargs' --eof[=EOF], stays
 # out: its bare form is followed by the executable, which must not be consumed.
+# getopt_long also accepts any unambiguous abbreviation of a long option, so a
+# token is matched as a prefix of these names, never only as an exact name.
 WRAPPER_OPTIONS_WITH_VALUE = {
     "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "--quoting-style"},
     "sudo": {"-u", "--user", "-g", "--group", "-C", "--close-from", "-D", "--chdir",
@@ -125,6 +127,22 @@ def simple_commands(tokens):
         yield current
 
 
+def takes_separate_value(option, takes_value):
+    """Whether a wrapper option consumes the next token as its value.
+
+    A short option matches exactly. A long option matches as getopt_long does,
+    as an unambiguous prefix of one known name; an ambiguous prefix makes the
+    program itself refuse to run, so nothing is consumed for it.
+    """
+    if not option.startswith("--"):
+        return option in takes_value
+    if "=" in option:
+        return False
+    matches = [name for name in takes_value
+               if name.startswith("--") and name.startswith(option)]
+    return len(matches) == 1 or option in matches
+
+
 def peel_wrappers(argv):
     """Drop leading assignments and wrapper programs such as env, sudo or nohup.
 
@@ -148,7 +166,7 @@ def peel_wrappers(argv):
             option = rest.pop(0)
             if option == "--":
                 break
-            if option in takes_value and rest:
+            if rest and takes_separate_value(option, takes_value):
                 rest.pop(0)
     return rest, via_xargs
 

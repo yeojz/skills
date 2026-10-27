@@ -73,6 +73,7 @@ check '"command git add ."'                    "add dot behind command"        2
 check '"git add -- src/a.ts"'                  "add a clean path after --"     0
 check '"env -u X git add docs/plans"'           "add behind env -u with an operand" 2
 check '"env --ignore-signal git add docs/plans"' "add behind bare --ignore-signal" 2
+check '"time --output t.log git add docs/plans"' "add behind time --output FILE" 2
 
 # Past the 64KB pipe buffer, where the old relevance check took SIGPIPE and
 # failed open. Every path exists, so git resolves the list rather than rejecting it.
@@ -190,6 +191,12 @@ ask '"xargs --eof=END git push -f"'              "push behind --eof=END"        
 ask '"xargs --max-lines=2 git push"'             "plain push behind --max-lines=2" allow
 ask '"xargs -E END git push --force"'            "push behind xargs -E with a value" ask
 ask '"xargs -L 2 git push"'                      "plain push behind xargs -L"     allow
+ask '"/usr/bin/time --output result.log git push --force"' "push behind time --output FILE" ask
+ask '"time --output-file result.log git push -f"' "push behind time --output-file FILE" ask
+ask '"time --out result.log git push --force"'   "push behind an abbreviated long option" ask
+ask '"time --output result.log git push"'        "plain push behind time --output" allow
+ask '"env --uns GITHUB_TOKEN gh pr create"'      "gh behind abbreviated env --unset" ask
+ask '"time --output=result.log git push"'        "plain push behind attached --output=" allow
 
 printf '\nload-house-rules.sh\n'
 printf '  %-52s' "emits every rule file as context"

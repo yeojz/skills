@@ -1,62 +1,98 @@
-# agent-config
+# skills
 
-Portable coding-agent setup: skills, always-on rules, review agents and hooks.
-Clone it on any machine, run `./install.sh`, and they all behave the same.
+Portable coding-agent setup: skills, always-on rules, review personas and
+hooks, packaged as one plugin, `jz`, in a marketplace that Claude Code and
+Codex both read. Add the marketplace on any machine and the agents behave the
+same.
 
-Everything is symlinked into `~/.claude` (and, for the `codex` target, into
-`~/.codex`), so `git pull` here updates every machine without reinstalling.
-
-The hooks run under Claude Code's hook contract, which Codex's wire format
-also matches. Skills are written in the `SKILL.md` format that both Claude
-Code and Codex load. The rules, agent personas and templates are plain
-markdown, so any agent that reads an instruction file can use them. See Using
-this with Codex below.
+Every skill is invoked as `/jz:<name>`, for example `/jz:verify` or
+`/jz:ship`. The rules, the personas and the hooks load with the plugin.
 
 ---
 
 ## Install
 
-Requirements: `bash`, `git`, `make` and `python3`. `shellcheck` is optional;
-`validate.sh` uses it when present.
+Requirements: `bash`, `git` and `python3` on the machine that runs the hooks.
 
-```bash
-git clone <repository url> ~/code/agent-config
-cd ~/code/agent-config
-./install.sh
+### Claude Code
+
+In a session:
+
+```text
+/plugin marketplace add yeojz/skills
+/plugin install jz@yeojz
 ```
 
-Then start a new Claude Code session so the rules and hooks load.
+Or from a shell:
 
-| Command | Effect |
-|---|---|
-| `./install.sh` | Install or refresh Claude Code (the default target) |
-| `./install.sh codex` | Install or refresh Codex CLI instead |
-| `./install.sh claude codex` | Install or refresh both |
-| `./install.sh --no-skills` | Install everything except `skills/`, for when something else (e.g. `npx skills add`) owns them |
-| `./install.sh --dry-run` | Print what would change, touch nothing |
-| `./install.sh --uninstall` | Remove this repo's symlinks and settings entries from the given target(s) |
+```bash
+claude plugin marketplace add yeojz/skills
+```
 
-The installer never overwrites a file it did not create. An existing file, or a
-symlink that points somewhere else, is skipped and reported; only a dangling
-link is replaced. Claude's `settings.json` and Codex's `hooks.json` are each
-backed up to a `.install-backup/` directory beside them before any merge that
-changes them, and only this repo's own hook and permission entries are added
-or removed.
+```bash
+claude plugin install jz@yeojz
+```
 
-Set `CLAUDE_CONFIG_DIR` to install somewhere other than `~/.claude`, and
-`CODEX_HOME` to install somewhere other than `~/.codex`. The `codex` target
-creates that directory if it does not exist yet.
+Start a new session so the rules and hooks load. Claude Code leaves
+auto-update off for third-party marketplaces, so to pick up new commits run
+`claude plugin marketplace update yeojz` and then `claude plugin update jz@yeojz`,
+or turn auto-update on for the marketplace under `/plugin`.
+
+### Codex
+
+```bash
+codex plugin marketplace add yeojz/skills
+```
+
+```bash
+codex plugin add jz@yeojz
+```
+
+Then start a new session. `codex plugin marketplace upgrade` refreshes the
+snapshot after new commits. On Codex CLI 0.164.0 the skills load as
+`jz:<name>`. Codex runs a plugin's hooks only after you trust them once, from
+`/hooks` in an interactive session; until then the rules do not arrive at
+session start, and `make-agents-md.sh` below writes them into the
+repository's `AGENTS.md` instead.
+
+### Upgrading from the symlink installer
+
+Earlier versions of this repo installed by symlinking into `~/.claude` and
+`~/.codex` with `install.sh`. Remove those links before installing the plugin,
+or every skill appears twice. The uninstaller only removes links that point
+into its own checkout, so run it from the checkout that created them, with the
+working tree clean, on the last commit that still has the old layout:
+
+```bash
+git checkout 3adb7f1
+```
+
+```bash
+./install.sh --uninstall claude codex
+```
+
+```bash
+git checkout main
+```
+
+The first command puts the whole old layout back at the same path, the second
+removes the links and the settings entries, and the third returns to the
+current revision. If the links were created from a different clone, run the
+same three commands there.
 
 ---
 
 ## What is in here
 
 ```
-skills/      loaded on demand when a request matches the description;
-             a skill that fills in a template carries it as template.md
-rules/       always on, injected into every session
-agents/      four read-only review personas the audit skill fans out to
-hooks/       shell scripts plus the settings.json fragment that wires them up
+.claude-plugin/marketplace.json   the marketplace, for Claude Code
+.agents/plugins/marketplace.json  the same marketplace, for Codex
+plugins/jz/                       the plugin
+  skills/      loaded on demand when a request matches the description;
+               a skill that fills in a template carries it as template.md
+  rules/       always on, injected at session start by a hook
+  agents/      four read-only review personas the audit skill fans out to
+  hooks/       the hook scripts and the hooks.json that wires them up
 ```
 
 ### Skills
@@ -83,12 +119,15 @@ hooks/       shell scripts plus the settings.json fragment that wires them up
 `verify` is the one the others depend on. It is what stops "done" from meaning
 "probably done".
 
-`audit` fans out to the four personas under `agents/`: `principal-engineer`,
-`security-engineer`, `test-engineer` and `technical-writer`.
+`audit` fans out to the four personas under `agents/`, which install as the
+subagent types `jz:principal-engineer`, `jz:security-engineer`,
+`jz:test-engineer` and `jz:technical-writer`.
 
 ### Rules
 
 Always-on and deliberately short, because they cost tokens in every session.
+A plugin cannot ship rule files directly, so the `load-house-rules.sh` hook
+injects them at session start.
 
 | File | Covers |
 |---|---|
@@ -101,48 +140,40 @@ Always-on and deliberately short, because they cost tokens in every session.
 ### Hooks
 
 Some rules are enforcement problems, and a rule can be ignored while a hook
-cannot.
+cannot. `hooks.json` wires these up with `${CLAUDE_PLUGIN_ROOT}`, which Codex
+also sets.
 
 | Hook | Event | Effect |
 |---|---|---|
 | `no-claude-artifacts.sh` | PreToolUse on Bash | Blocks any staging or commit that would include `.claude/`, `docs/plans/` or `.plans/` |
+| `confirm-remote-writes.sh` | PreToolUse on Bash | Asks before `gh pr create`, `gh pr merge` and any force push, including `--force-with-lease`, `-f` clusters and a `+refspec` |
+| `load-house-rules.sh` | SessionStart | Injects the rule files as context, since a plugin cannot ship always-on instructions |
 | `load-project-rules.sh` | SessionStart | Surfaces `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` at session start |
 
-The installer also adds `gh pr create`, `gh pr merge` and force-push to the
-`permissions.ask` list, so remote writes need a confirmation. The force-push
-entries cover `--force`, `--force-with-lease` and `-f`, both directly after
-`git push` and after a remote (`git push <remote> --force`), plus a `+refspec`.
+The hooks that read a command line share one parser, `command_lines.py`, so a
+line continuation, a quoted separator, a trailing comment, a `timeout 30`
+wrapper or a `bash -c` script is read the way the shell will read it.
 
 The hooks have their own regression suite, which builds a throwaway repo and
-checks the exit code for each case. Exit 2 denies the tool call, exit 0 allows
-it.
+feeds each hook the payloads it will see. Exit 2 denies a tool call, exit 0
+allows it, and an ask decision is read from the output.
 
 ```bash
-./hooks/test-hooks.sh
+make test
 ```
 
-`make validate` runs it, along with format checks over every skill, rule, agent
-and template, `bash -n` and `shellcheck` over every script, and a check that
-every skill is listed in this README. Run it before committing a change here.
+`make validate` runs it, along with checks over the four manifests, every
+skill, rule, agent and template, `bash -n` and `shellcheck` over every script,
+`claude plugin validate` when the Claude Code CLI is installed, and a check
+that every skill is listed in this README. Run it before committing a change
+here.
 
 ---
 
-## Using this with Codex
+## Rules as an AGENTS.md block
 
-Run `./install.sh codex` (or `./install.sh claude codex` for both). It mirrors
-the Claude side into `$CODEX_HOME` (`~/.codex` by default), creating the
-directory if it does not exist yet: `skills/*` into `~/.codex/skills`,
-`agents/*.md` into `~/.codex/agents`, and the hooks into `~/.codex/hooks.json`.
-All of it is symlinked or merged back into this repo, so the two runtimes read
-one source of truth and a `git pull` updates both.
-
-Codex loads `~/.codex/skills/<name>/SKILL.md` with the same `name` and
-`description` frontmatter, so the same files serve both. It has no documented
-agents directory, so those links are there to make a persona file resolvable on
-disk when a skill reads one directly, not because Codex loads them itself.
-
-Rules are always-on in Claude Code through `~/.claude/rules`. Codex reads an
-instruction file in the repository instead, so write the rules into one:
+An agent that reads an instruction file in the repository rather than loading
+plugins can still get the rules:
 
 ```bash
 ./make-agents-md.sh ~/code/some-project
@@ -150,16 +181,10 @@ instruction file in the repository instead, so write the rules into one:
 ./make-agents-md.sh --help
 ```
 
-That writes every file in `rules/` into `AGENTS.md` in the target repo, between
-delimiter comments. Re-running replaces only the generated block, so anything
-you wrote by hand around it survives. Edit the rules here and re-run to update.
-
-Codex's hook wire format matches Claude Code's (PreToolUse, SessionStart,
-`hookSpecificOutput`, exit 2 denies), so the same two hook scripts run under
-either runtime; only the settings fragment's `permissions` block is Claude
-Code only, since Codex's `hooks.json` has no such key. Codex still requires a
-one-time review before a hook it did not ship runs: open Codex and run
-`/hooks` to inspect and trust the entries this installer added.
+That writes every file in `plugins/jz/rules/` into `AGENTS.md` in the target
+repo, between delimiter comments. Re-running replaces only the generated block,
+so anything you wrote by hand around it survives. Edit the rules here and
+re-run to update.
 
 The agent personas under `agents/` are ordinary prompts, and the templates are
 ordinary markdown, so pointing another agent at one works by hand.
@@ -169,8 +194,9 @@ ordinary markdown, so pointing another agent at one works by hand.
 ## Working on this repo
 
 Read [AUTHORING.md](AUTHORING.md) before adding or editing anything. It defines
-the skill, rule, agent and template formats and the house facts every skill
-assumes. [CONTRIBUTING.md](CONTRIBUTING.md) has the pull request checklist.
+the layout, the skill, rule, agent and template formats and the house facts
+every skill assumes. [CONTRIBUTING.md](CONTRIBUTING.md) has the pull request
+checklist.
 
 Each skill carries `evals/evals.json`, a transcript-review checklist of prompts
 and observable expectations. `validate.sh` enforces its structure, so behaviour

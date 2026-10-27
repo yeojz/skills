@@ -1,0 +1,19 @@
+{
+  "name": "yeojz",
+  "interface": {
+    "displayName": "yeojz"
+  },
+  "plugins": [
+    {
+      "name": "jz",
+      "source": {
+        "source": "local",
+        "path": "./plugins/jz"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Engineering"
+    }
+  ]
+}

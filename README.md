@@ -98,9 +98,11 @@ plugins/jz/                       the plugin
 ### Skills
 
 A change usually runs through the skills in this order. `grill` or `audit`
-settles what to build and leaves a plan. `execute-plan` works the plan item by
-item, reaching for `tdd`, `debug`, `coverage`, `design-critique`, `docs-sync`
-or `deps-guard` as the item demands. `verify` gates every done claim. `ship`
+settles what to build and leaves a plan. `coordinate` drives a roadmap of
+phases through the rest of the loop, one fresh session per phase and one per
+review. `execute-plan` works the plan item by item, reaching for `tdd`,
+`debug`, `coverage`, `design-critique`, `docs-sync` or `deps-guard` as the
+item demands. `verify` gates every done claim. `ship`
 commits, pushes and opens the draft PR, `pr-desc` writes its body, `review`
 handles the comments, and `release` follows a merge. `handoff` carries the
 state when context runs out.
@@ -110,6 +112,7 @@ state when context runs out.
 | Skill | Use it for |
 |---|---|
 | `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land |
+| `coordinate` | Drive a roadmap to merge-ready: fill the phase and review briefs from their templates, one fresh worker session per phase and one fresh reviewer per PR, keep the units and decisions ledgers, report one line per PR |
 | `audit` | Read-only repo assessment that writes a prioritised plan file |
 | `naming` | Lettered naming options with trade-offs, then rename everywhere |
 

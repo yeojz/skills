@@ -176,7 +176,7 @@ check that fails, then a test, with prose last.
 | Rules are read in every session | `load-house-rules.sh`, SessionStart |
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
-| Open as draft, mark ready only after the gate is green | nothing yet; `ship` describes it |
+| Open as draft, mark ready only after the gate is green | `ship` steps 11 and 12: the pushed head is gated on a clean detached checkout, and ready is flipped only when a go-ahead or brief named it; no hook yet |
 | Model tier matches the job | nothing; `models.md` describes it |
 
 A repository lists its restricted words as bullets under a `## Restricted

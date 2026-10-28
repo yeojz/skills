@@ -172,6 +172,7 @@ check that fails, then a test, with prose last.
 | Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts.sh`, PreToolUse |
 | Ask before a `gh pr create` without `--draft`, `gh pr ready`, `gh pr merge` and any force push | `confirm-remote-writes.sh`, PreToolUse |
 | Rebase onto the default branch, never merge it in | `rebase-not-merge.sh`, PreToolUse |
+| No secret, token or credential reaches a remote | `scan-secrets-before-push.sh`, PreToolUse, through betterleaks or gitleaks when installed |
 | No emoji, attribution trailer, session link or model slug in commit or PR text | `no-restricted-words.sh`, PreToolUse |
 | A repository's own restricted words stay out of its PR text | `no-restricted-words.sh`, reading `## Restricted words` in `AGENTS.md` or `CLAUDE.md` |
 | Rules are read in every session | `load-house-rules.sh`, SessionStart |

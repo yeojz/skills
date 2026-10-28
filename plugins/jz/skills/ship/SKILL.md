@@ -360,7 +360,9 @@ sha. When either check fails, the step 6 run was a dirty working-tree run:
 its bullets are labelled `working tree before commit` and carry no sha, and in
 any mode that pushes, the gate runs on the commit before the push, using the
 step 11 checkout detached at local `HEAD` instead of the fetched remote head.
-That run carries the sha. A user-excluded path left in the tree fails the
+That run carries the sha and comes back here as evidence only: no PR is
+touched before the push, and steps 9 and 10 publish it with the rest of the
+block once the head is on the remote. A user-excluded path left in the tree fails the
 second check on purpose: `verify` ran with it present, and nothing shows it
 did not matter.
 
@@ -445,9 +447,18 @@ gate_dir="$(mktemp -d)"
 git worktree add --detach "$gate_dir" "$head"
 ```
 
-When step 8 sends you here before the push, use `HEAD` in place of
-`origin/<branch>` and skip the fetch; the detached copy is still what proves
-the commit, since the working tree is not it.
+This step has two callers, and they differ in where the run goes afterwards:
+
+| Called from | Checkout | The run is |
+|---|---|---|
+| Step 10, after the push, in ship-to-ready mode | `origin/<branch>` after the fetch above | Published: handed to `pr-desc` in refresh mode, below |
+| Step 8, before the push, when the tree identity check failed | Local `HEAD`, no fetch | Evidence only: carried back to step 8 with HEAD's sha and the `clean detached checkout` label, and nothing is written to any PR |
+
+In the pre-push case the detached copy is still what proves the commit, since
+the working tree is not it. There may be no PR yet, and when there is one its
+body describes the previous remote head, so neither refresh nor update can
+run before the push. Step 9 updates an existing body or step 10 creates one,
+after the push, with this run in the block.
 
 Inside `$gate_dir`, install from the lock file when the repo has one, with
 `pnpm install --frozen-lockfile` or the equivalent for the package manager
@@ -469,15 +480,20 @@ git worktree remove --force "$gate_dir"
 git worktree prune
 ```
 
-On a failing gate, stay draft. Root-cause it with `verify` Step 5 in the task
-worktree, commit the fix, and return to step 9: the fix is a new push, so the
-body is refreshed and the gate runs again on the new head. Bound this at 3
-rounds, then stop and report what is blocking.
+On a failing gate, nothing is published and nothing is flipped. Root-cause it
+with `verify` Step 5 in the task worktree and commit the fix. From the
+post-push caller, return to step 9: the fix is a new push, so the body is
+refreshed and the gate runs again on the new head. From the pre-push caller,
+return to step 8 with the fix committed; the tree identity check runs again
+on the new commit. Bound this at 3 rounds either way, then stop and report
+what is blocking.
 
-On a green gate, hand the run and the head sha to `pr-desc` in refresh mode,
-so the Verification section carries the detached run next to the step 6 one.
-Nothing else in the body changes, so `pr-desc` writes it without a second
-before-and-after.
+On a green gate from the post-push caller, hand the run and the head sha to
+`pr-desc` in refresh mode, so the Verification section carries the detached
+run next to the step 6 one. Nothing else in the body changes, so `pr-desc`
+writes it without a second before-and-after. On a green gate from the
+pre-push caller, go back to step 8 with the run; the push has not happened yet
+and the body is written or updated after it.
 
 ### Step 12: Mark ready
 
@@ -682,6 +698,7 @@ State plainly:
 | Committing with nothing staged | Check `git status` first; report "nothing to commit". |
 | Stopping at "nothing to commit" when the go-ahead came after the commit | Commits ahead of `origin/$base` are the work. Skip step 8 and continue at step 9. |
 | Labelling the step 6 run with the pushed sha | It ran on the working tree. Prove the committed tree is that tree in step 8, or label it `working tree before commit` and gate the commit detached. |
+| Refreshing or editing a PR from the pre-push gate | Before the push there may be no PR, and an existing body describes the old head. Carry the run back to step 8; steps 9 and 10 publish it after the push. |
 | Retrying a failed hook without re-running `verify` on the fix | The earlier run proved a tree that no longer exists. Step 6 again, then re-stage. |
 | Choosing the wrong type, such as `feat` for a refactor | Match intent: user-visible is `feat`/`fix`, internal is `refactor`/`chore`. |
 | Pushing after a request that said only "commit" | Push is its own remote write. Ask, and wait for the yes. |

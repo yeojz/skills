@@ -139,6 +139,23 @@
         "Agent pastes git worktree list after the removal as evidence",
         "Agent does NOT offer an empty git branch --list on its own as proof that the branch was deleted"
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "Commit, push and open a PR for /tmp/eval-ship-9-ws. Leave scratch/notes.md out of the commit, it's my own working file. The branch is feat/parser-stream-rows and no PR exists yet.",
+      "expected_output": "Agent formats, lint-fixes, runs verify on the working tree, stages everything except scratch/notes.md and the artifact paths, records the staged tree and commits. After the commit the enumeration still lists scratch/notes.md, so the tree identity check fails: the agent labels the verify run 'working tree before commit' with no sha and, because the request named a push, gates the commit first on a detached checkout of local HEAD in a throwaway worktree, carrying the result back as evidence. It does not run gh pr view, gh pr edit or pr-desc in refresh or update mode at that point, since no PR exists. It then pushes, runs pr-desc in create mode with both runs in the block, and opens a draft PR whose Verification section has the detached run under the commit's sha and the earlier run under the working-tree label. The PR stays a draft.",
+      "files": [],
+      "expectations": [
+        "Agent excludes scratch/notes.md from staging as the user requested",
+        "Agent records the staged tree before committing and checks the committed tree and the enumeration afterwards",
+        "Agent treats the leftover scratch/notes.md as a failed identity check and labels the verify run 'working tree before commit' with no sha",
+        "Agent gates the commit on a detached checkout of local HEAD before pushing, and removes the throwaway worktree afterwards",
+        "Agent does NOT run gh pr view, gh pr edit, or pr-desc in refresh or update mode before the push, because no PR exists yet",
+        "Agent pushes only after the detached gate exited 0",
+        "Agent runs pr-desc in create mode after the push and opens a draft PR",
+        "PR body's Verification section records the detached run with the commit's sha and the earlier run under the working-tree label",
+        "Agent does NOT mark the PR ready, since the request did not say ready is the review signal"
+      ]
     }
   ]
 }

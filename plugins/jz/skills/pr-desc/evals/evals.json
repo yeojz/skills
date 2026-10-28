@@ -59,7 +59,7 @@
     {
       "id": 4,
       "prompt": "Please be more succinct in the PR body for /tmp/eval-pr-desc-4-ws, and do not put a test plan in it. It's a fix branch for the CSV parser.",
-      "expected_output": "Agent writes a short body from the diff with a Summary of a few lines and drops Trade-offs and Follow-ups if the diff shows nothing to put there. It produces no test plan, no how-to-test checklist, and no 'how I tested this' bullets anywhere, including under another heading. If runs from this session exist, Verification keeps one line per run with command, head and exit code and is not cut for brevity; if nothing ran, it is omitted. Title is a Conventional Commit subject such as 'fix(parser): handle empty rows in CSV reader'. Before and after shown if a PR body already exists, and confirmation requested before any remote write.",
+      "expected_output": "Agent writes a short body from the diff with a Summary of a few lines and drops Trade-offs and Follow-ups if the diff shows nothing to put there. It produces no test plan, no how-to-test checklist, and no 'how I tested this' bullets anywhere, including under another heading. If runs from this session exist, Verification keeps one line per run with command, head and exit code and is not cut for brevity; if nothing ran, it is omitted. Title is a Conventional Commit subject such as 'fix(parser): handle empty rows in CSV reader'. Before and after shown if a PR body already exists, and confirmation requested before any edit of that existing body; a draft gh pr create needs no ask.",
       "files": [],
       "expectations": [
         "Final body contains no '## Test Plan' section",
@@ -69,7 +69,7 @@
         "Trade-offs and Follow-ups are omitted rather than filled with filler when the diff shows nothing for them",
         "Title is a Conventional Commit subject under 72 characters with a scope from the touched package",
         "Agent sources the body from the diff, not from the session transcript",
-        "Agent asks for confirmation before any gh pr edit or gh pr create"
+        "Agent asks for confirmation before any gh pr edit of an existing body, and does not ask before a draft gh pr create"
       ]
     },
     {

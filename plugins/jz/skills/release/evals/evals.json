@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Based on the changes compared to main, write a changeset file for /tmp/eval-release-1-ws. Ask me for confirmation on the changeset content before you commit and push it.",
-      "expected_output": "Agent detects Changesets from .changeset/config.json and reads it for fixed/linked groups. It diffs the branch against main with the three-dot form, lists the touched workspace packages, classifies each one with stated reasoning (for example packages/core minor for a new export, packages/cli patch for a bug fix, internal/testing none because it is private), then shows the complete changeset file content and waits for a yes before writing it. Only after confirmation does it write the file, and committing follows the branch-first, conventional-commit flow with a separate ask before pushing. No package-level CHANGELOG and no migration guide are produced.",
+      "expected_output": "Agent detects Changesets from .changeset/config.json and reads it for fixed/linked groups. It diffs the branch against main with the three-dot form, lists the touched workspace packages, classifies each one with stated reasoning (for example packages/core minor for a new export, packages/cli patch for a bug fix, internal/testing none because it is private), then shows the complete changeset file content and waits for a yes before writing it. Only after confirmation does it write the file, and committing follows the branch-first, conventional-commit flow, with the push following the commit without a further ask. No package-level CHANGELOG and no migration guide are produced.",
       "files": [],
       "expectations": [
         "Agent reads .changeset/config.json to confirm the mechanism rather than assuming Changesets",
@@ -16,7 +16,7 @@
         "Agent does NOT write the changeset file before the user confirms",
         "Agent does NOT create or edit a package-level CHANGELOG.md",
         "Agent does NOT write a migration guide",
-        "Agent asks separately before pushing rather than committing and pushing in one move"
+        "Agent pushes after the commit without a second ask, since the confirmation covered the changeset content"
       ]
     },
     {

@@ -26,7 +26,7 @@ Do not reopen these. A question that would reopen one is an ADR-tier fork: send 
 
 - <decision>, from `docs/adr/<NNNN>-<slug>.md` or `docs/design.md` round <n> option <letter>
 - <decision>
-- Based on `<branch>` because PR <number> is not merged yet; rebase onto the default branch once it is
+- Based on `<parent branch>@<parent tip sha>` because PR <number> is not merged yet; once it merges, rebase with `git rebase --onto <default branch> <parent tip sha>`, never with a plain rebase, since the repo squash-merges
 
 ## Scope
 

@@ -56,7 +56,7 @@ never committed.
 ```bash
 notes="<notes folder>"
 mkdir -p "$notes" || echo "cannot create $notes"
-[ -f "$notes/units.tsv" ] || printf 'id\ttitle\tsession\tbranch\tpr\thead\tverdict\tstate\n' > "$notes/units.tsv"
+[ -f "$notes/units.tsv" ] || printf 'id\ttitle\tsession\tbranch\tbase\tpr\thead\tverdict\tstate\n' > "$notes/units.tsv"
 [ -f "$notes/decisions.tsv" ] || printf 'when\tunit\tkind\tdecision\tevidence\tresult\n' > "$notes/decisions.tsv"
 cat "$notes/units.tsv"
 ```
@@ -67,7 +67,9 @@ before starting any session: nothing below has durable state without the
 ledgers.
 
 `units.tsv` has one row per phase and is rewritten in place as the phase
-moves. `decisions.tsv` is append-only, one row per fork, verdict, relay or
+moves. Its `base` column is the default branch, or `<parent branch>@<sha>`
+for a row stacked on an unmerged PR, where the sha is the parent tip the
+worker branched from; Step 9 rebases from that boundary. `decisions.tsv` is append-only, one row per fork, verdict, relay or
 decision, with a pointer to the evidence (a PR URL, a `file:line`, a log).
 
 | State | Meaning |
@@ -97,9 +99,19 @@ and start the next row that is fully scoped instead. Never fill the field
 yourself.
 
 A row whose dependency is an unmerged PR is not blocked: base the worker's
-branch on that PR's branch, say so in the brief under "Decisions already
-made", and note in the report shape that the PR must rebase once the
-dependency merges. Do not wait on a merge to start independent rows.
+branch on that PR's branch and record the parent tip it starts from, because
+the repo squash-merges and that tip is the only boundary that tells the
+child's commits from the parent's once the parent has landed:
+
+```bash
+git fetch origin <parent branch>
+parent_tip="$(git rev-parse "origin/<parent branch>")"
+```
+
+Write `<parent branch>@$parent_tip` in the brief under "Decisions already
+made" and in the row's `base` column, and note in the report shape that the
+PR must rebase once the dependency merges. Do not wait on a merge to start
+independent rows.
 
 Start every row that is independent of the running ones: different packages
 or files, no output feeding another. Two rows that own the same file run in
@@ -228,8 +240,32 @@ gh pr view <number> --json state,mergedAt,headRefOid
 ```
 
 Move the row to `merged` once the branch deletion and worktree removal have
-been pasted as output. A dependent row whose branch was based on this PR's
-branch rebases now, through `ship` Step 13, in its own session.
+been pasted as output.
+
+A dependent row whose branch was based on this PR's branch rebases now, in
+its own session. Not with an ordinary `git rebase "origin/$base"`: the repo
+squash-merges, so the parent's commits are not ancestors of the default
+branch, and a plain rebase replays them as if they were the child's and
+conflicts on the first one. Rebase onto the default branch from the parent
+tip recorded in the row's `base` column, after the ancestor check `ship`
+Step 13 makes:
+
+```bash
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+parent_tip="<sha from the base column>"
+git fetch origin "$base" "<branch>"
+old="$(git rev-parse "origin/<branch>")"
+git merge-base --is-ancestor "$old" HEAD && echo "remote tip is in local HEAD" || echo "DIVERGED"
+git rebase --onto "origin/$base" "$parent_tip"
+git range-diff "$parent_tip..$old" "origin/$base..HEAD"
+```
+
+`DIVERGED` is a stop, as in `ship` Step 13. The range-diff pairs each child
+commit that was on the remote with its rebased copy: it must show no `<` line
+and none of the parent's commits. Then continue with `ship` Step 13 from the
+gate on the rebased tree: `verify` Step 7, the gate, and the push with
+`--force-with-lease="<branch>:$old"`. Set the row's `base` column to the
+default branch once the push has landed.
 
 ### Step 10: Forks, in two tiers
 
@@ -268,7 +304,8 @@ row that disagrees with `gh pr view` is corrected in the file first.
 | Moving a row to `ready` on the worker's word | Check head SHA, pasted detached gate with exit codes, and `isDraft` against `gh pr view` |
 | Restarting a stopped worker to run a fix | Relay only when the state lives there; otherwise a fresh session with the consolidated brief |
 | A fix relay that is a bare list of findings | Standing orders, review file, one commit per finding, no weakened tests, stay draft until gated |
-| Waiting on an unmerged PR before starting a dependent row | Base on its branch, say so under "Decisions already made", rebase after the merge |
+| Waiting on an unmerged PR before starting a dependent row | Base on its branch, record `<parent branch>@<tip>` in the brief and the `base` column, rebase from that tip after the merge |
+| A plain `git rebase "origin/$base"` on a stacked child after the parent squash-merged | The parent's commits replay as the child's and conflict. `git rebase --onto "origin/$base" <parent tip>`, then a range-diff with no `<` line |
 | Deciding a public API or data model fork alone | ADR-tier: lettered options to the owner, park the row, drain the others |
 | Deciding nothing without the owner | Below the ADR tier, decide, log in `decisions.tsv`, report. Over-blocking is the failure this loop removes |
 | Polling the PR for its state | Bind it and turn the monitor on once; let the wake report |

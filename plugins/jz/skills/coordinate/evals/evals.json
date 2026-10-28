@@ -1,0 +1,69 @@
+{
+  "skill_name": "coordinate",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Coordinate phases 12 to 14 of docs/roadmap.md. I will review on GitHub.",
+      "expected_output": "The agent reads AGENTS.md, CONTEXT.md, the ADRs and the roadmap rows, opens units.tsv and decisions.tsv in the group's notes folder, refuses any row with a not scoped field, fills template-phase.md for each scoped row that is independent of the others, names the implementation tier in each brief, pastes the Standing orders section of AGENTS.md verbatim, grants push, draft PR, detached gate and ready in the brief, and starts one fresh worker session per row in its own worktree. It implements nothing itself.",
+      "files": [],
+      "expectations": [
+        "Reads AGENTS.md, CONTEXT.md, docs/adr and docs/roadmap.md before filling any brief",
+        "Creates or reads units.tsv and decisions.tsv in the notes folder and writes a row per started phase",
+        "A row with a not scoped or missing field is not started; the missing field is asked as a lettered question or handed to grill",
+        "Each brief follows template-phase.md with every section filled, including Read first, Decisions already made, Not asked for now, Done means with the repo's real gate commands, Forbidden and Report",
+        "Each brief names the model tier for a scoped unit and the Standing orders block is copied from AGENTS.md word for word",
+        "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Worker says: PR 42 is ready, head a9c1f3e, make validate exit 0 on a clean checkout.",
+      "expected_output": "The agent checks the claim against gh pr view and origin/<branch> before moving the row to ready, binds the PR monitor once, then fills template-review.md and starts a fresh reviewer session on the review tier that is not the worker session. The brief requires the gate on a detached checkout, a base-against-candidate probe, design and maintainability at the same weight as correctness, guard-deletion sampling, P1 to P3 findings with file:line, one COMMENT review and never an approval.",
+      "files": [],
+      "expectations": [
+        "Runs gh pr view and compares headRefOid with the reported sha before the units.tsv row moves to ready",
+        "The reviewer is a separate fresh session on the review tier, not the worker session and not the coordinator itself",
+        "The review brief follows template-review.md and names the detached gate, the correctness probe, the equal-weight design and maintainability lenses, guard-deletion sampling and the P1 to P3 table with file:line",
+        "The brief says to post one COMMENT review and never approve or request changes",
+        "A decisions.tsv row of kind verdict is written when the reviewer reports"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Reviewer verdict on PR 42: after fixes. R1 P2 packages/core/src/verify.ts:42 secret compared with ===, R2 P2 guard at src/parse.ts:88 survives deletion, R3 P3 naming.",
+      "expected_output": "The agent does not fix anything itself. It decides whether the fix needs state that lives only in the worker session; if not, it starts a fresh fix session with the original phase brief plus the findings consolidated, standing orders pasted verbatim, one commit per finding, no weakened tests, PR kept draft until the detached gate is green again. It logs a relay row in decisions.tsv, and after the fix the same reviewer flow re-checks the new head, bounded at three rounds.",
+      "files": [],
+      "expectations": [
+        "The coordinator makes no code edit in response to the findings",
+        "The relay or fresh-session choice is stated with the reason, and a decisions.tsv row of kind relay records it",
+        "The fix brief carries the standing orders verbatim, the review file path, one commit per finding, no weakened tests and the draft-until-gated rule",
+        "The re-check is a reviewer pass on the new head that classifies R1, R2 and R3 as fixed, not fixed or no longer applicable with a line each",
+        "The fix loop is bounded at three rounds, after which the row moves to blocked and the owner gets the open findings"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "where are we",
+      "expected_output": "The agent prints units.tsv as a table, one line per phase with its state, PR and head, corrects any row that disagrees with gh pr view in the file first, and lists the parked questions the owner still owes. Nothing comes from recollection.",
+      "files": [],
+      "expectations": [
+        "The answer is read from units.tsv and decisions.tsv, with the command shown",
+        "Each phase appears with its state, PR number and head SHA",
+        "A row that disagrees with gh pr view is corrected in the file before the answer is given",
+        "Parked ADR-tier questions are listed as lettered options still owed by the owner"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Worker on phase 13 asks: should the session token live in the signed cookie or in the store? Also, should the helper be called parseClaims or readClaims?",
+      "expected_output": "The agent sorts the two forks. The token location is a data-model decision, so it goes to the owner as lettered options with a recommendation, the row is parked, and the other rows keep draining. The helper name is below the ADR tier, so the agent decides it against the glossary, writes a decisions.tsv row of kind fork with the reason, tells the worker, and names it in the next report.",
+      "files": [],
+      "expectations": [
+        "The token location is presented to the owner as lettered options with a recommendation first and is not decided by the agent",
+        "The phase 13 row moves to parked while the other rows continue",
+        "The helper name is decided by the agent with a reason tied to CONTEXT.md and relayed to the worker",
+        "A decisions.tsv row of kind fork records the name decision and the parked question"
+      ]
+    }
+  ]
+}

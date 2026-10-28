@@ -27,8 +27,13 @@ morning. Merge stays the owner's click on GitHub.
 ```bash
 ls AGENTS.md CONTEXT.md docs/roadmap.md docs/design.md 2>/dev/null
 ls docs/adr 2>/dev/null
-awk '/^## Standing orders/,/^## [^S]/' AGENTS.md
+awk '/^## /{p = ($0 == "## Standing orders")} p' AGENTS.md
 ```
+
+The `awk` starts at the exact `## Standing orders` heading and stops at the
+next level-two heading whatever its name, so a following `## Security notes`
+section never leaks into a brief. It prints nothing when the heading is
+missing.
 
 Read every file that exists. A repo with no `docs/roadmap.md` has nothing to
 coordinate: say so and offer `grill` in kickoff mode, which writes the

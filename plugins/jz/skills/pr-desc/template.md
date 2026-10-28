@@ -1,6 +1,7 @@
 <!--
 Never appears in a PR body:
-- a test plan section
+- a test plan or a how-to-test checklist; Verification below is the record of
+  commands that actually ran, not instructions for the reviewer
 - chat narrative or session commentary
 - security-review commentary
 - release-type opinions (that decision belongs to the repo owner)
@@ -10,9 +11,10 @@ Never appears in a PR body:
 PRs squash-merge, so the PR title becomes the commit on the default branch.
 The title follows Conventional Commits. Open the PR as a draft unless told
 otherwise.
-Summary is always present. Omit the Trade-offs and Follow-ups sections
-entirely when there is nothing to say under them: no empty heading, no `None.`,
-no filler. Keep the order below and add no other sections.
+Summary is always present. Omit the Trade-offs, Follow-ups and Verification
+sections entirely when there is nothing real to put under them: no empty
+heading, no `None.`, no filler, no bullet for a run that did not happen. Keep
+the order below and add no other sections.
 -->
 
 ## Summary
@@ -40,3 +42,19 @@ diff, not from how the work happened.>
 - <known gap> - <issue or branch that will pick it up>
 
 <Omit this whole section when there are none.>
+
+## Verification
+
+<One bullet per command that ran in this session, with its outcome, taken from
+the verify report block or from the gate on a clean detached checkout. Name the
+command, what it ran on, the exit code and the result line copied from the
+output. A sha only for a run proven to be on that commit; a run on the working
+tree before staging and commit says so instead. Never from memory, never from
+a CI badge.>
+
+- `<command>` on `<short sha>`: exit <code>, <result line from the output>
+- `<command>` on `<short sha>`, clean detached checkout: exit <code>, <result line from the output>
+- `<command>`, working tree before commit: exit <code>, <result line from the output>
+
+<Omit this whole section when nothing ran. A bullet without an exit code is a
+claim, not a record.>

@@ -100,7 +100,7 @@ plugins/jz/                       the plugin
 | Skill | Use it for |
 |---|---|
 | `verify` | The completion gate. Runs the repo's own scripts and pastes real output before any done claim |
-| `ship` | Branch, format, lint, verify, conventional commit, push, draft PR |
+| `ship` | Branch, format, lint, verify, conventional commit; on one go-ahead push, draft PR, gate the pushed head on a clean detached checkout and mark ready; rebase when the default branch moves; clean up after the merge |
 | `audit` | Read-only repo assessment that writes a prioritised plan file |
 | `execute-plan` | Work a plan item by item with honest status and commit checkpoints |
 | `deps-guard` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
@@ -112,7 +112,7 @@ plugins/jz/                       the plugin
 | `handoff` | Write a resumable handoff before context runs out |
 | `coverage` | Raise coverage to threshold and prove it with the report |
 | `naming` | Lettered naming options with trade-offs, then rename everywhere |
-| `pr-desc` | Regenerate a PR body from the diff alone |
+| `pr-desc` | Write or refresh a PR title and body from the diff, with a Verification section listing the commands that actually ran |
 | `release` | Version PR, changeset, label gate, publish |
 | `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land |
 

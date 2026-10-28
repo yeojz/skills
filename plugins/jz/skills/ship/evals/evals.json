@@ -38,13 +38,14 @@
     {
       "id": 3,
       "prompt": "Commit and push my work in /tmp/eval-ship-3-ws. Heads up, the pre-commit hook has been strict lately.",
-      "expected_output": "Agent branches if needed, formats, lint-fixes, stages and commits. The pre-commit hook fails on a type error in src/client.ts. Agent reads the hook output, fixes the actual type error rather than suppressing it, re-stages, and retries. The second attempt succeeds. The request named the push, so the agent pushes after the fix without a further ask, and reports what was root-caused.",
+      "expected_output": "Agent branches if needed, formats, lint-fixes, stages and commits. The pre-commit hook fails on a type error in src/client.ts. Agent reads the hook output, fixes the actual type error rather than suppressing it, runs verify again on the fixed tree, re-stages, and retries. The second attempt succeeds. The request named the push, so the agent pushes after the fix without a further ask, and reports what was root-caused.",
       "files": [],
       "expectations": [
         "Agent attempts a commit that fails on the pre-commit hook",
         "Agent does NOT use --no-verify and does not disable or delete the hook",
         "Agent reads the hook output and fixes the root cause in the file the hook named",
         "Agent does NOT suppress the error with a cast, an ignore comment, or a weakened test",
+        "Agent runs verify again on the fixed tree before re-staging, rather than reusing the run from before the fix",
         "Agent re-stages the fixed files and retries the commit",
         "Agent stays within 3 commit attempts",
         "Agent pushes without a further ask, since the request named the push, and does NOT open a PR",
@@ -54,10 +55,11 @@
     {
       "id": 4,
       "prompt": "Commit, push and open a PR for /tmp/eval-ship-4-ws. The change adds token refresh to the auth package.",
-      "expected_output": "Agent branches if on main, runs format, lint:fix and verification, stages cleanly, commits with a conventional message, then pushes and opens the PR without asking again, because the one sentence named both. It runs pr-desc in create mode, handing over the verify report block and the pushed head sha, and opens a draft PR whose title is a Conventional Commit subject and whose body has Summary, Trade-offs, Follow-ups and a Verification section with one bullet per command that ran, each with its exit code. No test plan section, no chat narrative, no security commentary, no release-type opinion. The PR stays a draft: nobody said ready is the signal, and no gate ran on a detached checkout.",
+      "expected_output": "Agent branches if on main, runs format, lint:fix and verification, stages cleanly, commits with a conventional message, then pushes and opens the PR without asking again, because the one sentence named both. After the commit it checks that the committed tree equals the staged tree and that nothing verify saw was left unstaged, and only then labels the verify run with the commit's sha. It runs pr-desc in create mode, handing over that block and the head sha, and opens a draft PR whose title is a Conventional Commit subject and whose body has Summary, Trade-offs, Follow-ups and a Verification section with one bullet per command that ran, each with its exit code. No test plan section, no chat narrative, no security commentary, no release-type opinion. The PR stays a draft: nobody said ready is the signal, and no gate ran on a detached checkout.",
       "files": [],
       "expectations": [
         "Agent pushes and opens the PR without asking again, because the request named both in one sentence",
+        "Agent checks after the commit that the committed tree is the staged tree and that nothing is left unstaged before putting the commit's sha on the verify run; if either check fails it labels the run 'working tree before commit' and gates the commit detached before the push",
         "Agent runs pr-desc in create mode and hands it the verify report block and the pushed head sha",
         "PR is opened as a draft",
         "PR title is a Conventional Commit subject, for example feat(auth): add token refresh",
@@ -87,10 +89,11 @@
     {
       "id": 6,
       "prompt": "Push, draft PR, gate on a clean checkout, mark ready. The repo is /tmp/eval-ship-6-ws, the commit is already on feat/ledger-add-export and make validate is the gate.",
-      "expected_output": "Agent treats the one sentence as the go-ahead for every step it names and asks no question between them. It pushes the branch, runs pr-desc in create mode with the verify report block and the head sha, and opens a draft PR. It then fetches origin/feat/ledger-add-export, checks that head out detached into a throwaway worktree from mktemp, runs make validate there with the output and exit code captured under the task worktree's .verify-logs/, and removes the throwaway worktree. With exit 0 it hands the run to pr-desc in refresh mode so Verification gains the detached bullet, then runs gh pr ready. The report names the head sha, the gate command, its exit code and the tail of its output.",
+      "expected_output": "Agent treats the one sentence as the go-ahead for every step it names and asks no question between them. Finding nothing to stage and the commit already ahead of origin/main, it skips the commit step rather than stopping at 'nothing to commit', and continues with the head that exists. It pushes the branch, runs pr-desc in create mode with the verify report block and the head sha, and opens a draft PR. It then fetches origin/feat/ledger-add-export, checks that head out detached into a throwaway worktree from mktemp, runs make validate there with the output and exit code captured under the task worktree's .verify-logs/, and removes the throwaway worktree. With exit 0 it hands the run to pr-desc in refresh mode so Verification gains the detached bullet, then runs gh pr ready. The report names the head sha, the gate command, its exit code and the tail of its output.",
       "files": [],
       "expectations": [
         "Agent asks no confirmation question between the push, the PR, the gate and the ready flip",
+        "Agent finds nothing to stage, sees the commit already ahead of origin/main, skips the commit step and does NOT stop with 'nothing to commit'",
         "Agent pushes before opening the PR and opens it as a draft",
         "Agent creates a detached worktree at the pushed head sha, taken from origin/<branch> after a fetch, in a throwaway directory",
         "Agent runs make validate inside the detached worktree, not in the task worktree, and captures its exit code",
@@ -104,29 +107,34 @@
     {
       "id": 7,
       "prompt": "main has moved since PR 31 went up in /tmp/eval-ship-7-ws and the PR now conflicts. Rebase feat/ledger-add-export and push.",
-      "expected_output": "Agent fetches origin, records the old head of origin/feat/ledger-add-export and the branch's commit count, and runs git rebase origin/main rather than merging main in. It resolves the conflict by reading both sides, runs the verify git-state checks and the repo's gate on the rebased tree, then pushes with --force-with-lease=feat/ledger-add-export:<old-sha>. Before the push it states that origin/feat/ledger-add-export moves from the old sha to the new one, that the same number of commits sit on it, and that no commit is discarded. It never runs a bare git push --force. It compares the three-dot diff with the PR body and runs pr-desc in update mode only if the conflict resolution changed the diff.",
+      "expected_output": "Agent fetches origin, records the old head of origin/feat/ledger-add-export, and checks with git merge-base --is-ancestor that the fetched tip is contained in local HEAD before rewriting anything; had it not been, it would stop and show both sides instead of rebasing. It runs git rebase origin/main rather than merging main in, resolves the conflict by reading both sides, runs the verify git-state checks and the repo's gate on the rebased tree, then runs git range-diff between the old branch range and the rebased one and confirms no commit shows as dropped. It pushes with --force-with-lease=feat/ledger-add-export:<old-sha>, stating beforehand that origin/feat/ledger-add-export moves from the old sha to the new one and that the range-diff pairs every commit. It never runs a bare git push --force and never offers commit counts alone as the proof. It compares the three-dot diff with the PR body and runs pr-desc in update mode only if the conflict resolution changed the diff.",
       "files": [],
       "expectations": [
         "Agent fetches origin and records the old sha of origin/feat/ledger-add-export before rebasing",
+        "Agent checks that the fetched remote tip is an ancestor of local HEAD before the rebase, and would stop on divergence rather than rebase over it",
         "Agent runs git rebase onto origin/main and does NOT run git merge main or git pull without --rebase",
         "Agent resolves the conflict by reading both sides rather than taking one side wholesale or skipping the commit",
         "Agent checks for a stalled rebase, unresolved paths and conflict markers before calling the rebase complete",
         "Agent runs the repo's gate on the rebased tree before pushing",
+        "Agent runs git range-diff over the old and rebased ranges and confirms no commit is missing before pushing",
         "Agent pushes with --force-with-lease=<branch>:<old-sha> and never with a bare --force",
-        "Agent states before the push that no commit is discarded, with the commit count before and after",
+        "Agent states before the push that no commit is discarded, citing the range-diff rather than commit counts alone",
         "Agent checks whether the three-dot diff changed and runs pr-desc in update mode only if it did"
       ]
     },
     {
       "id": 8,
       "prompt": "PR 31 merged in /tmp/eval-ship-8-ws, clean up. The worktree is .claude/worktrees/feat+ledger-add-export.",
-      "expected_output": "Agent runs gh pr view 31 and confirms state is MERGED before touching anything. From the main checkout it removes the worktree, deletes the local branch with -D because squash-merge means -d would refuse, prunes, checks whether the remote branch still exists and deletes it only if it does. It writes a short hand-over note with the PR number, merge commit, what landed and what is left. The report pastes the Deleted branch line and the worktree list afterwards rather than offering an empty git branch --list as proof.",
+      "expected_output": "Agent runs gh pr view 31 and confirms state is MERGED, taking headRefOid as the merged head. Before deleting anything it compares the local branch tip, the remote branch tip and the worktree's status against that head; a tip beyond it or uncommitted work is a stop with the extra commits listed. With all three clean it removes the worktree from the main checkout, deletes the local branch with -D because squash-merge means -d would refuse, deletes the remote branch with a lease on the merged head, and prunes. It writes a short hand-over note with the PR number, merge commit, what landed and what is left. The report pastes the Deleted branch line, the [deleted] line and the worktree list afterwards rather than offering an empty git branch --list as proof.",
       "files": [],
       "expectations": [
         "Agent runs gh pr view on PR 31 and checks that state is MERGED before any deletion",
-        "Agent removes the worktree from the main checkout with git -C rather than from inside the worktree",
-        "Agent deletes the local branch only after the MERGED check and pastes the 'Deleted branch' line",
-        "Agent checks git ls-remote for the remote branch and deletes it only if it still exists",
+        "Agent reads the merged head sha from the PR and compares the local branch tip against it before deleting the branch",
+        "Agent compares the remote branch tip against the merged head and checks the worktree for uncommitted work before removing it",
+        "Agent would stop and list the commits beyond the merged head rather than delete a branch that advanced after the merge",
+        "Agent removes the worktree from the main checkout with git -C rather than from inside the worktree, without --force",
+        "Agent deletes the local branch only after the MERGED and tip checks and pastes the 'Deleted branch' line",
+        "Agent deletes the remote branch with --force-with-lease on the merged head, and only if ls-remote still lists it",
         "Agent writes a hand-over note naming the PR number, the merge commit, what landed and what is left",
         "Agent pastes git worktree list after the removal as evidence",
         "Agent does NOT offer an empty git branch --list on its own as proof that the branch was deleted"

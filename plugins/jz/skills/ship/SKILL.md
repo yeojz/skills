@@ -44,6 +44,10 @@ request that stopped short, such as "commit", and then grows: each further
 remote write gets its own question, and a yes to one does not carry to the
 next.
 
+The go-ahead often arrives after the commit has been made. Steps 7 and 8
+then find nothing to stage and the branch already carrying the commits, and
+the flow continues at step 9 with that head; step 7 says how to tell.
+
 The `confirm-remote-writes.sh` hook still asks the harness before
 `gh pr create` and before any force push. That prompt is the host's. It is not
 a reason to ask a second time in prose.
@@ -187,6 +191,9 @@ repo's own lint, typecheck, test and build scripts or Makefile targets and
 pastes real output. Keep its report block: steps 9 and 10 hand it to `pr-desc`,
 which turns it into the Verification section of the PR body.
 
+This run is on the working tree, before anything is staged. Whether it proved
+the commit that follows is decided in step 8, not assumed here.
+
 If `verify` is unavailable, run the repo's `package.json` scripts or Makefile
 targets directly and paste the output. Either way, do not commit on top of a
 failing check: root-cause the failure, do not route around it, and do not
@@ -273,7 +280,17 @@ Show the staged list and confirm it looks right before committing:
 git diff --staged --name-status
 ```
 
-If nothing is staged after the exclusions, stop and report "nothing to commit".
+If nothing is staged after the exclusions, what happens next depends on the
+mode:
+
+| Mode | Nothing staged means |
+|---|---|
+| commit only | Stop and report "nothing to commit" |
+| Any mode that named a push, PR or ready | Check `git log --oneline "origin/$base..HEAD"`. Commits ahead of the default branch mean the work was committed earlier and the go-ahead came after it: skip step 8, say so, and continue at step 9 with the head that exists. No commits ahead either: stop, there is nothing to ship |
+
+In the skipped case the step 6 run was on a clean tree that is the committed
+tree, so its bullets carry that head's sha once the step 8 check below
+confirms the enumeration is empty.
 
 ### Step 8: Commit
 
@@ -302,9 +319,10 @@ this skill. Never add a co-author trailer yourself.
 Never put an agent session link, a model name, or any other AI identifier in
 the subject or body.
 
-Commit, bounded at 3 attempts:
+Record the staged tree, then commit, bounded at 3 attempts:
 
 ```bash
+staged_tree="$(git write-tree)"
 git commit -m "<subject>" -m "<body>"
 ```
 
@@ -314,10 +332,37 @@ On a pre-commit hook failure:
    errors, and the message names the file.
 2. Fix the root cause. Never pass `--no-verify`, and never delete or disable the
    hook.
-3. Re-stage the fixed files, re-applying the step 7 exclusions.
-4. Retry. That is attempt 2.
-5. After 3 failed attempts, stop. Report what is blocking the commit and what
+3. Run step 6 again. The step 6 run before the fix proved a tree that no longer
+   exists, and a fix is unverified until the suite runs on it.
+4. Re-stage the fixed files, re-applying the step 7 exclusions, and record the
+   staged tree again.
+5. Retry. That is attempt 2.
+6. After 3 failed attempts, stop. Report what is blocking the commit and what
    you tried. Do not keep retrying and do not bypass.
+
+After the commit, decide what the step 6 run proved. It ran on the working
+tree; the commit may hold a different tree when only part of the work was
+staged or a hook rewrote a file on its way in. Two checks settle it:
+
+```bash
+[ "$(git rev-parse 'HEAD^{tree}')" = "$staged_tree" ] && echo "committed what was staged" || echo "a hook changed the commit"
+git -c core.quotepath=false ls-files -z --modified --others --exclude-standard -- \
+  ':(exclude,glob)**/.claude/**' ':(exclude,glob)**/.claude' \
+  ':(exclude,glob)**/docs/plans/**' ':(exclude,glob)**/docs/plans' \
+  ':(exclude,glob)**/.plans/**' ':(exclude,glob)**/.plans' \
+  ':(exclude,glob)**/.verify-logs/**' ':(exclude,glob)**/.verify-logs' \
+  | tr '\0' '\n'
+```
+
+When the trees match and the enumeration prints nothing, the tree `verify`
+ran on is the tree that was committed, and the step 6 bullets carry HEAD's
+sha. When either check fails, the step 6 run was a dirty working-tree run:
+its bullets are labelled `working tree before commit` and carry no sha, and in
+any mode that pushes, the gate runs on the commit before the push, using the
+step 11 checkout detached at local `HEAD` instead of the fetched remote head.
+That run carries the sha. A user-excluded path left in the tree fails the
+second check on purpose: `verify` ran with it present, and nothing shows it
+did not matter.
 
 ### Step 9: Push, then refresh the body
 
@@ -341,8 +386,9 @@ gh pr view <branch> --json number,isDraft,state,url
 ```
 
 When it does, and the push changed the diff, run the `pr-desc` skill in update
-mode. Hand it the `verify` report block from step 6 and the pushed head sha,
-so the Summary describes the diff that is on the remote now and Verification
+mode. Hand it the `verify` report block from step 6 with the label step 8 gave
+it, sha or `working tree before commit`, plus any gate run on the commit, so
+the Summary describes the diff that is on the remote now and Verification
 cites the runs on this head rather than on the one before. `pr-desc` shows the
 before and after and asks before editing; that ask is its own and stands.
 
@@ -361,8 +407,9 @@ hard to take back, so when the request did not name it, it carries its own
 confirmation rather than inheriting the one given for the push.
 
 Run the `pr-desc` skill in create mode and use the title and body it hands
-back. Hand it the `verify` report block from step 6 and the pushed head sha.
-It writes the title and the Summary, Trade-offs and Follow-ups from the diff,
+back. Hand it the `verify` report block from step 6 with the label step 8 gave
+it, and any gate run on the commit, so no bullet names a sha the run did not
+prove. It writes the title and the Summary, Trade-offs and Follow-ups from the diff,
 fills Verification from the runs it was handed, keeps the title a Conventional
 Commit subject, and decides which sections appear. Do not restate or override
 its rules here.
@@ -397,6 +444,10 @@ head="$(git rev-parse "origin/<branch>")"
 gate_dir="$(mktemp -d)"
 git worktree add --detach "$gate_dir" "$head"
 ```
+
+When step 8 sends you here before the push, use `HEAD` in place of
+`origin/<branch>` and skip the fetch; the detached copy is still what proves
+the commit, since the working tree is not it.
 
 Inside `$gate_dir`, install from the lock file when the repo has one, with
 `pnpm install --frozen-lockfile` or the equivalent for the package manager
@@ -454,11 +505,36 @@ base branch in, or the user says to rebase. Rebase, never merge. The
 `rebase-not-merge.sh` hook denies `git merge <default-branch>` on a feature
 branch in any case.
 
+Fetch, then prove that the local branch contains everything the remote has
+before anything is rewritten:
+
 ```bash
 base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
 git fetch origin "$base" "<branch>"
 old="$(git rev-parse "origin/<branch>")"
-before="$(git rev-list --count "origin/$base..$old")"
+git merge-base --is-ancestor "$old" HEAD && echo "remote tip is in local HEAD" || echo "DIVERGED"
+```
+
+`DIVERGED` means `origin/<branch>` carries commits that local `HEAD` does
+not, such as a collaborator's amendment pushed since this checkout last
+pulled. A lease on `$old` would not protect them: the lease guards against
+pushes made after the fetch, and these were already fetched, so the push
+would succeed and erase them. Stop. Show both sides and let the user say
+which wins:
+
+```bash
+git log --oneline "HEAD..$old"
+git log --oneline "$old..HEAD"
+```
+
+When local `HEAD` simply lags the remote, `git merge --ff-only "$old"` brings
+it level and the check passes on a second try. Anything else is a decision,
+not a step.
+
+With the check passed, record the fork point and rebase:
+
+```bash
+fork="$(git merge-base "$old" "origin/$base")"
 git rebase "origin/$base"
 ```
 
@@ -468,30 +544,35 @@ you know, `git rebase --abort` and report the conflicting paths.
 
 Then run `verify` Step 7 to prove the git state, and run the gate on the
 rebased tree. A rebase is not complete until the tests pass on the rebased
-tree; a clean `git status` proves nothing.
+tree; a clean `git status` proves nothing. The rebased tree is the working
+tree, so that run's bullets carry the new head's sha.
 
-Push with a lease on the exact old head, and say before the push what the
-remote will see:
+Prove that every commit survived, then push with a lease on the exact old
+head:
 
 ```bash
-after="$(git rev-list --count "origin/$base..HEAD")"
-echo "before=$before after=$after"
-git log --oneline "origin/$base..HEAD"
+git range-diff "$fork..$old" "origin/$base..HEAD"
 git push --force-with-lease="<branch>:$old" origin <branch>
 ```
 
-The statement is precise: `origin/<branch>` moves from `$old` to the new head,
-the same `$after` commits sit on it under new shas, and no commit is discarded.
-When `before` and `after` differ, name the commit the rebase dropped and why,
-such as a commit left empty because the base already carried its change,
-before pushing. The `confirm-remote-writes.sh` hook asks the harness before
-the push; a go-ahead that named the rebase and the push has answered it in
-prose already. If the lease fails, someone pushed to the branch since the
-fetch: fetch again, read what arrived, and never fall back to a bare
+`range-diff` pairs each commit that was on the remote with its rebased copy:
+`=` is unchanged, `!` was altered by a conflict resolution, `>` is a local
+commit that was never on the remote and is pushed for the first time. A `<`
+line is a commit on the remote with no counterpart after the rebase, and it
+is a stop: find out where it went before pushing. Say before the push what
+the remote will see: `origin/<branch>` moves from `$old` to the new head, the
+range-diff shows every remote commit paired and no `<` line, so no commit is
+discarded. Commit counts alone do not establish that; `1 before, 1 after`
+holds just as well when the one commit is someone else's.
+
+The `confirm-remote-writes.sh` hook asks the harness before the push; a
+go-ahead that named the rebase and the push has answered it in prose already.
+If the lease fails, someone pushed to the branch since the fetch: return to
+the fetch and the ancestor check above, and never fall back to a bare
 `--force`.
 
-A rebase that replayed the same commits did not change the diff, so the body
-stands. One that resolved a conflict may have: compare
+A rebase whose range-diff is all `=` did not change the diff, so the body
+stands. One with a `!` line may have: compare
 `git diff "origin/$base...HEAD" --stat` with what the body describes and run
 `pr-desc` in update mode when it differs. If the PR was already ready, run
 step 11 again on the new head and report the result.
@@ -503,28 +584,51 @@ reports it. Prove the merge before touching anything. A message saying
 "merged" is a claim, not a state.
 
 ```bash
-gh pr view <number> --json state,mergedAt,mergeCommit,headRefName
+gh pr view <number> --json state,mergedAt,mergeCommit,headRefOid,headRefName
 ```
 
 `state` must read `MERGED`. If it reads anything else, stop and report it.
 
-Then work from the main checkout rather than from inside the worktree being
-removed:
+`MERGED` proves the PR landed. It does not prove the branch still points at
+what landed: a branch can gain commits after its PR merges while the PR stays
+`MERGED`, and deleting it then loses work that is on no other ref. So take
+`headRefOid`, the head the PR merged, and check every tip against it before
+removing anything:
 
 ```bash
+merged_head="<headRefOid>"
 main_checkout="$(git worktree list --porcelain | awk 'NR==1 { print $2 }')"
+git -C "$main_checkout" rev-parse <branch>
+git ls-remote --heads origin <branch>
+git -C "$main_checkout/.claude/worktrees/<name>" status --porcelain --untracked-files=all
+```
+
+| Check | Must show | Otherwise |
+|---|---|---|
+| Local tip | `$merged_head` | `git log --oneline "$merged_head..<branch>"` lists commits that are not on the default branch. Stop, report them, delete nothing |
+| Remote tip | `$merged_head`, or no line because GitHub deleted the branch on merge | Same, with `git log --oneline "$merged_head..origin/<branch>"` after a fetch |
+| Worktree status | Nothing | Uncommitted work in the worktree. Stop and report it |
+
+With all three clean, work from the main checkout rather than from inside the
+worktree being removed:
+
+```bash
 git -C "$main_checkout" worktree remove ".claude/worktrees/<name>"
 git -C "$main_checkout" branch -D <branch>
+git -C "$main_checkout" push --force-with-lease="<branch>:$merged_head" origin --delete <branch>
 git -C "$main_checkout" fetch --prune origin
-git ls-remote --heads origin <branch>
 ```
 
 The repo squash-merges, so the branch's commits are not ancestors of the
-default branch and `git branch -d` refuses them. The `MERGED` state above is
-the proof that makes `-D` safe. If `ls-remote` still lists the remote branch,
-GitHub did not delete it on merge, so delete it with
-`git -C "$main_checkout" push origin --delete <branch>`. The "merged" go-ahead
-covers that push: the branch is disposable once its PR has landed.
+default branch and `git branch -d` refuses them. `MERGED` plus a tip equal to
+`$merged_head` is the proof that makes `-D` safe. `worktree remove` runs
+without `--force` so git refuses a dirty tree the status check missed. The
+remote deletion carries a lease on `$merged_head`: if the branch advanced
+between the check and the delete, git rejects it with `stale info` instead
+of removing the newer commits, and that rejection is a stop. Skip the
+deletion when `ls-remote` showed no branch. The "merged" go-ahead covers
+that push: a branch whose tip is the merged head is disposable once its PR
+has landed.
 
 Write the hand-over note where the brief says notes go. Without a brief, write
 a short note under `docs/plans/`, never committed. The note carries the PR
@@ -532,10 +636,10 @@ number and merge commit, what landed in one or two lines, and what is left for
 the next phase.
 
 Prove the cleanup with the output of the commands, not with an empty listing
-alone: `git branch -D` prints `Deleted branch <name> (was <sha>)`, and
-`git worktree list` afterwards no longer shows the path. An empty
-`git branch --list <branch>` on its own is not evidence that a deletion
-happened.
+alone: `git branch -D` prints `Deleted branch <name> (was <sha>)`, the push
+prints `- [deleted]`, and `git worktree list` afterwards no longer shows the
+path. An empty `git branch --list <branch>` on its own is not evidence that a
+deletion happened.
 
 ### Step 15: Report
 
@@ -552,10 +656,12 @@ State plainly:
 - The gate on the detached checkout: head sha, command, exit code and the tail
   of its output, or that it was not run
 - Whether the PR was marked ready, or why it stayed draft
-- After a rebase: the old and new head, the commit count before and after, and
+- Whether the step 6 run proved the commit, or was labelled a working-tree run
+  and the commit gated separately
+- After a rebase: the ancestor check, the old and new head, the range-diff, and
   that no commit was discarded
-- After a cleanup: the `MERGED` state, the `Deleted branch` line, and the
-  worktree list
+- After a cleanup: the `MERGED` state, the three tip checks against the merged
+  head, the `Deleted branch` and `[deleted]` lines, and the worktree list
 
 ## Common Mistakes
 
@@ -574,6 +680,9 @@ State plainly:
 | Staging `.claude/`, `docs/plans/` or `.plans/` | Exclude them with `:(exclude,glob)**/docs/plans/**` style pathspecs, which match at any depth like the hook does. |
 | Filtering the artifact names with an anchored `^docs/plans/` | It misses `packages/x/docs/plans/note.md`, which then blocks the commit. Match unanchored, at any depth. |
 | Committing with nothing staged | Check `git status` first; report "nothing to commit". |
+| Stopping at "nothing to commit" when the go-ahead came after the commit | Commits ahead of `origin/$base` are the work. Skip step 8 and continue at step 9. |
+| Labelling the step 6 run with the pushed sha | It ran on the working tree. Prove the committed tree is that tree in step 8, or label it `working tree before commit` and gate the commit detached. |
+| Retrying a failed hook without re-running `verify` on the fix | The earlier run proved a tree that no longer exists. Step 6 again, then re-stage. |
 | Choosing the wrong type, such as `feat` for a refactor | Match intent: user-visible is `feat`/`fix`, internal is `refactor`/`chore`. |
 | Pushing after a request that said only "commit" | Push is its own remote write. Ask, and wait for the yes. |
 | Opening a PR after a request that said only "commit and push" | The PR is a further remote write. Ask again; the push's yes does not carry. |
@@ -587,9 +696,13 @@ State plainly:
 | Marking ready when nobody said ready is the signal | Default stays draft. Flip only when the go-ahead or the brief named it. |
 | Gating one head and flipping ready on another | Re-run step 11 after every push. A gate proves the head it ran on. |
 | Merging the default branch into the branch | Rebase onto `origin/$base`. The hook denies the merge anyway. |
-| `git push --force` after a rebase | `--force-with-lease=<branch>:<old-sha>`, after stating that no commit is discarded, with the counts to show it. |
+| Rebasing while `origin/<branch>` has commits local `HEAD` lacks | `git merge-base --is-ancestor "$old" HEAD` first. A lease on `$old` does not protect what was already fetched. |
+| `git push --force` after a rebase | `--force-with-lease=<branch>:<old-sha>`, after a range-diff with no `<` line shows no commit is discarded. |
+| Commit counts as proof that nothing was discarded | `1 before, 1 after` holds when the one commit is someone else's. Range-diff, with the ancestor check before it. |
 | Calling the rebase done because `git status` is clean | `verify` Step 7, then the gate on the rebased tree. |
 | Cleaning up on the word "merged" alone | `gh pr view` must read `MERGED` first. |
+| Deleting a branch whose tip moved past the merged head | Compare local and remote tips with `headRefOid`. A commit beyond it is on no other ref. |
+| Deleting the remote branch with a plain `--delete` | Lease it on the merged head, so a late commit rejects the delete with `stale info`. |
 | `git worktree remove` from inside the worktree | Run it from the main checkout with `git -C`. |
 | An empty `git branch --list` offered as proof of deletion | Paste the `Deleted branch` line and the worktree list after. |
 | The agent as commit author, or a session link in the body | Repo owner is the author. Never put a session link or model name in the message. |

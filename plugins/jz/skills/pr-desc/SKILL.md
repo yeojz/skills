@@ -124,7 +124,7 @@ sources, in order of preference:
 
 | Source | What it gives |
 |---|---|
-| The `verify` report block the caller hands over | Command, exit code and result per concern, on the working tree at a named head |
+| The `verify` report block the caller hands over | Command, exit code and result per concern, with the label the caller gave it: a head sha when the caller proved the committed tree is the tree it ran on, or `working tree before commit` when it did not |
 | The gate `ship` ran on a clean detached checkout | The same, on the pushed head, marked as the detached run |
 | A command run earlier in this session whose output is in the transcript | Command, exit code and result, read from that output |
 
@@ -133,12 +133,19 @@ Bullet shape, from the template:
 ```
 - `<command>` on `<short sha>`: exit <code>, <result line from the output>
 - `<command>` on `<short sha>`, clean detached checkout: exit <code>, <result line from the output>
+- `<command>`, working tree before commit: exit <code>, <result line from the output>
 ```
 
 Rules:
 
-- Every bullet carries the exit code and the head it ran on. A bullet without
+- Every bullet carries the exit code and names what it ran on. A bullet without
   an exit code is a claim, not a record.
+- A sha goes on a bullet only when the run was provably on that commit: a
+  detached checkout of it, a rebased or otherwise clean tree that is it, or a
+  working-tree run the caller proved was committed unchanged. A run on a
+  working tree that was then partly staged, or rewritten by a hook, is
+  labelled `working tree before commit` and carries no sha. Never relabel a
+  run with the sha that happened to be pushed afterwards.
 - The result line is copied from the output: `142 passed`, `All checks
   passed`, the per-file coverage line. Never "passes" or "green".
 - A run on an earlier head than the one being described proves another tree.
@@ -291,6 +298,7 @@ State plainly:
 |---|---|
 | Adding a `## Test Plan` or a how-to-test checklist | Summary, Trade-offs, Follow-ups, Verification only. Verification is the record of real runs, not instructions. |
 | A Verification bullet from memory, from CI, or without an exit code | Cite the output: command, head, exit code, result line. Nothing ran, omit the section. |
+| Putting the pushed sha on a run that happened before staging and commit | The sha belongs to runs proven to be on that commit. Otherwise the label is `working tree before commit`. |
 | Carrying a Verification bullet from an earlier head across a push that changed the diff | Drop it. Cite the runs on the current head. |
 | Running the test suite from this skill to fill Verification | `verify` runs the gate. This skill records what it was handed. |
 | Treating a refresh that also reworded Summary as a refresh | That is update mode. Show before and after, ask, wait. |

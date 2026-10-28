@@ -47,11 +47,14 @@ diff, not from how the work happened.>
 
 <One bullet per command that ran in this session, with its outcome, taken from
 the verify report block or from the gate on a clean detached checkout. Name the
-command, the head it ran on, the exit code and the result line copied from the
-output. Never from memory, never from a CI badge.>
+command, what it ran on, the exit code and the result line copied from the
+output. A sha only for a run proven to be on that commit; a run on the working
+tree before staging and commit says so instead. Never from memory, never from
+a CI badge.>
 
 - `<command>` on `<short sha>`: exit <code>, <result line from the output>
 - `<command>` on `<short sha>`, clean detached checkout: exit <code>, <result line from the output>
+- `<command>`, working tree before commit: exit <code>, <result line from the output>
 
 <Omit this whole section when nothing ran. A bullet without an exit code is a
 claim, not a record.>

@@ -55,10 +55,16 @@ never committed.
 
 ```bash
 notes="<notes folder>"
+mkdir -p "$notes" || echo "cannot create $notes"
 [ -f "$notes/units.tsv" ] || printf 'id\ttitle\tsession\tbranch\tpr\thead\tverdict\tstate\n' > "$notes/units.tsv"
 [ -f "$notes/decisions.tsv" ] || printf 'when\tunit\tkind\tdecision\tevidence\tresult\n' > "$notes/decisions.tsv"
 cat "$notes/units.tsv"
 ```
+
+The folder is created first because the default one does not exist yet on
+a fresh group and every later step writes into it. If `mkdir` fails, stop
+before starting any session: nothing below has durable state without the
+ledgers.
 
 `units.tsv` has one row per phase and is rewritten in place as the phase
 moves. `decisions.tsv` is append-only, one row per fork, verdict, relay or

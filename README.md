@@ -97,24 +97,54 @@ plugins/jz/                       the plugin
 
 ### Skills
 
+A change usually runs through the skills in this order. `grill` or `audit`
+settles what to build and leaves a plan. `execute-plan` works the plan item by
+item, reaching for `tdd`, `debug`, `coverage`, `design-critique`, `docs-sync`
+or `deps-guard` as the item demands. `verify` gates every done claim. `ship`
+commits, pushes and opens the draft PR, `pr-desc` writes its body, `review`
+handles the comments, and `release` follows a merge. `handoff` carries the
+state when context runs out.
+
+#### Settle the work
+
+| Skill | Use it for |
+|---|---|
+| `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land |
+| `audit` | Read-only repo assessment that writes a prioritised plan file |
+| `naming` | Lettered naming options with trade-offs, then rename everywhere |
+
+#### Build
+
+| Skill | Use it for |
+|---|---|
+| `execute-plan` | Work a plan item by item with honest status and commit checkpoints |
+| `tdd` | Failing test first, simplest code to pass, refactor while green |
+| `debug` | Reproduce, instrument, trace to the root cause, one fix at a time |
+| `coverage` | Raise coverage to threshold and prove it with the report |
+| `deps-guard` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
+| `design-critique` | Judging, redesigning or fixing a UI visually; needs a browser automation tool |
+| `docs-sync` | Bring READMEs, guides and doc comments back in line with the code |
+
+#### Prove it
+
 | Skill | Use it for |
 |---|---|
 | `verify` | The completion gate. Runs the repo's own scripts and pastes real output before any done claim |
+
+#### Ship and review
+
+| Skill | Use it for |
+|---|---|
 | `ship` | Branch, format, lint, verify, conventional commit; on one go-ahead push, draft PR, gate the pushed head on a clean detached checkout and mark ready; rebase when the default branch moves; clean up after the merge |
-| `audit` | Read-only repo assessment that writes a prioritised plan file |
-| `execute-plan` | Work a plan item by item with honest status and commit checkpoints |
-| `deps-guard` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
-| `review` | Diff-scoped or PR-scoped review, plus the unresolved-comment sweep |
-| `debug` | Reproduce, instrument, trace to the root cause, one fix at a time |
-| `tdd` | Failing test first, simplest code to pass, refactor while green |
-| `design-critique` | Judging, redesigning or fixing a UI visually; needs a browser automation tool |
-| `docs-sync` | Bring READMEs, guides and doc comments back in line with the code |
-| `handoff` | Write a resumable handoff before context runs out |
-| `coverage` | Raise coverage to threshold and prove it with the report |
-| `naming` | Lettered naming options with trade-offs, then rename everywhere |
 | `pr-desc` | Write or refresh a PR title and body from the diff, with a Verification section listing the commands that actually ran |
+| `review` | Diff-scoped or PR-scoped review, plus the unresolved-comment sweep |
 | `release` | Version PR, changeset, label gate, publish |
-| `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land |
+
+#### Hand over
+
+| Skill | Use it for |
+|---|---|
+| `handoff` | Write a resumable handoff before context runs out |
 
 `verify` is the one the others depend on. It is what stops "done" from meaning
 "probably done".

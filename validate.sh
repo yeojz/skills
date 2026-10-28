@@ -47,6 +47,12 @@ check(plugin_name in entries, '.claude-plugin/marketplace.json does not list ' +
 if plugin_name in entries:
     source = entries[plugin_name].get('source')
     check(source == './' + plugin_dir, '.claude-plugin/marketplace.json source is %r, expected %r' % (source, './' + plugin_dir))
+# The entry is the plugin's manifest for Claude Code: there is no plugin.json
+# under plugins/jz/.claude-plugin, so the install reads these fields from here.
+claude_entry = entries.get(plugin_name, {})
+for field in ('description', 'author', 'license'):
+    check(field in claude_entry, '.claude-plugin/marketplace.json entry for %s needs %s' % (plugin_name, field))
+check('version' not in claude_entry, '.claude-plugin/marketplace.json entry must not pin a version; installs track commits')
 
 codex_mp = load('.agents/plugins/marketplace.json')
 check(codex_mp.get('name') == claude_mp.get('name'),
@@ -57,14 +63,10 @@ if plugin_name in codex_entries:
     path = (codex_entries[plugin_name].get('source') or {}).get('path')
     check(path == './' + plugin_dir, '.agents/plugins/marketplace.json path is %r, expected %r' % (path, './' + plugin_dir))
 
-claude_plugin = load(os.path.join(plugin_dir, '.claude-plugin', 'plugin.json'))
-check(claude_plugin.get('name') == plugin_name, '.claude-plugin/plugin.json name is %r' % claude_plugin.get('name'))
-check('version' not in claude_plugin, '.claude-plugin/plugin.json must not pin a version; installs track commits')
-
 portable = load(os.path.join(plugin_dir, 'plugin.json'))
 check(portable.get('name') == plugin_name, 'plugin.json name is %r' % portable.get('name'))
 check(portable.get('$schema', '').startswith('https://agent-plugins.org/schemas/'), 'plugin.json needs the agent-plugins.org $schema')
-check(portable.get('description') == claude_plugin.get('description'), 'plugin descriptions differ between the two manifests')
+check(portable.get('description') == claude_entry.get('description'), 'plugin descriptions differ between the marketplace entry and plugin.json')
 
 hooks = load(os.path.join(plugin_dir, 'hooks', 'hooks.json'))
 check('hooks' in hooks, 'hooks.json needs a top-level hooks object')
@@ -78,7 +80,7 @@ for event, groups in hooks.get('hooks', {}).items():
             check(os.access(script, os.X_OK), '%s hook script is not executable: %s' % (event, script))
 
 for name in ('.claude-plugin/marketplace.json', '.agents/plugins/marketplace.json',
-             plugin_dir + '/.claude-plugin/plugin.json', plugin_dir + '/plugin.json',
+             plugin_dir + '/plugin.json',
              plugin_dir + '/hooks/hooks.json'):
     print('  ' + name)
 sys.exit(0 if ok else 1)

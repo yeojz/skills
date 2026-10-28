@@ -12,9 +12,10 @@ the one plugin under `plugins/jz/`: `skills/`, `rules/`, `agents/` and
 `hooks/`. The marketplace manifests sit at the repository root,
 `.claude-plugin/marketplace.json` for Claude Code and
 `.agents/plugins/marketplace.json` for Codex, and both point at that
-directory. The plugin's own manifests are `plugins/jz/.claude-plugin/plugin.json`
-and the portable `plugins/jz/plugin.json`. Neither pins a version, so an
-install tracks commits.
+directory. For Claude Code the marketplace entry is the plugin's manifest, so
+there is no `plugins/jz/.claude-plugin/plugin.json`; Codex reads the portable
+`plugins/jz/plugin.json`. Neither pins a version, so an install tracks
+commits.
 
 A plugin cannot ship always-on instruction files or permission entries. The
 rules reach a session through the `load-house-rules.sh` SessionStart hook,

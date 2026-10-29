@@ -10,8 +10,8 @@ description: Use when preparing or publishing a release in a pnpm workspace, fro
 Release preparation and publishing for pnpm workspaces: detect the release
 mechanism the repo actually uses, derive the semver impact from the real diff,
 show the changeset before writing it, prove the package is publishable, then let
-CI publish behind a labelled version PR. Guarantees that nothing is published,
-tagged or pushed without an explicit yes, that no changelog or migration guide
+CI publish behind a labelled version PR. Guarantees that nothing is published
+or tagged, and no tag is pushed, without an explicit yes, that no changelog or migration guide
 appears unless the repo already asked for one, and that the release type stays
 the repo owner's decision.
 
@@ -194,7 +194,8 @@ Summary text rules:
 - Never name a model or AI identifier.
 
 Committing the changeset follows the `ship` skill: branch first, conventional
-subject, confirmation before push. Do not commit and push it in one silent move.
+subject, then the push. The confirmation is the one on the changeset content
+above; a branch push needs no second question.
 
 ### Step 5: Changelog policy
 
@@ -332,7 +333,8 @@ either: a rename arrives as `old -> new` and breaks `git add`, a non-ASCII path
 arrives C-quoted, and an anchored filter misses a nested `docs/plans/`. The
 `ship` skill's staging step carries the full reasoning.
 
-Commit with a conventional subject, then open the PR after a confirmation:
+Commit with a conventional subject, then open the draft PR. A draft needs no
+confirmation; marking it ready does:
 
 ```bash
 gh pr create --draft \

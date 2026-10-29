@@ -30,7 +30,7 @@
 - Never pass `--no-verify`.
 - Fix what the hook reports instead of bypassing it.
 
-- Ask before running `git push`, `gh pr create` and marking a PR ready. One go-ahead that names them covers everything it names; do not ask again for each step.
+- Push a branch and open a draft PR without asking; both can be withdrawn. Ask before marking a PR ready, running `gh pr merge` and any force push; one go-ahead that names them covers everything it names.
 - Mark a PR ready only when the go-ahead or the brief named it, and only after the pushed head passes the gate on a clean detached checkout.
 - Never force-push without first stating exactly which commits will be discarded.
 - Never rewrite history that is already on a shared branch without asking.

@@ -13,9 +13,10 @@ open a draft PR, gate the pushed head on a clean detached checkout and mark the
 PR ready. Rebases the branch when the default branch moves and cleans up once
 the PR merges. Guarantees that every task runs on its own branch in its own
 worktree, nothing is committed on the default branch, no `.claude/` or plan
-files are staged, no push, PR or ready flip happens without a go-ahead that
-named it, the body is refreshed by `pr-desc` on every push that changes the
-diff, and ready is never flipped on the strength of a run in the working tree.
+files are staged, a push and a draft PR run only as far as the request asked,
+no ready flip happens without a go-ahead that named it, the body is refreshed
+by `pr-desc` on every push that changes the diff, and ready is never flipped
+on the strength of a run in the working tree.
 
 ## Modes
 
@@ -36,21 +37,22 @@ push never becomes a PR or a ready flip.
 
 ### One go-ahead covers what it names
 
-A request that names push, PR and ready in one sentence is the answer to each
-of those asks. "push, draft PR, gate on a clean checkout, mark ready" runs
-steps 9 to 12 with no question between them, and "commit and push" runs the
-push without asking again. The separate asks in steps 9 and 10 are for a
-request that stopped short, such as "commit", and then grows: each further
-remote write gets its own question, and a yes to one does not carry to the
-next.
+A request that names push, PR and ready in one sentence runs steps 9 to 12
+with no question between them. A branch push and a draft PR can be withdrawn,
+so steps 9 and 10 never ask for permission: the request decides whether they
+run at all. "commit" stops at step 8 because nothing more was asked for, and a
+later "push it" or "open the PR" runs the next step without a confirmation
+question. The ready flip is the exception: it signals reviewers, so step 12
+runs only when the go-ahead or the brief named it.
 
 The go-ahead often arrives after the commit has been made. Steps 7 and 8
 then find nothing to stage and the branch already carrying the commits, and
 the flow continues at step 9 with that head; step 7 says how to tell.
 
-The `confirm-remote-writes.sh` hook still asks the harness before
-`gh pr create` and before any force push. That prompt is the host's. It is not
-a reason to ask a second time in prose.
+The `confirm-remote-writes.sh` hook asks the harness before a `gh pr create`
+without `--draft`, before `gh pr ready`, `gh pr merge` and any force push, and
+lets a branch push and a draft PR through. That prompt is the host's. It is
+not a reason to ask a second time in prose.
 
 ## Workflow
 
@@ -368,12 +370,12 @@ did not matter.
 
 ### Step 9: Push, then refresh the body
 
-Without a go-ahead that named the push, ask first in plain words and wait for a
-yes:
-
-> Commit `<sha>` is on `<branch>`. Push to `origin`?
-
-Do not treat "commit my changes" as permission to push.
+Run this step when the mode includes the push. A branch push can be withdrawn,
+so it needs no confirmation question; "commit" alone still stops at step 8,
+because the push was not asked for, not because it needs permission. Withdrawn
+is not scrubbed: GitHub keeps every pushed commit retrievable by sha after the
+branch is deleted, so a secret that reaches the remote is public for good. No
+question catches that; a scan of the commits before the push does.
 
 ```bash
 git push --set-upstream origin <branch>
@@ -400,13 +402,10 @@ is. When there is no PR yet, the body is written at step 10.
 
 ### Step 10: Open a draft PR
 
-Without a go-ahead that named the PR, ask and wait for a yes:
-
-> Open a draft PR from `<branch>` into `<default-branch>`?
-
-Pushing is not permission to open a PR. Opening one is externally visible and
-hard to take back, so when the request did not name it, it carries its own
-confirmation rather than inheriting the one given for the push.
+Run this step when the mode includes the PR. A draft can be closed and signals
+no reviewer, so it needs no confirmation question; the ready flip in step 12 is
+where a go-ahead is required. "commit and push" still stops after step 9,
+because the PR was not asked for.
 
 Run the `pr-desc` skill in create mode and use the title and body it hands
 back. Hand it the `verify` report block from step 6 with the label step 8 gave
@@ -701,8 +700,9 @@ State plainly:
 | Refreshing or editing a PR from the pre-push gate | Before the push there may be no PR, and an existing body describes the old head. Carry the run back to step 8; steps 9 and 10 publish it after the push. |
 | Retrying a failed hook without re-running `verify` on the fix | The earlier run proved a tree that no longer exists. Step 6 again, then re-stage. |
 | Choosing the wrong type, such as `feat` for a refactor | Match intent: user-visible is `feat`/`fix`, internal is `refactor`/`chore`. |
-| Pushing after a request that said only "commit" | Push is its own remote write. Ask, and wait for the yes. |
-| Opening a PR after a request that said only "commit and push" | The PR is a further remote write. Ask again; the push's yes does not carry. |
+| Pushing after a request that said only "commit" | The request is the scope. Stop at the commit and report; push when asked. |
+| Opening a PR after a request that said only "commit and push" | Not asked for. Stop after the push and report; open the draft when asked. |
+| Asking permission before a push or a draft PR the request included | Both can be withdrawn. Run them; a go-ahead is required only for ready, merge and force push. |
 | Asking three times after one sentence that named push, PR and ready | One go-ahead answers everything it names. Run steps 9 to 12 and report. |
 | Leaving the body as it was after a push that changed the diff | Run `pr-desc` in update mode with the verify block and the new head. |
 | Writing the PR body in this skill | Run `pr-desc` and use the title and body it hands back. |

@@ -38,6 +38,7 @@
         "Checks for non-null assertions, `any`, or `as unknown as` introduced by the change",
         "Checks any new package.json dependency for justification, maintenance status and license",
         "Inventories rejecting guards from `git diff HEAD`, not from the branch diff, so the uncommitted guard under review is listed",
+        "Restores a sampled file from a byte snapshot taken before neutralising it, never with `git checkout --` or `git reset`, so the uncommitted changes under review survive the sample",
         "Every finding cites file:line",
         "Does not commit, stage, or create a branch",
         "Reports in the session and writes no plan file",

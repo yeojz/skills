@@ -167,16 +167,28 @@ stop when the ones that matter are done:
 | The rejection the change was asked for | the guard that is the feature: the brief, issue or specification names the input it must reject |
 | Everything else | sampled when the suite is quick; otherwise listed as not sampled with the reason |
 
-For each sampled guard, neutralise the condition by hand so the file still
-parses and every name it used is still referenced, `if (cond)` becoming
-`if (false && (cond))`, then run the package's declared test script, read
-from its `package.json` as `verify` Step 2 does, and put the file back:
+For each sampled guard, snapshot the file's exact bytes first, neutralise
+the condition by hand so the file still parses and every name it used is
+still referenced, `if (cond)` becoming `if (false && (cond))`, run the
+package's declared test script, read from its `package.json` as `verify`
+Step 2 does, and put the snapshot back:
 
 ```bash
+snapshot="$(mktemp)" && cp -p <path> "$snapshot"
+# neutralise the one condition in <path>
 pnpm --filter <pkg> test:ci
-git checkout -- <path>
+cp -p "$snapshot" <path> && cmp "$snapshot" <path> && echo "restored"
 git status --short
 ```
+
+The snapshot is the restore, never `git checkout -- <path>` or `git reset`:
+on a working-tree review those put the index version back and discard the
+uncommitted guard and every other unstaged edit under review, and a
+`git status` afterwards can see the damage but not undo it. In a Python
+package, prefix the test command with `PYTHONDONTWRITEBYTECODE=1
+PYTHONPYCACHEPREFIX="$(mktemp -d)"`: two mutants of one file have the same
+size, and one written in the same second as the last would otherwise be
+served the earlier mutant's cached bytecode.
 
 A red run kills the mutant. A green run is a survivor: a High finding that
 names the guard by `file:line` and the test that should have failed. A
@@ -530,6 +542,8 @@ to it as the verdict's evidence.
 | Judging guard coverage by reading the tests | Neutralise the guard, run the package's declared test script, restore, and paste the red or green run. A survivor is a High. |
 | Sampling every guard, or none, because the diff has many | The sample is targeted: security boundaries, data-loss guards and the rejection the change was asked for first. List the rest as not sampled with a reason each. |
 | Sampling on a red baseline, or leaving a neutralised guard in the tree | The suite is green before the first guard is touched, and the `git status` after the last restore matches the one from Step 1. |
+| Restoring a sampled file with `git checkout -- <path>` or `git reset` | Those put the index version back and discard the uncommitted work under review. Snapshot the bytes before neutralising, copy them back, and `cmp`. |
+| Inventorying guards with the branch diff on a working-tree review | Use the diff Step 1 chose: `git diff HEAD` for the working tree, the three-dot form for a branch, the pinned base and head for a PR. |
 | Counting a mutant the compiler refused as killed | A compile or type error is the compiler covering the guard, not a test. Record it as not sampled, covered by the compiler, and judge whether a runtime test is still owed. |
 | Pressing rerun on a red check before reading its log | Classify first: stale base rebases, a defect becomes a finding, a suspected flake earns one fresh run. |
 | A second rerun because the first came back red again | An identical second failure is a defect, not a flake. The budget is one per failing check per head. |
@@ -541,4 +555,3 @@ to it as the verdict's evidence.
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |
 | Bucketing an adversarial finding on the vote count | Verify it at the line first. Two reviewers agreeing on a wrong claim is still dismissed, with the refuting line quoted. |
 | Applying the act-on bucket from an adversarial review | Mode 4 applies nothing. Working the list is `execute-plan`, and only when asked. |
-| Inventorying guards with the branch diff on a working-tree review | Use the diff Step 1 chose: `git diff HEAD` for the working tree, the three-dot form for a branch, the pinned base and head for a PR. |

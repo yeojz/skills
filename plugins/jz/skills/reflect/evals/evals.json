@@ -8,6 +8,7 @@
       "files": [],
       "expectations": [
         "Reads the transcript file on disk, not only the conversation in context",
+        "Resolves the transcript by this session's id or by a phrase from this conversation, not by the most recently modified file, and stops to ask when zero or several files match",
         "Reads a user turn whose message content is an array of text blocks as a turn, and skips an array of tool_result blocks",
         "Each proposal names a file, shows the edit as a diff and quotes the user's words with the turn",
         "A candidate about the project's own scripts, CI or tests is listed under For correct and not proposed",

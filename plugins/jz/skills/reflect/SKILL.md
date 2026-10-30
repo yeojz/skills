@@ -37,18 +37,36 @@ of a long session, so read the transcript file as well; it holds every turn.
 
 | Host | Transcript | User turns |
 |---|---|---|
-| Claude Code | `~/.claude/projects/<cwd with / replaced by ->/<session-id>.jsonl` | `type == "user"`; `message.content` is a string, or an array whose `text` blocks are the turn and whose `tool_result` blocks are tool output, not a turn |
+| Claude Code | `~/.claude/projects/<cwd with every / and . replaced by ->/<session-id>.jsonl` | `type == "user"`; `message.content` is a string, or an array whose `text` blocks are the turn and whose `tool_result` blocks are tool output, not a turn |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl` | `type == "response_item"` with `payload.type == "message"` and `payload.role == "user"` |
 
+Resolve the transcript by session identity, never by modification time:
+two chats on the same checkout share the project directory, and the most
+recently modified file is whichever one spoke last. Claude Code exports the
+session id, and it is the transcript's basename:
+
 ```bash
-project_dir="$HOME/.claude/projects/$(pwd | tr '/' '-')"
-transcript="$(ls -t "$project_dir"/*.jsonl | head -1)"
+project_dir="$HOME/.claude/projects/$(pwd | tr '/.' '--')"
+transcript="$project_dir/${CLAUDE_CODE_SESSION_ID:?}.jsonl"
+[ -f "$transcript" ] || echo "no transcript for this session id"
 jq -r 'select(.type=="user") | .message.content | if type=="string" then . else (map(select(.type=="text") | .text) | join("\n")) end | select(length>0)' "$transcript"
 ```
 
+Codex names the rollout file after the thread id, and its first record,
+`session_meta`, carries that id and the `cwd`. With no id in the
+environment, resolve the file by content: a phrase the user typed in this
+conversation appears in exactly one rollout for this `cwd`.
+
 ```bash
-jq -r 'select(.type=="response_item" and .payload.type=="message" and .payload.role=="user") | .payload.content[].text' ~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-<id>.jsonl
+grep -lF '<a phrase the user typed in this conversation>' ~/.codex/sessions/*/*/*/rollout-*.jsonl
+jq -c 'select(.type=="session_meta") | {id: .payload.id, cwd: .payload.cwd}' <that file>
+jq -r 'select(.type=="response_item" and .payload.type=="message" and .payload.role=="user") | .payload.content[].text' <that file>
 ```
+
+The `cwd` must be this checkout. Zero matches or more than one is a stop:
+say which files matched and ask which is this session, rather than mining
+the wrong one. The same content check settles a Claude Code session whose
+id variable is unset.
 
 Read every user turn and the agent turn before it. Record a candidate for
 each of these signals, with the turn it came from:
@@ -188,6 +206,7 @@ notes, so the next phase starts knowing what changed.
 |---|---|
 | Applying a proposal because it is obviously right | Every proposal waits. Approval names numbers |
 | Reading only the conversation in context | Compaction dropped the start. Read the transcript file |
+| Picking the most recently modified transcript | Two chats on one checkout share the directory. Resolve by session id, or by a phrase from this conversation, and stop on zero or several matches |
 | A proposal with no quote from the transcript | Drop it. Evidence is the user's words and the turn |
 | Proposing a fix to the project's scripts or CI | That is `correct`. List it under For correct |
 | Editing the installed plugin copy | The next update overwrites it. Edit a checkout of the repository and ship from there |

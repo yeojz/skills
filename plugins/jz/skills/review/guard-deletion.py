@@ -30,8 +30,11 @@ a comma-separated Swift condition, is listed as unsupported and not sampled.
 Conditional lines in files the script does not parse are counted and named.
 
 The test command is the repo's own declared script, run through the shell
-from the current directory. The suite must be green before the first
-mutation; otherwise nothing a mutant does can be told from the baseline. A
+from the current directory, with PYTHONDONTWRITEBYTECODE set and a fresh
+PYTHONPYCACHEPREFIX per run, so no Python test process reads a .pyc compiled
+from an earlier mutant; each mutant also carries its own mtime. The suite
+must be green before the first mutation; otherwise nothing a mutant does can
+be told from the baseline. A
 mutant that fails to parse or compile is invalid and never counted as killed:
 a Python compile or a `node --check` where one applies, otherwise a compiler
 diagnostic in the test log that locates an error in the mutated file, in the
@@ -486,10 +489,22 @@ def unscanned_conditionals(path, text, line_numbers):
                if 1 <= number <= len(lines) and ANY_CONDITIONAL.match(lines[number - 1]))
 
 
-def run_tests(command, log_path):
+def run_tests(command, log_path, bytecode_dir):
+    """Run the test command with Python bytecode isolated to a directory used by this run alone.
+
+    CPython validates a cached .pyc by the source's mtime in whole seconds and
+    its size. Every mutant of one file has the same size, so two written in
+    the same second would share a signature and the second test process would
+    import the first mutant's bytecode. A fresh cache prefix per run means no
+    .pyc from an earlier run is read, and nothing is written next to the source.
+    """
+    os.makedirs(bytecode_dir, exist_ok=True)
+    environment = dict(os.environ)
+    environment['PYTHONDONTWRITEBYTECODE'] = '1'
+    environment['PYTHONPYCACHEPREFIX'] = bytecode_dir
     started = time.monotonic()
     with open(log_path, 'wb') as log:
-        completed = subprocess.run(command, shell=True, stdout=log, stderr=subprocess.STDOUT)
+        completed = subprocess.run(command, shell=True, stdout=log, stderr=subprocess.STDOUT, env=environment)
     return completed.returncode, time.monotonic() - started
 
 
@@ -544,9 +559,18 @@ def log_reports_compile_failure(log_path, path):
     return False
 
 
-def restore(path, original):
+def write_mutant(path, mutated, original_stat, index):
+    with open(path, 'wb') as handle:
+        handle.write(mutated)
+    # A distinct mtime per mutant, so a cache keyed on timestamp and size misses
+    # even under a runner that does not pass the environment through.
+    os.utime(path, (original_stat.st_atime, int(original_stat.st_mtime) - index))
+
+
+def restore(path, original, original_stat):
     with open(path, 'wb') as handle:
         handle.write(original)
+    os.utime(path, (original_stat.st_atime, original_stat.st_mtime))
     with open(path, 'rb') as handle:
         if handle.read() != original:
             print('%s could not be restored; the working tree is not the reviewed one' % path, file=sys.stderr)
@@ -578,6 +602,7 @@ def main(argv):
             continue
         with open(absolute, 'rb') as handle:
             original = handle.read()
+        original_stat = os.stat(absolute)
         try:
             text = original.decode('utf-8')
         except UnicodeDecodeError:
@@ -589,7 +614,7 @@ def main(argv):
             continue
         found = find_guards(path, text, changed[path])
         if found:
-            originals[path] = (absolute, original, text)
+            originals[path] = (absolute, original, text, original_stat)
             guards.extend(found)
 
     if unscanned:
@@ -613,7 +638,7 @@ def main(argv):
 
     log_dir = tempfile.mkdtemp(prefix='guard-deletion-')
     baseline_log = os.path.join(log_dir, 'baseline.log')
-    code, seconds = run_tests(test_command, baseline_log)
+    code, seconds = run_tests(test_command, baseline_log, os.path.join(log_dir, 'bytecode-baseline'))
     if code != 0:
         sys.stdout.flush()
         print('\nBaseline is red (exit %d), so nothing a mutant does can be told from it. Last lines:\n%s'
@@ -623,16 +648,15 @@ def main(argv):
           % (seconds, len(sampled), seconds * len(sampled) / 60))
 
     for index, guard in enumerate(sampled, 1):
-        absolute, original, text = originals[guard.path]
+        absolute, original, text, original_stat = originals[guard.path]
         mutated = guard.mutate(text).encode('utf-8')
         log_path = os.path.join(log_dir, 'mutant-%d.log' % index)
         try:
-            with open(absolute, 'wb') as handle:
-                handle.write(mutated)
+            write_mutant(absolute, mutated, original_stat, index)
             if not parses(absolute, mutated):
                 guard.result = 'invalid'
             else:
-                guard.exit_code, _ = run_tests(test_command, log_path)
+                guard.exit_code, _ = run_tests(test_command, log_path, os.path.join(log_dir, 'bytecode-%d' % index))
                 if guard.exit_code == 0:
                     guard.result = 'survived'
                 elif log_reports_compile_failure(log_path, guard.path):
@@ -640,7 +664,7 @@ def main(argv):
                 else:
                     guard.result = 'killed'
         finally:
-            restore(absolute, original)
+            restore(absolute, original, original_stat)
         print('[%d/%d] %s  %s  %s' % (index, len(sampled), guard.location(), guard.label(), guard.verdict()))
 
     survivors = [guard for guard in guards if guard.result == 'survived']

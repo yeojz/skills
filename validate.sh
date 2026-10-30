@@ -185,6 +185,10 @@ fi
 
 printf '\nScripts\n'
 scripts=(make-agents-md.sh validate.sh "$PLUGIN"/hooks/*.sh)
+# A script beside a skill gets the same checks as a hook.
+for f in "$PLUGIN"/skills/*/*.sh; do
+  [ -e "$f" ] && scripts+=("$f")
+done
 for f in "${scripts[@]}"; do
   if bash -n "$f" 2>/dev/null; then
     note "$f syntax ok"
@@ -193,7 +197,7 @@ for f in "${scripts[@]}"; do
   fi
 done
 
-for f in "$PLUGIN"/hooks/*.py; do
+for f in "$PLUGIN"/hooks/*.py "$PLUGIN"/skills/*/*.py; do
   [ -e "$f" ] || continue
   # Parse only, so nothing is written to a bytecode cache the host may not allow.
   if python3 -c 'import ast, sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$f" 2>/dev/null; then

@@ -1,6 +1,6 @@
 ---
 name: review
-description: Use when asked to review a change rather than a whole repo, or to deal with review comments on a pull request. Triggers on requests like "review my changes", "review this branch", "code review", "as a principal software engineer review the changes between this branch and main", "do a quick review of the changes", "do a general review without using the skill", "please do a second check", "check the PR comments", "are the comments addressed", "double check if the new PR comment is valid", or when the user pastes a pull request or a `#discussion_r...` URL.
+description: Use when asked to review a change rather than a whole repo, or to deal with review comments on a pull request. Triggers on requests like "review my changes", "review this branch", "code review", "as a principal software engineer review the changes between this branch and main", "do a quick review of the changes", "do a general review without using the skill", "please do a second check", "check the PR comments", "are the comments addressed", "double check if the new PR comment is valid", "CI is red on the PR", "adversarial review", "get a second opinion on this diff", "have another model review it", "interrogate the diff", or when the user pastes a pull request or a `#discussion_r...` URL.
 ---
 
 # review
@@ -9,21 +9,25 @@ description: Use when asked to review a change rather than a whole repo, or to d
 
 Diff-scoped review. It resolves what changed, reads the change plus the code
 around it, and reports severity-ranked findings that each point at a real
-`file:line`. It also sweeps unresolved pull request review threads, judges
-whether each comment is actually correct, addresses the valid ones and reports
-what is left.
+`file:line`. Design and maintainability weigh the same as correctness, and
+every new rejecting guard is sampled by deleting it and running the tests. It
+also sweeps unresolved pull request review threads, judges whether each
+comment is actually correct, classifies a red CI run before any retry,
+addresses the valid ones and reports what is left. For a contested change it
+runs the same brief through two model families and merges what they found.
 
 Everything is printed in the session. This skill never writes a plan file; that
 is `audit`, which is repo-wide and read-only. `review` is change-scoped and may
 edit code when the user asks for the comments to be addressed.
 
-Three modes:
+Four modes:
 
 | Mode | Trigger | Output |
 |---|---|---|
 | 1. Review a change | working tree, a branch against the default branch, a PR number or URL | severity table plus per-finding detail, in the session |
-| 2. Sweep PR comments | "check the PR comments", "are the comments addressed", a pasted PR or `#discussion_r...` URL | thread ledger, replies posted, remaining count |
+| 2. Sweep PR comments | "check the PR comments", "are the comments addressed", "CI is red", a pasted PR or `#discussion_r...` URL | thread ledger, CI classification, replies posted, remaining count |
 | 3. Plain review | "do a general review", "without using the skill", "quick look" | prose notes, no personas, no table |
+| 4. Adversarial review | "adversarial review", "second opinion", "have another model review it", "interrogate the diff", a coordinator brief that names a contested design | one brief to two or more reviewers on different model families, findings merged into act on, consider, noted and dismissed with an agreement map; nothing applied |
 
 ## Workflow
 
@@ -37,8 +41,9 @@ clear.
 | "my changes", "what I have so far", nothing committed | working tree | `git diff HEAD` plus `git status --short` |
 | "this branch", "against main", "before I push" | branch | `git diff "origin/$base...HEAD"` |
 | "the PR", a number, a PR URL | pull request | `gh pr diff <n>` |
-| a `#discussion_r...` URL | one review thread, Mode 2 | Step 6 |
-| "the comments", "are they addressed" | Mode 2 | Step 6 |
+| a `#discussion_r...` URL | one review thread, Mode 2 | Step 7 |
+| "the comments", "are they addressed", "CI is red" | Mode 2 | Step 7 |
+| "adversarial", "second opinion", "another model", "interrogate" | Mode 4, over the scope the rest of the sentence names | Step 10 |
 | nothing identifiable, and the tree is dirty | working tree, say which you chose | |
 | nothing identifiable, and the tree is clean | branch against the default branch | |
 
@@ -108,10 +113,16 @@ yourself in sequence and say so.
 ### Step 4: Work the checklist
 
 These are the recurring defects a change-scoped review is for. Walk them all;
-do not stop at the first finding.
+do not stop at the first finding. Three lenses, Design, Maintainability and
+Guard deletion, must report a line in Step 6 even when they found nothing;
+they weigh the same as the correctness lenses, and a review that is silent on
+them is incomplete, not clean.
 
 | Lens | Look for |
 |---|---|
+| Design | the shape of the change: a public surface wider than the change needed, a decision an ADR or `docs/design.md` settled the other way, a seam placed where the next change in this area will have to move it. The Layering and Over-engineering rows feed this line. Must report |
+| Maintainability | what the next reader pays: a comment that explains what instead of why, a test coupled to implementation detail, a module nobody can name the owner of. The Duplication, Dead code and Naming rows feed this line. Must report |
+| Guard deletion | every new `if` that throws, returns early or rejects input: delete it, run the package tests, restore. A guard whose deletion stays green is a High. The script below does the loop. Must report |
 | Duplication | logic reimplemented when a function already exists in this workspace. Grep for the behaviour before accepting a new helper |
 | Pass-through | a new parameter, option or context added at one layer and dropped at the next call site |
 | Assertions | non-null assertions `!`, `as unknown as`, `any`, `@ts-ignore` introduced by the change |
@@ -133,6 +144,29 @@ git diff "origin/$base...HEAD" -- '**/package.json'
 npm view <pkg> time.modified license
 pnpm why <pkg>
 ```
+
+For the guard deletion row, `guard-deletion.py` sits beside this file. It
+lists every rejecting guard the diff added, then for each one in turn
+neutralises its condition, runs the test command, restores the file byte for
+byte and records whether the suite went red. List first, so the count and
+the time per run are known before anything is mutated:
+
+```bash
+python3 <skill-dir>/guard-deletion.py --list "origin/$base" 'pnpm --filter <pkg> test:ci' packages/<pkg>
+python3 <skill-dir>/guard-deletion.py "origin/$base" 'pnpm --filter <pkg> test:ci' packages/<pkg>
+git status --short
+```
+
+The test command is the package's declared test script, read from its
+`package.json` as `verify` Step 2 does, never invented. For a working-tree
+review pass `HEAD` as the base ref. Run it once per changed package with that
+package's script; when the list is long, pass the changed files instead of
+the package directory and name in the report which guards were not sampled.
+The script exits 1 when a mutant survived, 2 when the baseline is already
+red or a file could not be restored, in which case stop and report that
+before anything else. Each survivor is a High finding that names the guard
+by `file:line` and the test that should have failed. The `git status` after
+the run must match the one from Step 1.
 
 ### Step 5: Ground every finding in a line
 
@@ -184,9 +218,23 @@ Why it matters: the concrete consequence in this codebase, not a principle.
 Suggested fix: what to change, and the `package.json` script that proves it.
 ```
 
+Below the detail sections, the three lenses that must report, one line each,
+whether or not they produced a finding:
+
+```markdown
+### Lenses that must report
+
+- Design: R3, or clean, checked <what: the boundaries, the new surface>
+- Maintainability: clean, checked <what: duplicates grepped, names against <sibling>>
+- Guard deletion: <n> guards sampled with `<test command>`, <k> survived (R1), or no new rejecting guard in the diff
+```
+
 Severity: Critical is exploitable, data-losing or already broken. High is a
-real defect or a boundary violation that will cause one. Medium is a smell, a
-missing negative test, drifted docs. Low is naming, consistency, tidying.
+real defect, a boundary violation that will cause one, or a surviving guard
+deletion. Medium is a smell, a missing negative test, drifted docs. Low is
+naming, consistency, tidying. Design and maintainability findings take their
+severity from their consequence, like any other; they are never demoted for
+being design.
 
 Ids are `R1`, `R2`, `R3` and stay stable once printed. If the review finds
 nothing, say that plainly and name what was checked; do not manufacture a Low.
@@ -277,6 +325,37 @@ If the user asks for a second sweep or "can you check for more comments", run
 the same query again from scratch rather than reusing the earlier result; new
 comments arrive between passes.
 
+#### Classify a red CI run before any retry
+
+A sweep covers the checks as well as the threads. Read every failing check
+and classify it before touching the rerun button; a retry on a defect wastes
+a run, and a retry on a stale base hides the fix that is needed.
+
+```bash
+gh pr checks <n>
+gh run view <run-id> --log-failed
+git diff "origin/$base...HEAD" --name-only
+```
+
+| Signal | Class | Do |
+|---|---|---|
+| The failing test or file is outside the diff's `--name-only` list and imports nothing the diff changed; the same check is red on `origin/$base` too | Stale base | The branch is behind the default branch. Rebase through `ship`'s rebase step and push; never rerun the check |
+| The failing test or file is in the diff, or imports something the diff changed | Defect | A finding with an R id, into the work set like a valid comment; a fix round, then `verify` |
+| A timeout, a connection reset, a port already in use, a 429 or 5xx from a registry, a runner lost, and the same test passes locally on the same head | Suspected flake | One fresh run, once per failing check per head: `gh run rerun <run-id> --failed`. Then classify again |
+| The second run fails on the same test with the same message | Not flake | It is a defect. No third run; the job is open until a fix lands and the run on the new head is green |
+| CI runs a script the local gate skipped | Gap | Run that script locally first, then classify its failure by the rows above |
+
+The rerun budget is one per failing check per head, ever. An identical
+second failure is evidence, not bad luck. A check that is still red at the
+end of the sweep is listed in the closing report with its class, next to the
+remaining thread count.
+
+In the desktop app, bind the PR once and turn its monitor on instead of
+polling the checks or the app's PR status: the monitor wakes the session on a
+CI failure, a merge conflict and a new review comment, and each wake is a
+sweep through this step from scratch. Under another agent, re-fetch when the
+user asks or a fix was pushed, never on a timer. Merging stays the owner's.
+
 ### Step 8: Mode 3, plain review
 
 When the user asks for a general or quick review, or explicitly says to do it
@@ -307,6 +386,77 @@ last report.
    defects of their own, so the second pass is not a checklist tick.
 4. Call `verify` before saying any of the previous findings are resolved.
 
+### Step 10: Mode 4, adversarial review
+
+Two or more reviewers on different model families read the same brief and
+never see each other's findings; this session verifies and merges what comes
+back and applies nothing. It replaces the ad hoc "get another model to look
+at it" session, and it is the second opinion `rules/models.md` asks for on a
+contested design.
+
+1. Resolve the scope through Steps 1 and 2 and record the head sha. Every
+   reviewer reads the same revision.
+2. Write one brief and save it to a file, in the group's notes folder when
+   the session has one and in a temporary directory otherwise. It carries:
+   the scope line and the exact diff command with the sha; the lens table
+   from Step 4 with the three lenses that must report; the grounding rules
+   from Step 5; the table shape from Step 6 with R ids, severity, `file:line`
+   and quoted evidence; and the sentence "read only: edit nothing, run no
+   formatter, post nothing". The brief is written once and sent verbatim to
+   each reviewer; a brief that differs between reviewers makes the agreement
+   map meaningless.
+3. Start the reviewers in one batch, each fresh, none a fork of this session:
+   - one on the review tier from `rules/models.md`, never below it;
+   - one through Codex when its plugin is present, told read only. When the
+     plugin is absent, say so and run the second reviewer as another fresh
+     session on the review tier; two reviews from one family are weaker than
+     two families, and the report says which it got.
+   Label them A, B and so on, and record each label's family and tier. A
+   reviewer that fails or returns nothing gets one fresh start; after that
+   the report carries the reviewers that answered and names the gap.
+4. Verify every finding yourself against the cited lines, as Step 5 requires,
+   before it is bucketed. Agreement raises priority; it never stands in for
+   verification, because two reviewers can agree on the same wrong claim.
+5. Merge findings that point at the same defect, within a few lines of the
+   same file, under one R id, and build the agreement map: one row per merged
+   finding, one column per reviewer, each cell `raised <severity>`,
+   `not raised` or `contradicted`.
+6. Bucket on the evidence:
+
+| Bucket | Means |
+|---|---|
+| Act on | Verified at the line and High or above, or raised by two or more reviewers and verified. A fix is expected before merge |
+| Consider | Verified at the line, Medium or Low, or a judgment call the repo's docs do not settle. Named for the owner to decide |
+| Noted | True, but outside this change or settled the other way by a documented decision. Recorded so it is not re-raised |
+| Dismissed | Refuted by the cited code, the dependency source or the specification text, or not grounded in a line. Each one says which reviewer raised it and quotes what refutes it |
+
+7. Print in the session:
+
+```markdown
+## Adversarial review: <branch or PR> at <sha>, <n> reviewers
+
+Brief: <path>, identical for every reviewer
+Reviewers: A = <family>, review tier; B = Codex through its plugin, <its reported tier>
+Agreement: <k> of <m> merged findings raised by every reviewer; A only <p>; B only <q>
+
+| ID | Location | A | B | Bucket |
+|----|----------|---|---|--------|
+| R1 | `packages/core/src/verify.ts:42` | raised High | raised Medium | act on |
+| R2 | `packages/cli/src/run.ts:88` | raised Medium | not raised | consider |
+| R3 | `packages/core/src/index.ts:7` | not raised | raised Low | dismissed |
+
+### Act on
+### Consider
+### Noted
+### Dismissed
+```
+
+Each section carries the Step 6 detail per finding plus a "Raised by" line.
+Nothing is applied: no edit, no commit, no reply on a thread and no posted
+review. When the user asks for the act-on list to be worked, that is
+`execute-plan`; when a coordinator asked for the review, the buckets go back
+to it as the verdict's evidence.
+
 ## Common Mistakes
 
 | Mistake | Fix |
@@ -326,3 +476,15 @@ last report.
 | Re-printing the first report as the second check | Re-run the diff and classify each old finding as fixed, not fixed, or no longer applicable, with a line. |
 | Offering to fix everything at the end of a review | Report and stop. Fixing findings is `execute-plan`, and only if the user asks. |
 | Padding a clean review with Low-severity filler | Say nothing needs changing and name what was checked. |
+| A report with no Design, Maintainability or Guard deletion line | The three lenses report every time, clean or not, with what was checked. Silence is an incomplete review, not a clean one. |
+| Demoting a design finding because "it works" | Design and maintainability weigh the same as correctness; severity comes from the consequence. |
+| Calling guard-deletion sampling done from reading the tests | Run `guard-deletion.py` with the package's declared test script and paste its table. A survivor is a High. |
+| Running the guard-deletion script on a red baseline, or leaving a mutant behind | The script exits 2 on both; stop and report. The `git status` after the run matches the one before. |
+| Pressing rerun on a red check before reading its log | Classify first: stale base rebases, a defect becomes a finding, a suspected flake earns one fresh run. |
+| A second rerun because the first came back red again | An identical second failure is a defect, not a flake. The budget is one per failing check per head. |
+| Rerunning a failure in code the diff never touched | That is a stale base. Rebase and push; the rerun would fail the same way. |
+| Polling the PR's checks or status in a loop | In the desktop app, bind the PR and turn the monitor on once; let the wake run the sweep. |
+| Sending each adversarial reviewer its own wording of the brief | One brief, written once, sent verbatim to every reviewer; otherwise the agreement map compares different questions. |
+| Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |
+| Bucketing an adversarial finding on the vote count | Verify it at the line first. Two reviewers agreeing on a wrong claim is still dismissed, with the refuting line quoted. |
+| Applying the act-on bucket from an adversarial review | Mode 4 applies nothing. Working the list is `execute-plan`, and only when asked. |

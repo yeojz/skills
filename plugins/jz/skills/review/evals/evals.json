@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "As a principal software engineer, review the code changes between this branch and main and assess the risks and any optimisations.",
-      "expected_output": "The review is scoped to the branch diff using the three-dot form after fetching origin/main, reads the changed files and their callers rather than only the hunks, and prints a severity-ranked findings table plus per-finding detail in the session. No plan file is written.",
+      "expected_output": "The review is scoped to the branch diff using the three-dot form after fetching origin/main, reads the changed files and their callers rather than only the hunks, works the design and maintainability lenses at the same weight as correctness, runs guard-deletion sampling with the package's declared test script, and prints a severity-ranked findings table plus per-finding detail and a line per required lens in the session. No plan file is written.",
       "files": [],
       "expectations": [
         "Runs `git fetch origin main` before diffing",
@@ -13,6 +13,11 @@
         "Reads the full contents of changed files rather than only the diff hunks",
         "Greps for callers of changed signatures to check argument pass-through",
         "Every reported finding cites a concrete file path and line number",
+        "Reports a Design line and a Maintainability line even when neither produced a finding, naming what was checked",
+        "Runs guard-deletion.py with the package's declared test script read from package.json, after listing the guards with --list, rather than judging test coverage by reading the tests",
+        "Reports every surviving guard deletion as a High finding citing the guard's file:line and the test that should have failed",
+        "Reports the guard-deletion count, the test command and the survivor count on the Guard deletion line, or that the diff added no rejecting guard",
+        "Does not demote a design or maintainability finding below the severity its consequence earns",
         "Prints a severity-ranked findings table with stable R-prefixed ids and a detail section per finding",
         "Severity values are limited to Critical, High, Medium and Low",
         "Writes no file under docs/plans/ or anywhere else",
@@ -38,8 +43,8 @@
     },
     {
       "id": 3,
-      "prompt": "Please look at the review comments on https://github.com/example/example/pull/1234 and check whether they are addressed. Double check if the new PR comment is valid.",
-      "expected_output": "Every review thread is enumerated with gh api including resolved and outdated state, each unresolved and non-outdated comment is judged for correctness before any change is made, the incorrect comment is pushed back on with evidence rather than implemented, replies are posted on the threads, and the closing report gives the remaining unresolved and non-outdated count.",
+      "prompt": "Please look at the review comments on https://github.com/example/example/pull/1234 and check whether they are addressed. Double check if the new PR comment is valid. CI is red on the PR too.",
+      "expected_output": "Every review thread is enumerated with gh api including resolved and outdated state, each unresolved and non-outdated comment is judged for correctness before any change is made, the incorrect comment is pushed back on with evidence rather than implemented, replies are posted on the threads, every failing check is read and classified as stale base, defect, suspected flake or gap before any rerun, and the closing report gives the remaining unresolved and non-outdated count next to the state of each check.",
       "files": [],
       "expectations": [
         "Fetches review threads with `gh api` rather than fetching or scraping the pull request web page",
@@ -53,7 +58,13 @@
         "Does not resolve a thread it disagreed with",
         "Calls the verify skill and pastes its report block before claiming any fix is complete",
         "Re-fetches the threads after the work and reports the remaining unresolved and non-outdated count",
-        "Lists any thread left unaddressed by name with a reason"
+        "Lists any thread left unaddressed by name with a reason",
+        "Reads the failing check's log with `gh run view --log-failed` and compares the failing file against `git diff --name-only` before deciding anything about CI",
+        "Classifies a failure in a file the diff never touched, that is also red on the default branch, as a stale base and rebases rather than rerunning the check",
+        "Classifies a failure in a file the diff changed as a defect with an R id rather than rerunning it",
+        "Reruns a suspected flake at most once per failing check on the same head, and treats an identical second failure as a defect with no third run",
+        "In the desktop app, binds the PR and turns the monitor on once instead of polling the checks or the PR status in a loop",
+        "Lists each check still red at the end of the sweep with its class next to the remaining thread count"
       ]
     },
     {
@@ -86,6 +97,23 @@
         "Still cites file:line behind every point raised",
         "Writes no plan file and edits no code",
         "Says plainly if nothing needs changing rather than inventing findings"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Get a second opinion on this branch: run an adversarial review with another model and tell me where they agree.",
+      "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, the review tier from the models rule and Codex through its plugin when present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into R ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
+      "files": [],
+      "expectations": [
+        "Resolves the scope with the three-dot diff and records the head sha so every reviewer reads the same revision",
+        "Writes the brief to one file carrying the diff command, the lens table, the grounding rules and the output shape, and sends the same text to every reviewer",
+        "Starts the reviewers fresh and in one batch, one on the review tier from the models rule and one through the Codex plugin when present, or says the plugin is absent and names the gap",
+        "Labels each reviewer with its family and tier in the report and does not let one reviewer see another's findings",
+        "Verifies each returned finding against the cited lines before bucketing it, and dismisses one two reviewers agreed on when the code refutes it, quoting the refuting line",
+        "Prints an agreement map with one row per merged finding and one column per reviewer, each cell raised with a severity, not raised or contradicted",
+        "Groups the findings under act on, consider, noted and dismissed, each with a Raised by line",
+        "States the agreement count: how many merged findings every reviewer raised and how many only one did",
+        "Edits no code, commits nothing, posts nothing on the PR and does not offer to start fixing the act-on bucket"
       ]
     }
   ]

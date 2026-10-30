@@ -241,20 +241,38 @@ def git_call(argv, directory):
     return rest[0], rest[1:], os.path.normpath(directory)
 
 
-def git_config_overrides(argv):
-    """The `-c` and `--config-env` options of a git call, as tokens for another git call.
+GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
+GIT_REPOSITORY_OPTIONS = GIT_CONFIG_OPTIONS | {"--git-dir", "--work-tree", "--namespace"}
 
-    Passing them to a `git config` query makes git itself resolve the one-off
-    override over the stored value, the way the inspected command will.
-    """
+
+def git_options_named(argv, names):
+    """The global options of a git call whose names are in `names`, as tokens for another git call."""
     split = git_global_options(argv)
     if split is None:
         return []
     passed = []
     for name, value in split[0]:
-        if name in {"-c", "--config-env"} and value is not None:
+        if name in names and value is not None:
             passed.extend([name, value])
     return passed
+
+
+def git_config_overrides(argv):
+    """The `-c` and `--config-env` options of a git call.
+
+    Passing them to a `git config` query makes git itself resolve the one-off
+    override over the stored value, the way the inspected command will.
+    """
+    return git_options_named(argv, GIT_CONFIG_OPTIONS)
+
+
+def git_repository_options(argv):
+    """The options that pick the repository and its configuration: `-c`, `--config-env`, `--git-dir`, `--work-tree`, `--namespace`.
+
+    A hook that runs git on the caller's behalf passes them through, so its
+    queries see the repository and the settings the inspected command will.
+    """
+    return git_options_named(argv, GIT_REPOSITORY_OPTIONS)
 
 
 def commands_with_directory(command_line, directory, depth=0):

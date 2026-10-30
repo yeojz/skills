@@ -104,8 +104,10 @@ review. `execute-plan` works the plan item by item, reaching for `tdd`,
 `debug`, `coverage`, `design-critique`, `docs-sync` or `deps-guard` as the
 item demands. `verify` gates every done claim. `ship`
 commits, pushes and opens the draft PR, `pr-desc` writes its body, `review`
-handles the comments, and `release` follows a merge. `handoff` carries the
-state when context runs out.
+handles the comments, and `release` follows a merge. `correct` turns a
+correction that came back into a check the project runs, and `reflect` turns
+one into an edit to a skill or rule here. `handoff` carries the state when
+context runs out.
 
 #### Settle the work
 
@@ -143,6 +145,17 @@ state when context runs out.
 | `review` | Diff-scoped or PR-scoped review with design, maintainability and guard-deletion lenses that always report; the unresolved-comment sweep with CI classified before any rerun; an adversarial mode that sends one brief to two model families and merges the findings |
 | `release` | Version PR, changeset, label gate, publish |
 
+#### Close the loop
+
+A review or a phase ends with corrections. These two spend each one once,
+so it is never typed again: neither ships anything, and they feed the next
+phase rather than this one.
+
+| Skill | Use it for |
+|---|---|
+| `correct` | A correction that recurred in the project: group recent reverts, review threads and steers, fix the most frequent class at the highest level that holds, prove the check fails on the past mistake, add the enforcement row |
+| `reflect` | The corrections and workarounds in this session, proposed as edits to a skill or rule in this plugin behind an approval gate; the project-side ones go to `correct` |
+
 #### Hand over
 
 | Skill | Use it for |
@@ -165,6 +178,7 @@ injects them at session start.
 | File | Covers |
 |---|---|
 | `house-style.md` | TypeScript and general code style |
+| `prose.md` | Numbered writing rules, so a steer can cite "prose rule 4": plain facts, no narrative of earlier runs, no mannered phrasing, sentence-case headings, straight quotes, no emoji or model names |
 | `git-workflow.md` | Branching, worktrees, commits, PR bodies, what never gets staged |
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |

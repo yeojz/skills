@@ -130,28 +130,52 @@ A check that has never been red proves nothing. Reconstruct the mistake from
 its real occurrence, run the check, and paste the non-zero exit; then run it
 on the fixed tree and paste the zero.
 
-| Fix is | Reconstruct the mistake by |
-|---|---|
-| A lint rule or CI grep | checking out the offending file from the commit the revert undid, into the working tree |
-| A test | reverting the revert into the working tree with `git revert --no-commit <revert-sha>` |
-| A hook | feeding it the payload the transcript shows, as `test-hooks.sh` in the plugin does |
-| A type or an architecture change | reapplying the offending hunk with `git apply` and reading the compiler's refusal |
-| A formatter or ignore change | recreating the file that tripped the gate, running the gate |
+The fix from Step 4 is still uncommitted, so the red run never happens in
+the task worktree: reconstructing the mistake there overwrites the fixed
+file, and `git checkout -- <path>` afterwards restores the index version
+and discards the fix while `git status --short` reads clean. Build a
+throwaway worktree detached at `HEAD`, carry the uncommitted fix into it by
+name, and reconstruct the mistake there:
 
 ```bash
-git show <offending-sha>:<path> > <path>
+git status --short
+git hash-object <fixed-path>
+red_dir="$(mktemp -d)"
+git worktree add --detach "$red_dir" HEAD
+for f in <every path git status --short listed>; do
+  if [ -e "$f" ]; then mkdir -p "$red_dir/$(dirname "$f")" && cp -p "$f" "$red_dir/$f"; else rm -f "${red_dir:?}/${f:?}"; fi
+done
+```
+
+When the check needs dependencies, install them inside `$red_dir` from the
+lock file, with `pnpm install --frozen-lockfile` or the equivalent the lock
+file names. Then reconstruct the mistake inside `$red_dir`, never outside
+it:
+
+| Fix is | Reconstruct the mistake, inside `$red_dir`, by |
+|---|---|
+| A lint rule or CI grep | `git -C "$red_dir" show <offending-sha>:<path> > "$red_dir/<path>"` |
+| A test | `git -C "$red_dir" revert --no-commit <revert-sha>` |
+| A hook | feeding it the payload the transcript shows, as `test-hooks.sh` in the plugin does |
+| A type or an architecture change | `git -C "$red_dir" apply <offending-hunk.patch>` and reading the compiler's refusal |
+| A formatter or ignore change | recreating the file that tripped the gate under `$red_dir`, running the gate there |
+
+```bash
+( cd "$red_dir" && pnpm lint ); echo "exit=$?"
+git worktree remove --force "$red_dir"
+git worktree prune
 pnpm lint; echo "exit=$?"
-git checkout -- <path>
-pnpm lint; echo "exit=$?"
+git status --short
+git hash-object <fixed-path>
 ```
 
 Use `$?` on the line after the command, never through a pipe. Both exit
-codes go in the report. If the check cannot be made red on the past
-mistake, the level does not hold: drop one level and repeat. Bound this at
-three levels; past that, report the class as unfixed with what was tried.
-
-Restore the working tree after the red run and prove it with
-`git status --short`.
+codes go in the report, with the `git status --short` and the hash of the
+fixed file before and after, which must match: the task worktree was never
+touched, and the matching hash is the proof. If the check cannot be made
+red on the past mistake, the level does not hold: drop one level and
+repeat. Bound this at three levels; past that, report the class as unfixed
+with what was tried.
 
 ### Step 6: Add or update the enforcement row
 
@@ -211,7 +235,7 @@ in this session.
 | A check that was never red | Reconstruct the past mistake, run the check, paste the non-zero exit, then the zero on the fix |
 | Two classes in one commit | One class, one commit. The second class is the next run |
 | Fixing a plugin skill or rule here | That is `reflect`. List it under "For reflect" and leave it |
-| Leaving the reconstructed mistake in the working tree | Restore after the red run and prove it with `git status --short` |
+| Reconstructing the mistake in the task worktree | The fix is uncommitted there; `git checkout --` restores the index version and discards it. Red runs happen in a throwaway worktree with the fixed paths copied in, and the fixed file's hash matches before and after |
 | An enforcement row that names no runnable thing | Name the file and the script or workflow that runs it |
 | Weakening the check so the current tree passes | Root-cause the current red; the verification rule forbids the shortcut |
 | Writing the fix on the default branch | Branch first, as `ship` Step 1 describes |

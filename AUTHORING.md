@@ -180,6 +180,8 @@ check that fails, then a test, with prose last.
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
 | Open as draft, mark ready only after the gate is green | `ship` steps 11 and 12: the pushed head is gated on a clean detached checkout, and ready is flipped only when a go-ahead or brief named it; no hook yet |
 | Model tier matches the job | nothing; `models.md` describes it |
+| Prose rules 7 and 8, no emoji or model name in commit or PR text | `no-restricted-words.sh`, PreToolUse; `validate.sh` for emoji in this repo's files |
+| Prose rules 1 to 6 and 9 to 14 | nothing; `prose.md` numbers them so a steer cites one, and `reflect` turns a repeated steer into the next check |
 
 A repository lists its restricted words as bullets under a `## Restricted
 words` heading in `AGENTS.md` or `CLAUDE.md`, one word per bullet.

@@ -29,8 +29,5 @@
 - Never invent an ad-hoc command in place of a declared script.
 - Read the script before running it, so you pass the flags it expects.
 
-- Never write emoji in code, comments, docs, commits or PR text.
-- Never put model names or AI identifiers in code, comments, docs or PR text.
 - Never put secrets, tokens or credentials in code, tests or examples.
 - Use `example.com` for every domain in examples and fixtures.
-- Use em-dashes sparingly in prose.

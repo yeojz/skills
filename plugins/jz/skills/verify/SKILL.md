@@ -10,8 +10,8 @@ description: Use when about to claim work is done, fixed, passing or complete, b
 The completion gate for every other skill in this repo. It discovers the repo's
 real commands from `package.json` or its Makefile, runs them cheapest first,
 pastes the actual output and exit code for each, root-causes any failure instead
-of routing around it, and blocks the words done, fixed and passing until an
-evidence block exists.
+of routing around it, names the behaviour level those runs support, and blocks
+the words done, fixed and passing until an evidence block exists.
 
 The failure this exists to prevent is work reported as complete that was not.
 A summary sentence is not evidence. Command output is evidence.
@@ -242,12 +242,31 @@ Commands read from: <path/to/package.json or Makefile>
 | build | pnpm build | 0 | pass |
 | test:deno | pnpm test:deno | 0 | pass |
 | format | (no script) | - | not covered |
+| behaviour | pnpm test:conformance -- fixtures/journal.ledger | 0 | live-verified |
 ```
 
 Rules for the block:
 
 - One row per concern from the Step 2 table. No concern is omitted.
-- `Result` is `pass`, `fail`, `not covered` or `not run`. Nothing else.
+- `Result` is `pass`, `fail`, `not covered` or `not run`. Nothing else, except
+  on the `behaviour` row.
+- The `behaviour` row is always present and last. Its `Result` is the highest
+  level the pasted runs support, never the one intended, and its `Command` is
+  the run that supports it:
+
+| Value | Holds when |
+|---|---|
+| `live-verified` | The changed behaviour was driven end to end on a running system and the run is pasted: a browser, a real request, the built CLI on a fixture, a conformance tier, a `verify-<app>` skill |
+| `unit-only` | The test script passed and a test in it exercises the changed behaviour; nothing drove the feature itself |
+| `type-check-only` | Only typecheck, lint or format ran green over the change; no test exercises it |
+| `not run` | Nothing above ran, or the sequence stopped at a failure before reaching it |
+
+- A green suite with no test on the changed behaviour is `type-check-only`,
+  not `unit-only`. Scripts passing says nothing about the feature having been
+  exercised, which is what this row exists to separate.
+- A brief or roadmap row that names a level under Done means is met only when
+  this row reads that level or higher; a lower value is reported as not met,
+  with what was not driven and why.
 - Any `fail` row means the reply says blocked and pastes the failing output.
 - The words done, fixed, passing, complete, working and green may not appear in
   the reply unless this block is present and no row says `fail`.
@@ -272,3 +291,5 @@ Rules for the block:
 | Reporting a `--filter` run as whole-repo verification | State the narrowed scope in the report block |
 | Claiming a fix for a command the user says still errors | Re-run that exact command and paste its output |
 | Reporting "no script" for every concern on a repo with no `package.json` | Read the `Makefile`. Its targets are the repo's declared commands. |
+| Writing `live-verified` because the test suite is green | Green scripts are `unit-only` at most. `live-verified` needs a pasted run that drove the feature on a running system |
+| Leaving the `behaviour` row out, or filling it from the level the brief asked for | The row is always present, filled from what ran; a brief's level is a target the row is compared against, not a value to copy |

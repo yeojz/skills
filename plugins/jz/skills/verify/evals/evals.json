@@ -13,6 +13,8 @@
         "Pastes the actual output tail and the exit code for each command run",
         "Emits a Verification block with one row per concern, each showing command, exit code and result",
         "Marks any concern with no matching script as 'not covered' rather than substituting an invented command",
+        "Ends the Verification block with a behaviour row whose value is one of live-verified, unit-only, type-check-only or not run, filled from what ran, with the command that supports it",
+        "Does not write live-verified unless a pasted run drove the token refresh on a running system; a green test suite yields unit-only at most",
         "Does not use the words done, fixed or passing before the Verification block appears"
       ]
     },
@@ -28,6 +30,7 @@
         "Does not disable, skip or delete a test to reach green",
         "Re-runs the same typecheck command after the fix and pastes its exit code and output",
         "Continues on to lint, test and build after typecheck reaches exit 0",
+        "Fills the behaviour row from the runs that reached green: type-check-only if the sequence stopped after typecheck, unit-only once a test covering the loader passed, never live-verified from scripts alone",
         "If still failing after three attempts, stops editing and reports the smallest reproducing command, the failing output and what was ruled out"
       ]
     },
@@ -73,7 +76,8 @@
         "Root-causes the Deno-specific failure instead of skipping, excluding or removing the script from the sequence",
         "Does not treat a passing Node test run as evidence that the Deno run works",
         "Counts fix attempts and stops at three, reporting the blocker with the failing output if unresolved",
-        "Includes test:deno as its own row in the Verification block"
+        "Includes test:deno as its own row in the Verification block",
+        "Reports the behaviour row as not run while the sequence is stopped at the failing test:deno command, rather than carrying over a level from an earlier claim"
       ]
     }
   ]

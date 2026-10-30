@@ -27,3 +27,8 @@
 - Wait for the choice rather than implementing the recommendation straight away.
 - Keep options to three or four, each meaningfully different.
 - Say which option you would pick and why, in one sentence.
+
+- Wait for the owner at three points only: a design fork put as lettered options, a remote write that asks (ready, merge, a force push), and an action the brief marks as the owner's.
+- A fork earns lettered options when it would earn an ADR: a public API shape, a data model, a new dependency, a specification interpretation, or anything the brief lists as owner-decided. Below that, decide, record the choice and the reason, and report it.
+- Everything else proceeds and is reported afterwards. Never stop to ask whether a branch is pushed or a PR is open; run the command that answers it.
+- An unmerged dependency is a branch to base on, not a reason to stop: record the branch and its tip, say so in the report, and rebase from that tip once it merges.

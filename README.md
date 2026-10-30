@@ -134,7 +134,7 @@ context runs out.
 
 | Skill | Use it for |
 |---|---|
-| `verify` | The completion gate. Runs the repo's own scripts and pastes real output before any done claim |
+| `verify` | The completion gate. Runs the repo's own scripts, pastes real output before any done claim, and names the behaviour level those runs support: live-verified, unit-only, type-check-only or not run |
 
 #### Ship and review
 
@@ -160,7 +160,7 @@ phase rather than this one.
 
 | Skill | Use it for |
 |---|---|
-| `handoff` | Write a resumable handoff before context runs out |
+| `handoff` | Write a resumable handoff before context runs out, with decisions read from the `coordinate` ledger rather than from memory |
 
 `verify` is the one the others depend on. It is what stops "done" from meaning
 "probably done".
@@ -182,7 +182,7 @@ injects them at session start.
 | `git-workflow.md` | Branching, worktrees, commits, PR bodies, what never gets staged |
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |
-| `parallelism.md` | Fan independent work out to subagents by default |
+| `parallelism.md` | Fan independent work out to subagents by default; wait for the owner only at a lettered design fork, a remote write that asks, or an action the brief marks as theirs |
 | `models.md` | Which model tier does coordination, review, scoped implementation and scans |
 
 ### Hooks

@@ -129,7 +129,7 @@ question the worker will stall on.
 | Decisions already made | The ADRs and `docs/design.md` lines that touch this row, plus any base-on-branch decision from Step 3 |
 | Scope and owns | The row's owns and builds fields, as absolute paths |
 | Not asked for now | The neighbouring rows, so the worker stops at the boundary |
-| Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the behaviour level `verify` reports, and any conformance or fixture run |
+| Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the value the `behaviour` row of the `verify` report must reach (`live-verified`, `unit-only` or `type-check-only`), and any conformance or fixture run |
 | Model tier | The tier `rules/models.md` gives a scoped unit with named files and a done condition; one tier up when the row is subtle or security-sensitive. Name the tier in the brief |
 | Ship | The `ship` skill, with the go-ahead for push, draft PR, gate on a clean detached checkout and ready granted in the brief, so the worker asks for none of them |
 | Standing orders | The `AGENTS.md` block from Step 1, verbatim |
@@ -158,6 +158,7 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 | Head SHA | `headRefOid` and `origin/<branch>` |
 | Gate counts | A pasted run on a clean detached checkout, as `ship` Step 11 produces, with exit codes |
 | Ready | `isDraft` false, only when the brief named ready as the signal |
+| Behaviour level | The `behaviour` row of the pasted `verify` block reads the value Done means named, or higher, with the command that drove it; a lower value is a report of not met, not a claim of done |
 
 A report with a missing item goes back to the worker as one line naming it.
 Then write the `units.tsv` row with PR number and head, and go to Step 6.
@@ -182,8 +183,9 @@ The brief fixes what the review must do, so the reviewer cannot trade it
 away: gates on a clean detached checkout, a correctness probe of base against
 candidate, measurement reproduction with interleaved samples when the PR
 claims a number, design and maintainability at the same weight as
-correctness, guard-deletion sampling over the new rejecting branches,
-findings P1 to P3 each with a `file:line`, one COMMENT review posted on the
+correctness, a targeted guard-deletion sample over the new rejecting
+branches with every unsampled guard listed with its reason, findings P1 to
+P3 each with a `file:line`, one COMMENT review posted on the
 PR, never an approval or a request for changes, a `review-pr<number>.md` in
 the notes folder, and a verdict of merge as is, after fixes, or rework.
 

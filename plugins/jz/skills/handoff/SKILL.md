@@ -136,18 +136,44 @@ Example row:
 
 Mark items that can run in parallel. That drives Step 6.
 
-### Step 5: Carry forward decisions and constraints
+### Step 5: Carry forward decisions from the trail, not from memory
 
-List the decisions and constraints agreed in this session that exist nowhere on
-disk. A context clear destroys them.
+A session run under `coordinate` has its decisions on disk already:
+`decisions.tsv` in the group's notes folder, one row per fork, verdict and
+relay, with a pointer to the evidence. Read it before writing a word of this
+section; recollection is what the context clear is about to destroy.
 
-For each one, name where it should be recorded permanently:
+```bash
+notes="<notes folder the brief or the app named for this group of sessions>"
+ls "$notes/decisions.tsv"
+column -t -s $'\t' "$notes/decisions.tsv"
+```
 
-| Decision | Where it belongs |
+Carry rows forward by quoting them, never by paraphrase:
+
+| Row | Goes in the handoff as |
 |---|---|
-| Coverage runs need both `--filter` and `--project` | `CLAUDE.md`, verification section |
-| No `enum`, use string literal unions | `CLAUDE.md` or `AGENTS.md`, code style |
-| The v2 API stays unexported until the docs land | The package README |
+| Kind `fork` with a letter chosen | The choice made, with the row's `when` and `evidence` so the next session can find it |
+| Kind `fork` with no answer yet | An open question in Step 6, options as the row states them |
+| Kind `verdict` or `relay` | The state of that PR, quoted into Remaining or Completed |
+| Any row whose `result` is empty | A decision whose outcome the next session must still check, named as such |
+
+Then add the decisions and constraints the ledger does not carry: the ones
+agreed in this session that exist nowhere on disk. For each one, name where
+it should be recorded permanently:
+
+| Decision | Source | Where it belongs |
+|---|---|---|
+| Rotate the refresh token on every use | `decisions.tsv` 2026-10-30T09:12 unit 7 | `docs/adr/0004-token-rotation.md` |
+| Coverage runs need both `--filter` and `--project` | unlogged | `CLAUDE.md`, verification section |
+| No `enum`, use string literal unions | unlogged | `CLAUDE.md` or `AGENTS.md`, code style |
+
+When there is no `decisions.tsv`, say so in one line in the handoff, fill the
+table from the conversation with every row marked `unlogged`, and tell the
+next session the list is what this session remembers, not a trail it kept. Do
+not create the file during the handoff: a ledger started at handoff reads as
+one that was kept all along. If the work continues under `coordinate`, that
+session opens it.
 
 Do not write to `CLAUDE.md` or `AGENTS.md` as part of the handoff. Note the
 line that should be added and let the user decide.
@@ -180,6 +206,7 @@ It must contain:
 | Where the detail lives | `Read docs/plans/2026-09-10-2231-handoff-auth-refresh-tokens.md first` |
 | The first command to run | `Start by running: pnpm --filter auth test` |
 | The branch-first rule | `Create a branch before editing; never edit on the default branch` |
+| The notes folder and its ledgers, when the session had them | `Notes folder: <absolute path>; read units.tsv and decisions.tsv there first` |
 
 It must not contain a reference to something the next session cannot see. No
 "the plan we discussed", no "as agreed earlier", no "continue where we left
@@ -264,6 +291,8 @@ State plainly:
 | Recording "not pushed" without checking | Read `git status -sb` and the ahead/behind counts before writing that row. |
 | Remaining items with no acceptance check | Each item states the command and the result that means done. |
 | Losing session-only decisions | Carry them forward in Step 5 and name where they should be recorded permanently. |
+| Writing the decisions section from memory when `decisions.tsv` exists | Read the ledger and quote its rows. Memory fills the table only when there is no trail, and then every row says `unlogged`. |
+| Creating `decisions.tsv` at handoff to have a trail to point at | A ledger started at handoff is recollection in a file. Say there is none; `coordinate` opens it in the next session. |
 | Answering the open questions on the user's behalf | Present lettered options with a recommendation and leave them open. |
 | Clearing context after writing the handoff | That is the user's action. Stop after reporting. |
 | Claiming parallelism for items that touch the same file | Only fan out items with genuinely disjoint file sets. |

@@ -46,7 +46,7 @@ Owns, and may edit nothing outside it:
 
 ## Done means
 
-Behaviour level: <live-verified | unit-only | type-check-only, as the verify skill reports it>
+Behaviour level: <live-verified | unit-only | type-check-only: the value the `behaviour` row of the verify report must reach, filled from what ran, never copied from here>
 
 Gate, read from `package.json` scripts or the Makefile, run through the `verify` skill, output and exit codes pasted:
 
@@ -76,7 +76,7 @@ Message the coordinator when the PR is ready, and again if blocked, with:
 
 - Branch, PR URL, head SHA
 - The gate on the clean detached checkout: command, exit code, the counts line
-- Behaviour level reached, and what was not verified and why
+- The `behaviour` row of the verify report, with the command that supports it, and what was not driven and why when it is below the level Done means names
 - Forks decided below the ADR tier, each with the choice made
 - Forks parked for the coordinator, as lettered options
 - The hand-over note path

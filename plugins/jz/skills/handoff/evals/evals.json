@@ -30,7 +30,8 @@
         "Keeps evidence commands and real results on the items that were actually verified",
         "Puts running the unverified item's test in the Remaining list with an acceptance check",
         "Runs the git state commands rather than reconstructing status from the conversation",
-        "Does not invent a test command; reads package.json scripts to name the real one"
+        "Does not invent a test command; reads package.json scripts to name the real one",
+        "Looks for decisions.tsv in the notes folder before writing the decisions section; finding none, says so in one line, marks every carried decision as unlogged and does not create the file"
       ]
     },
     {
@@ -63,6 +64,21 @@
         "The prompt names any item that depends on the others and states it runs after them",
         "Runs pbcopy to copy the prompt rather than only offering to",
         "Writes the handoff under docs/plans/ and does not commit it"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Context is past 55 percent in this coordinator session. Hand off to a continuation session. The notes folder for this group is /Users/example/Library/Application Support/Claude/side-session-notes/local_1234 and it has units.tsv and decisions.tsv.",
+      "expected_output": "Gathers git state, then reads decisions.tsv from the notes folder with the command shown and carries its rows into the handoff by quoting them: answered forks as the choice made with the row's when and evidence, unanswered forks as open questions, verdict and relay rows as PR state. Decisions that exist only in the conversation are added with the source unlogged. The paste-ready prompt names the notes folder and both ledgers and tells the next session to read them first.",
+      "files": [],
+      "expectations": [
+        "Runs ls and column on decisions.tsv in the named notes folder and shows the output before writing the decisions section",
+        "Quotes rows from decisions.tsv rather than restating the decisions from the conversation",
+        "Puts an unanswered fork row into the open questions table with its options as the row states them",
+        "Marks any decision that is not in decisions.tsv as unlogged in a source column",
+        "Does not append to or rewrite decisions.tsv as part of the handoff",
+        "The paste-ready prompt names the notes folder and tells the next session to read units.tsv and decisions.tsv there first",
+        "Does not clear context or claim to have cleared it"
       ]
     }
   ]

@@ -180,6 +180,8 @@ check that fails, then a test, with prose last.
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
 | Open as draft, mark ready only after the gate is green | `ship` steps 11 and 12: the pushed head is gated on a clean detached checkout, and ready is flipped only when a go-ahead or brief named it; no hook yet |
 | Model tier matches the job | nothing; `models.md` describes it |
+| Done means a behaviour level, not only a green script | nothing; the `behaviour` row in `verify` Step 8 names the level the runs support, and `coordinate` Step 5 checks it against the level Done means named |
+| Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes.sh` for the remote writes; nothing for the rest, `parallelism.md` states it |
 | Prose rules 7 and 8, no emoji or model name in commit or PR text | `no-restricted-words.sh`, PreToolUse; `validate.sh` for emoji in this repo's files |
 | Prose rules 1 to 6 and 9 to 14 | nothing; `prose.md` numbers them so a steer cites one, and `reflect` turns a repeated steer into the next check |
 

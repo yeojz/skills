@@ -10,58 +10,82 @@ Example: guard-deletion.py origin/main 'pnpm --filter @scope/core test:ci' packa
 
 The diff is the working tree against the merge base of <base-ref> and HEAD,
 so a branch review sees what the branch did plus anything uncommitted, and
-HEAD as the base ref scopes it to the uncommitted changes alone. Paths narrow
-the scan and are handed to git diff as given. Untracked files are not in a
-diff, so `git add -N` them first.
+HEAD as the base ref scopes it to the uncommitted changes alone. The script
+samples the tree it runs in and prints that tree's HEAD and the merge base
+it used, so run it in a checkout of the reviewed revision. Paths narrow the
+scan and are handed to git diff as given. Untracked files are not in a diff,
+so `git add -N` them first.
 
 A rejecting guard is an added `if` whose body throws, returns, rejects,
-raises, exits, panics, aborts, fails or answers with a 4xx or 5xx status, in
-a JavaScript, TypeScript, Go, Rust, Java, Kotlin, Swift, C-family, PHP or
-Python file. Neutralising means `if (false && (<condition>))`, or
-`if False and (<condition>):` in Python, so the file still parses and every
-name the condition used is still referenced.
+raises, exits, panics, aborts, fails, calls a fatal routine or answers with a
+4xx or 5xx status.
+JavaScript, TypeScript, Java, Kotlin, C-family and PHP conditions are read
+between the parentheses after `if`; Go, Rust and Swift conditions run from
+`if` to the brace that opens the body; Python conditions run to the colon.
+Neutralising means `if (false && (<condition>))`, `if false && (<condition>) {`
+or `if False and (<condition>):`, so the file still parses and every name the
+condition used is still referenced. A Go init statement stays in front of the
+neutralised condition. A guard the mutation cannot wrap, such as `if let` or
+a comma-separated Swift condition, is listed as unsupported and not sampled.
+Conditional lines in files the script does not parse are counted and named.
 
 The test command is the repo's own declared script, run through the shell
 from the current directory. The suite must be green before the first
-mutation; otherwise nothing a mutant does can be told from the baseline.
+mutation; otherwise nothing a mutant does can be told from the baseline. A
+mutant that fails to parse, by a Python compile, a `node --check`, or a syntax
+error naming the file in the test log, is invalid and never counted as killed.
 
 --list prints the guards and runs nothing.
 
-Exit codes: 0 when every mutant was killed, 1 when at least one survived,
-2 on a usage error, a red baseline, or a file that could not be restored.
+Exit codes: 0 when every guard was sampled and every mutant was killed, 1 when
+at least one mutant survived, 2 on a usage error, a red baseline, a file that
+could not be restored, or a guard that was not sampled because its mutant was
+invalid or its construct unsupported.
 """
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 
-BRACE_SUFFIXES = {
+PAREN_SUFFIXES = {
     '.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs',
-    '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.php',
-    '.c', '.h', '.cc', '.cpp', '.hpp', '.cs',
+    '.java', '.kt', '.kts', '.php', '.c', '.h', '.cc', '.cpp', '.hpp', '.cs',
 }
+FREE_SUFFIXES = {'.go', '.rs', '.swift'}
 PYTHON_SUFFIXES = {'.py'}
+REGEX_LITERAL_SUFFIXES = {'.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'}
+NODE_CHECK_SUFFIXES = {'.js', '.mjs', '.cjs'}
 
 REJECTS = re.compile(
-    r'\b(throw|return|reject|raise|exit|panic|abort|fail)\b'
-    r'|\.status\(\s*[45]\d\d'
+    r'\b(throw|return|reject|raise|exit|panic|abort|fail|fatal\w*)\b'
+    r'|\.status\(\s*[45]\d\d',
+    re.IGNORECASE,
 )
-BRACE_IF = re.compile(r'\s*(?:\}\s*)?(?:else\s+)?if\s*\(')
+BRACE_IF = re.compile(r'\s*(?:\}\s*)?(?:else\s+)?if\b')
 PYTHON_IF = re.compile(r'(\s*)(?:el)?if\s+')
+ANY_CONDITIONAL = re.compile(r'\s*(?:\}\s*)?(?:else\s+)?(?:if|elif|elsif|unless|guard|when)\b')
 HUNK = re.compile(r'@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
+BEFORE_REGEX = set('(,=!&|?:;{}[+-*%<>~^')
+SYNTAX_FAILURE = re.compile(
+    r'SyntaxError|Unexpected token|error TS1\d{3}|ParseError|Parse error|syntax error'
+    r'|Transform failed|Failed to parse|Unterminated|[Ee]xpected [\'"]?\)'
+)
 
 
 class Guard:
-    def __init__(self, path, line, kind, cond_start, cond_end, condition):
+    def __init__(self, path, line, kind, cond_start, cond_end, condition, unsupported=None):
         self.path = path
         self.line = line
         self.kind = kind
         self.cond_start = cond_start
         self.cond_end = cond_end
         self.condition = condition
+        self.unsupported = unsupported
+        self.result = None
         self.exit_code = None
 
     def location(self):
@@ -73,23 +97,34 @@ class Guard:
             collapsed = collapsed[:57] + '...'
         if self.kind == 'python':
             return 'if %s:' % collapsed
+        if self.kind == 'free':
+            return 'if %s {' % collapsed
         return 'if (%s)' % collapsed
 
     def mutate(self, text):
+        condition = text[self.cond_start:self.cond_end]
         if self.kind == 'python':
-            return (text[:self.cond_start] + 'False and ('
-                    + text[self.cond_start:self.cond_end] + ')'
-                    + text[self.cond_end:])
-        return (text[:self.cond_start] + 'false && ('
-                + text[self.cond_start:self.cond_end] + ')'
-                + text[self.cond_end:])
+            wrapped = 'False and (' + condition + ')'
+        else:
+            wrapped = 'false && (' + condition + ')'
+        return text[:self.cond_start] + wrapped + text[self.cond_end:]
+
+    def verdict(self):
+        if self.unsupported:
+            return 'unsupported (%s), not sampled' % self.unsupported
+        if self.result == 'invalid':
+            return 'INVALID mutant, not sampled'
+        if self.result == 'survived':
+            return 'SURVIVED, exit %d' % self.exit_code
+        return 'killed, exit %d' % self.exit_code
 
 
 def usage(message=None):
     if message:
         print(message, file=sys.stderr)
-    print('Usage:   %s [--list] <base-ref> <test-command> [path ...]' % os.path.basename(sys.argv[0]), file=sys.stderr)
-    print("Example: %s origin/main 'pnpm --filter @scope/core test:ci' packages/core" % os.path.basename(sys.argv[0]), file=sys.stderr)
+    name = os.path.basename(sys.argv[0])
+    print('Usage:   %s [--list] <base-ref> <test-command> [path ...]' % name, file=sys.stderr)
+    print("Example: %s origin/main 'pnpm --filter @scope/core test:ci' packages/core" % name, file=sys.stderr)
     sys.exit(2)
 
 
@@ -134,8 +169,36 @@ def added_lines(merge_base, paths):
     return added
 
 
+class Syntax:
+    """What counts as noise, text the delimiter scan must step over, in one language."""
+
+    def __init__(self, line_comment, block_comments, regex_literals):
+        self.line_comment = line_comment
+        self.block_comments = block_comments
+        self.regex_literals = regex_literals
+
+    def skip_noise(self, text, index):
+        """Index just past the string, comment or regex literal starting at index, or None."""
+        char = text[index]
+        if char in '\'"`':
+            return skip_string(text, index)
+        if text.startswith(self.line_comment, index):
+            end = text.find('\n', index)
+            return len(text) if end < 0 else end
+        if self.block_comments and text.startswith('/*', index):
+            end = text.find('*/', index + 2)
+            return len(text) if end < 0 else end + 2
+        if self.regex_literals and char == '/' and starts_regex(text, index):
+            return skip_regex(text, index)
+        return None
+
+
+BRACE_SYNTAX = Syntax('//', True, False)
+JS_SYNTAX = Syntax('//', True, True)
+PYTHON_SYNTAX = Syntax('#', False, False)
+
+
 def skip_string(text, index):
-    """Return the index just past the string literal opening at index."""
     quote = text[index]
     index += 1
     while index < len(text):
@@ -151,15 +214,48 @@ def skip_string(text, index):
     return index
 
 
-def match_delimiter(text, open_index, open_char, close_char):
+def starts_regex(text, index):
+    """A slash opens a regex literal when nothing an operand ends with precedes it."""
+    before = index - 1
+    while before >= 0 and text[before] in ' \t\r\n':
+        before -= 1
+    return before < 0 or text[before] in BEFORE_REGEX
+
+
+def skip_regex(text, index):
+    index += 1
+    in_class = False
+    while index < len(text):
+        char = text[index]
+        if char == '\\':
+            index += 2
+            continue
+        if char == '\n':
+            return index
+        if in_class:
+            if char == ']':
+                in_class = False
+        elif char == '[':
+            in_class = True
+        elif char == '/':
+            index += 1
+            while index < len(text) and text[index].isalpha():
+                index += 1
+            return index
+        index += 1
+    return index
+
+
+def match_delimiter(text, open_index, open_char, close_char, syntax):
     """Index of the delimiter closing the one at open_index, or None."""
     depth = 0
     index = open_index
     while index < len(text):
-        char = text[index]
-        if char in '\'"`':
-            index = skip_string(text, index)
+        skipped = syntax.skip_noise(text, index)
+        if skipped is not None:
+            index = skipped
             continue
+        char = text[index]
         if char == open_char:
             depth += 1
         elif char == close_char:
@@ -170,12 +266,55 @@ def match_delimiter(text, open_index, open_char, close_char):
     return None
 
 
-def brace_body(text, after_condition):
+def scan_to_body_brace(text, start, syntax):
+    """Index of the `{` at depth zero that opens the body of a paren-free `if`, or None."""
+    depth = 0
+    index = start
+    while index < len(text):
+        skipped = syntax.skip_noise(text, index)
+        if skipped is not None:
+            index = skipped
+            continue
+        char = text[index]
+        if char in '([':
+            depth += 1
+        elif char in ')]':
+            depth -= 1
+        elif char == '{' and depth == 0:
+            return index
+        elif char == '\n' and depth == 0 and text[start:index].strip() == '':
+            return None
+        index += 1
+    return None
+
+
+def top_level_positions(text, start, end, wanted, syntax):
+    """Offsets of each `wanted` character between start and end outside brackets and strings."""
+    positions = []
+    depth = 0
+    index = start
+    while index < end:
+        skipped = syntax.skip_noise(text, index)
+        if skipped is not None:
+            index = skipped
+            continue
+        char = text[index]
+        if char in '([{':
+            depth += 1
+        elif char in ')]}':
+            depth -= 1
+        elif char == wanted and depth == 0:
+            positions.append(index)
+        index += 1
+    return positions
+
+
+def brace_body(text, after_condition, syntax):
     index = after_condition
     while index < len(text) and text[index] in ' \t\r\n':
         index += 1
     if index < len(text) and text[index] == '{':
-        close = match_delimiter(text, index, '{', '}')
+        close = match_delimiter(text, index, '{', '}', syntax)
         return text[index:close + 1] if close is not None else text[index:]
     end = index
     while end < len(text) and text[end] not in ';\n':
@@ -188,14 +327,11 @@ def python_condition_end(text, start):
     depth = 0
     index = start
     while index < len(text):
+        skipped = PYTHON_SYNTAX.skip_noise(text, index)
+        if skipped is not None:
+            index = skipped
+            continue
         char = text[index]
-        if char in '\'"':
-            index = skip_string(text, index)
-            continue
-        if char == '#':
-            while index < len(text) and text[index] != '\n':
-                index += 1
-            continue
         if char in '([{':
             depth += 1
         elif char in ')]}':
@@ -204,6 +340,8 @@ def python_condition_end(text, start):
             return index
         elif char == '\n' and depth == 0:
             return None
+        elif char == '\\':
+            index += 1
         index += 1
     return None
 
@@ -222,13 +360,78 @@ def python_body(lines, line_index, indent, after_colon):
     return '\n'.join(body)
 
 
-def find_guards(path, text, line_numbers):
+def language_of(path):
     suffix = os.path.splitext(path)[1]
-    if suffix in BRACE_SUFFIXES:
-        kind = 'brace'
-    elif suffix in PYTHON_SUFFIXES:
-        kind = 'python'
-    else:
+    if suffix in PAREN_SUFFIXES:
+        return 'paren', JS_SYNTAX if suffix in REGEX_LITERAL_SUFFIXES else BRACE_SYNTAX
+    if suffix in FREE_SUFFIXES:
+        return 'free', BRACE_SYNTAX
+    if suffix in PYTHON_SUFFIXES:
+        return 'python', PYTHON_SYNTAX
+    return None, None
+
+
+def paren_guard(path, text, number, after_if, syntax):
+    open_index = after_if
+    while open_index < len(text) and text[open_index] in ' \t':
+        open_index += 1
+    if open_index >= len(text) or text[open_index] != '(':
+        return None
+    close_index = match_delimiter(text, open_index, '(', ')', syntax)
+    if close_index is None:
+        return None
+    body = brace_body(text, close_index + 1, syntax)
+    if not REJECTS.search(body):
+        return None
+    return Guard(path, number, 'paren', open_index + 1, close_index, text[open_index + 1:close_index])
+
+
+def free_guard(path, text, number, after_if, syntax):
+    suffix = os.path.splitext(path)[1]
+    start = after_if
+    while start < len(text) and text[start] in ' \t':
+        start += 1
+    brace = scan_to_body_brace(text, start, syntax)
+    if brace is None:
+        return None
+    body = brace_body(text, brace, syntax)
+    if not REJECTS.search(body):
+        return None
+    end = brace
+    while end > start and text[end - 1] in ' \t\r\n':
+        end -= 1
+    condition = text[start:end]
+    cond_start = start
+    if suffix == '.go':
+        semicolons = top_level_positions(text, start, end, ';', syntax)
+        if semicolons:
+            cond_start = semicolons[-1] + 1
+            while cond_start < end and text[cond_start] in ' \t':
+                cond_start += 1
+    unsupported = None
+    if suffix in ('.rs', '.swift') and re.search(r'\b(let|var|case)\b', text[cond_start:end]):
+        unsupported = 'binding in the condition'
+    elif suffix == '.swift' and top_level_positions(text, cond_start, end, ',', syntax):
+        unsupported = 'comma-separated condition'
+    return Guard(path, number, 'free', cond_start, end, condition, unsupported)
+
+
+def python_guard(path, text, lines, offsets, number, head):
+    start = offsets[number - 1] + head.end()
+    colon = python_condition_end(text, start)
+    if colon is None:
+        return None
+    colon_line = text.count('\n', 0, colon)
+    after_colon = text[colon + 1:offsets[colon_line] + len(lines[colon_line])]
+    body = python_body(lines, colon_line, len(head.group(1)), after_colon)
+    if not REJECTS.search(body):
+        return None
+    return Guard(path, number, 'python', start, colon, text[start:colon])
+
+
+def find_guards(path, text, line_numbers):
+    kind, syntax = language_of(path)
+    if kind is None:
         return []
 
     lines = text.split('\n')
@@ -243,32 +446,27 @@ def find_guards(path, text, line_numbers):
         if number < 1 or number > len(lines):
             continue
         line = lines[number - 1]
-        if kind == 'brace':
+        if kind == 'python':
+            head = PYTHON_IF.match(line)
+            guard = python_guard(path, text, lines, offsets, number, head) if head else None
+        else:
             head = BRACE_IF.match(line)
             if not head:
                 continue
-            open_index = offsets[number - 1] + head.end() - 1
-            close_index = match_delimiter(text, open_index, '(', ')')
-            if close_index is None:
-                continue
-            body = brace_body(text, close_index + 1)
-            if REJECTS.search(body):
-                guards.append(Guard(path, number, kind, open_index + 1, close_index,
-                                    text[open_index + 1:close_index]))
-        else:
-            head = PYTHON_IF.match(line)
-            if not head:
-                continue
-            start = offsets[number - 1] + head.end()
-            colon = python_condition_end(text, start)
-            if colon is None:
-                continue
-            colon_line = text.count('\n', 0, colon)
-            after_colon = text[colon + 1:offsets[colon_line] + len(lines[colon_line])]
-            body = python_body(lines, colon_line, len(head.group(1)), after_colon)
-            if REJECTS.search(body):
-                guards.append(Guard(path, number, kind, start, colon, text[start:colon]))
+            after_if = offsets[number - 1] + head.end()
+            if kind == 'paren':
+                guard = paren_guard(path, text, number, after_if, syntax)
+            else:
+                guard = free_guard(path, text, number, after_if, syntax)
+        if guard:
+            guards.append(guard)
     return guards
+
+
+def unscanned_conditionals(path, text, line_numbers):
+    lines = text.split('\n')
+    return sum(1 for number in line_numbers
+               if 1 <= number <= len(lines) and ANY_CONDITIONAL.match(lines[number - 1]))
 
 
 def run_tests(command, log_path):
@@ -282,6 +480,27 @@ def tail(log_path, count=20):
     with open(log_path, 'rb') as log:
         lines = log.read().decode('utf-8', 'replace').splitlines()
     return '\n'.join(lines[-count:])
+
+
+def parses(path, mutated):
+    """False when the mutant is known not to parse; True when it parses or no parser is at hand."""
+    suffix = os.path.splitext(path)[1]
+    if suffix in PYTHON_SUFFIXES:
+        try:
+            compile(mutated.decode('utf-8'), path, 'exec')
+        except SyntaxError:
+            return False
+        return True
+    if suffix in NODE_CHECK_SUFFIXES and shutil.which('node'):
+        check = subprocess.run(['node', '--check', path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return check.returncode == 0
+    return True
+
+
+def log_reports_syntax_failure(log_path, path):
+    with open(log_path, 'rb') as log:
+        content = log.read().decode('utf-8', 'replace')
+    return os.path.basename(path) in content and SYNTAX_FAILURE.search(content) is not None
 
 
 def restore(path, original):
@@ -303,11 +522,15 @@ def main(argv):
     base_ref, test_command, paths = argv[0], argv[1], argv[2:]
 
     root = git('rev-parse', '--show-toplevel').strip()
+    head = git('rev-parse', '--short', 'HEAD').strip()
     merge_base = git('merge-base', base_ref, 'HEAD').strip()
+    print('Sampling the working tree at %s against merge base %s of %s and HEAD.'
+          % (head, merge_base[:12], base_ref))
     changed = added_lines(merge_base, paths)
 
     originals = {}
     guards = []
+    unscanned = {}
     for path in sorted(changed):
         absolute = os.path.join(root, path)
         if not os.path.isfile(absolute):
@@ -318,10 +541,19 @@ def main(argv):
             text = original.decode('utf-8')
         except UnicodeDecodeError:
             continue
+        if language_of(path)[0] is None:
+            count = unscanned_conditionals(path, text, changed[path])
+            if count:
+                unscanned[path] = count
+            continue
         found = find_guards(path, text, changed[path])
         if found:
             originals[path] = (absolute, original, text)
             guards.extend(found)
+
+    if unscanned:
+        print('Not scanned: %d conditional lines in files this script does not parse: %s'
+              % (sum(unscanned.values()), ', '.join(sorted(unscanned))))
 
     if not guards:
         print('No new rejecting guard in the diff against %s (%d changed files).' % (base_ref, len(changed)))
@@ -329,9 +561,14 @@ def main(argv):
 
     print('%d rejecting guards added since %s:' % (len(guards), base_ref))
     for guard in guards:
-        print('  %s  %s' % (guard.location(), guard.label()))
+        note = '  [%s]' % guard.verdict() if guard.unsupported else ''
+        print('  %s  %s%s' % (guard.location(), guard.label(), note))
+    sampled = [guard for guard in guards if not guard.unsupported]
     if list_only:
-        return 0
+        return 0 if len(sampled) == len(guards) else 2
+    if not sampled:
+        print('\nNothing to sample: every guard is an unsupported construct.')
+        return 2
 
     log_dir = tempfile.mkdtemp(prefix='guard-deletion-')
     baseline_log = os.path.join(log_dir, 'baseline.log')
@@ -342,32 +579,48 @@ def main(argv):
               % (code, tail(baseline_log)), file=sys.stderr)
         return 2
     print('\nBaseline green in %.0fs; %d mutants to run, about %.0f minutes.\n'
-          % (seconds, len(guards), seconds * len(guards) / 60))
+          % (seconds, len(sampled), seconds * len(sampled) / 60))
 
-    for index, guard in enumerate(guards, 1):
+    for index, guard in enumerate(sampled, 1):
         absolute, original, text = originals[guard.path]
         mutated = guard.mutate(text).encode('utf-8')
+        log_path = os.path.join(log_dir, 'mutant-%d.log' % index)
         try:
             with open(absolute, 'wb') as handle:
                 handle.write(mutated)
-            guard.exit_code, _ = run_tests(test_command, os.path.join(log_dir, 'mutant-%d.log' % index))
+            if not parses(absolute, mutated):
+                guard.result = 'invalid'
+            else:
+                guard.exit_code, _ = run_tests(test_command, log_path)
+                if guard.exit_code == 0:
+                    guard.result = 'survived'
+                elif log_reports_syntax_failure(log_path, guard.path):
+                    guard.result = 'invalid'
+                else:
+                    guard.result = 'killed'
         finally:
             restore(absolute, original)
-        verdict = 'killed' if guard.exit_code != 0 else 'SURVIVED'
-        print('[%d/%d] %s  %s  %s (exit %d)' % (index, len(guards), guard.location(), guard.label(), verdict, guard.exit_code))
+        print('[%d/%d] %s  %s  %s' % (index, len(sampled), guard.location(), guard.label(), guard.verdict()))
 
-    survivors = [guard for guard in guards if guard.exit_code == 0]
+    survivors = [guard for guard in guards if guard.result == 'survived']
+    not_sampled = [guard for guard in guards if guard.unsupported or guard.result == 'invalid']
     print('\n| Guard | Location | Result |\n|---|---|---|')
     for guard in guards:
-        verdict = 'killed' if guard.exit_code != 0 else 'SURVIVED'
-        print('| `%s` | `%s` | %s, exit %d |' % (guard.label(), guard.location(), verdict, guard.exit_code))
+        print('| `%s` | `%s` | %s |' % (guard.label(), guard.location(), guard.verdict()))
     print('\nFiles restored byte for byte: %d. Logs: %s' % (len(originals), log_dir))
+    if not_sampled:
+        print('\nNot sampled: %d of %d guards; the sample is incomplete and the report must name them.'
+              % (len(not_sampled), len(guards)))
+        for guard in not_sampled:
+            print('  %s  %s  %s' % (guard.location(), guard.label(), guard.verdict()))
     if survivors:
-        print('\nSurvivors: %d of %d. Each is a High: no test fails when the guard is removed. Name the test that should have caught it.'
-              % (len(survivors), len(guards)))
+        print('\nSurvivors: %d of %d sampled. Each is a High: no test fails when the guard is removed. Name the test that should have caught it.'
+              % (len(survivors), len(sampled) - sum(1 for guard in sampled if guard.result == 'invalid')))
         for guard in survivors:
             print('  %s  %s' % (guard.location(), guard.label()))
         return 1
+    if not_sampled:
+        return 2
     print('\nSurvivors: 0 of %d. Every new rejecting guard has a test behind it.' % len(guards))
     return 0
 

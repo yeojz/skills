@@ -32,15 +32,18 @@ Conditional lines in files the script does not parse are counted and named.
 The test command is the repo's own declared script, run through the shell
 from the current directory. The suite must be green before the first
 mutation; otherwise nothing a mutant does can be told from the baseline. A
-mutant that fails to parse, by a Python compile, a `node --check`, or a syntax
-error naming the file in the test log, is invalid and never counted as killed.
+mutant that fails to parse or compile is invalid and never counted as killed:
+a Python compile or a `node --check` where one applies, otherwise a parser,
+compiler, type checker or bundler error naming the file in the test log. A
+TypeScript guard that narrows a type is such a case: without it the file does
+not type-check, so the compiler covers it and no test is shown to.
 
 --list prints the guards and runs nothing.
 
 Exit codes: 0 when every guard was sampled and every mutant was killed, 1 when
 at least one mutant survived, 2 on a usage error, a red baseline, a file that
-could not be restored, or a guard that was not sampled because its mutant was
-invalid or its construct unsupported.
+could not be restored, or a guard that was not sampled because its mutant did
+not parse or compile or its construct was unsupported.
 """
 
 import os
@@ -70,9 +73,14 @@ PYTHON_IF = re.compile(r'(\s*)(?:el)?if\s+')
 ANY_CONDITIONAL = re.compile(r'\s*(?:\}\s*)?(?:else\s+)?(?:if|elif|elsif|unless|guard|when)\b')
 HUNK = re.compile(r'@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
 BEFORE_REGEX = set('(,=!&|?:;{}[+-*%<>~^')
-SYNTAX_FAILURE = re.compile(
-    r'SyntaxError|Unexpected token|error TS1\d{3}|ParseError|Parse error|syntax error'
+# A compiler, type checker, bundler or parser refusing the mutant. A test
+# runner's own assertion failures never match these shapes.
+COMPILE_FAILURE = re.compile(
+    r'SyntaxError|Unexpected token|ParseError|Parse error|syntax error'
     r'|Transform failed|Failed to parse|Unterminated|[Ee]xpected [\'"]?\)'
+    r'|error TS\d{4}|TS\d{4}:|error\[E\d{4}\]|:\d+:\d+:?\s*(?:fatal )?error\b'
+    r'|\[build failed\]|Build failed|Compilation failed|does not exist on type'
+    r'|is not assignable to|cannot find name|undefined: '
 )
 
 
@@ -113,7 +121,7 @@ class Guard:
         if self.unsupported:
             return 'unsupported (%s), not sampled' % self.unsupported
         if self.result == 'invalid':
-            return 'INVALID mutant, not sampled'
+            return 'INVALID mutant (did not parse or compile), not sampled'
         if self.result == 'survived':
             return 'SURVIVED, exit %d' % self.exit_code
         return 'killed, exit %d' % self.exit_code
@@ -497,10 +505,11 @@ def parses(path, mutated):
     return True
 
 
-def log_reports_syntax_failure(log_path, path):
+def log_reports_compile_failure(log_path, path):
+    """True when the run's output names the mutated file and a compiler, type checker or parser refused it."""
     with open(log_path, 'rb') as log:
         content = log.read().decode('utf-8', 'replace')
-    return os.path.basename(path) in content and SYNTAX_FAILURE.search(content) is not None
+    return os.path.basename(path) in content and COMPILE_FAILURE.search(content) is not None
 
 
 def restore(path, original):
@@ -594,7 +603,7 @@ def main(argv):
                 guard.exit_code, _ = run_tests(test_command, log_path)
                 if guard.exit_code == 0:
                     guard.result = 'survived'
-                elif log_reports_syntax_failure(log_path, guard.path):
+                elif log_reports_compile_failure(log_path, guard.path):
                     guard.result = 'invalid'
                 else:
                     guard.result = 'killed'

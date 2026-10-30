@@ -186,11 +186,15 @@ git worktree remove --force "$sample_dir"
 
 The script exits 1 when a mutant survived, and 2 when the baseline is
 already red, a file could not be restored, or a guard was not sampled
-because its mutant did not parse or its construct cannot be wrapped; on a 2,
-stop and report that before anything else, and name every guard the output
-lists as not sampled. Each survivor is a High finding that names the guard
-by `file:line` and the test that should have failed. The `git status` after
-an in-place run must match the one from Step 1.
+because its mutant did not parse or compile or its construct cannot be
+wrapped; on a 2, stop and report that before anything else, and name every
+guard the output lists as not sampled. A compiler refusing the mutant is
+not a kill: a TypeScript guard that narrows a type fails `tsc` once it is
+gone, which shows the compiler covers it and nothing about whether a test
+does, so it is reported as not sampled and the reviewer judges by reading
+whether a runtime test is still owed. Each survivor is a High finding that
+names the guard by `file:line` and the test that should have failed. The
+`git status` after an in-place run must match the one from Step 1.
 
 ### Step 5: Ground every finding in a line
 
@@ -508,6 +512,7 @@ to it as the verdict's evidence.
 | Demoting a design finding because "it works" | Design and maintainability weigh the same as correctness; severity comes from the consequence. |
 | Calling guard-deletion sampling done from reading the tests | Run `guard-deletion.py` with the package's declared test script and paste its table. A survivor is a High. |
 | Running the guard-deletion script on a red baseline, or leaving a mutant behind | The script exits 2 on both; stop and report. The `git status` after the run matches the one before. |
+| Counting a mutant the compiler refused as killed | A compile or type error names the mutated file, not a test. The script reports it as not sampled with exit 2; name it, and judge whether a runtime test is still owed. |
 | Pressing rerun on a red check before reading its log | Classify first: stale base rebases, a defect becomes a finding, a suspected flake earns one fresh run. |
 | A second rerun because the first came back red again | An identical second failure is a defect, not a flake. The budget is one per failing check per head. |
 | Rerunning a failure in code the diff never touched | Read the base first. Behind the base and green there is a stale base: rebase and push. Red on the base too is an upstream failure that no rebase fixes. Neither earns a rerun. |

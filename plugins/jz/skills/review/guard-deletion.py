@@ -33,8 +33,10 @@ The test command is the repo's own declared script, run through the shell
 from the current directory. The suite must be green before the first
 mutation; otherwise nothing a mutant does can be told from the baseline. A
 mutant that fails to parse or compile is invalid and never counted as killed:
-a Python compile or a `node --check` where one applies, otherwise a parser,
-compiler, type checker or bundler error naming the file in the test log. A
+a Python compile or a `node --check` where one applies, otherwise a compiler
+diagnostic in the test log that locates an error in the mutated file, in the
+shapes tsc, clang, swiftc, javac, esbuild, go build, rustc and node print; a
+stack frame or a message that quotes the file name is not a diagnostic. A
 TypeScript guard that narrows a type is such a case: without it the file does
 not type-check, so the compiler covers it and no test is shown to.
 
@@ -73,15 +75,22 @@ PYTHON_IF = re.compile(r'(\s*)(?:el)?if\s+')
 ANY_CONDITIONAL = re.compile(r'\s*(?:\}\s*)?(?:else\s+)?(?:if|elif|elsif|unless|guard|when)\b')
 HUNK = re.compile(r'@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
 BEFORE_REGEX = set('(,=!&|?:;{}[+-*%<>~^')
-# A compiler, type checker, bundler or parser refusing the mutant. A test
-# runner's own assertion failures never match these shapes.
-COMPILE_FAILURE = re.compile(
-    r'SyntaxError|Unexpected token|ParseError|Parse error|syntax error'
-    r'|Transform failed|Failed to parse|Unterminated|[Ee]xpected [\'"]?\)'
-    r'|error TS\d{4}|TS\d{4}:|error\[E\d{4}\]|:\d+:\d+:?\s*(?:fatal )?error\b'
-    r'|\[build failed\]|Build failed|Compilation failed|does not exist on type'
-    r'|is not assignable to|cannot find name|undefined: '
-)
+# A diagnostic that locates an error in the mutated file, in the shapes
+# compilers print: `file(3,16): error TS2339`, `file:3:16 - error TS2339`,
+# `file:3:16: error:` from clang, swiftc and javac, `file:3:16: ERROR:` from
+# esbuild, `./file:3:16: undefined: x` from a go build that then reports
+# `[build failed]`, `error[E0308]` followed by ` --> file:2:8` from rustc,
+# and a bare `file:2` line followed by `SyntaxError` from node. A stack frame
+# such as `at f (file:3:5)` or a message that happens to quote the file name
+# matches none of them.
+SAME_LINE_DIAGNOSTIC = re.compile(r'\s*(?:-\s*)?(?:error|ERROR|fatal error)\b')
+GO_BUILD_FAILED = re.compile(r'\[(?:build|setup) failed\]')
+RUST_ERROR_LINE = re.compile(r'^\s*error(?:\[E\d+\])?:', re.MULTILINE)
+NODE_SYNTAX_LINE = re.compile(r'^\s*SyntaxError\b', re.MULTILINE)
+ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+# Only a path may stand before the file name on a diagnostic line; a stack
+# frame's `at f (` or a test runner's marker rules the line out.
+PATH_PREFIX = re.compile(r'(?:#\s*)?[\w./\\~:-]*')
 
 
 class Guard:
@@ -506,10 +515,31 @@ def parses(path, mutated):
 
 
 def log_reports_compile_failure(log_path, path):
-    """True when the run's output names the mutated file and a compiler, type checker or parser refused it."""
+    """True when the run's output carries a compiler diagnostic located in the mutated file."""
     with open(log_path, 'rb') as log:
-        content = log.read().decode('utf-8', 'replace')
-    return os.path.basename(path) in content and COMPILE_FAILURE.search(content) is not None
+        content = ANSI_ESCAPE.sub('', log.read().decode('utf-8', 'replace'))
+    lines = content.splitlines()
+    located = re.compile(r'(?<![\w.-])' + re.escape(os.path.basename(path))
+                         + r'(?:\(\d+,\d+\)|:\d+(?::\d+)?)')
+    go_build_failed = GO_BUILD_FAILED.search(content) is not None
+    for index, line in enumerate(lines):
+        found = located.search(line)
+        if not found:
+            continue
+        prefix = line[:found.start()].strip()
+        path_only = PATH_PREFIX.fullmatch(prefix) is not None
+        rest = line[found.end():]
+        if rest.startswith(':') and SAME_LINE_DIAGNOSTIC.match(rest[1:]):
+            return True
+        if rest.lstrip().startswith('-') and SAME_LINE_DIAGNOSTIC.match(rest):
+            return True
+        if go_build_failed and path_only and re.match(r':\s', rest):
+            return True
+        if prefix == '-->' and RUST_ERROR_LINE.search('\n'.join(lines[max(0, index - 3):index])):
+            return True
+        if path_only and rest.strip() == '' and NODE_SYNTAX_LINE.search('\n'.join(lines[index + 1:index + 5])):
+            return True
+    return False
 
 
 def restore(path, original):

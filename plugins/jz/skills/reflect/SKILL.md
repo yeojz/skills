@@ -37,13 +37,13 @@ of a long session, so read the transcript file as well; it holds every turn.
 
 | Host | Transcript | User turns |
 |---|---|---|
-| Claude Code | `~/.claude/projects/<cwd with / replaced by ->/<session-id>.jsonl` | `type == "user"` with a string `message.content`; an array there is a tool result, not a turn |
+| Claude Code | `~/.claude/projects/<cwd with / replaced by ->/<session-id>.jsonl` | `type == "user"`; `message.content` is a string, or an array whose `text` blocks are the turn and whose `tool_result` blocks are tool output, not a turn |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl` | `type == "response_item"` with `payload.type == "message"` and `payload.role == "user"` |
 
 ```bash
 project_dir="$HOME/.claude/projects/$(pwd | tr '/' '-')"
-ls -t "$project_dir"/*.jsonl | head -1
-jq -r 'select(.type=="user" and (.message.content|type)=="string") | .message.content' "$(ls -t "$project_dir"/*.jsonl | head -1)"
+transcript="$(ls -t "$project_dir"/*.jsonl | head -1)"
+jq -r 'select(.type=="user") | .message.content | if type=="string" then . else (map(select(.type=="text") | .text) | join("\n")) end | select(length>0)' "$transcript"
 ```
 
 ```bash

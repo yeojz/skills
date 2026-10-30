@@ -162,6 +162,7 @@ The test command is the package's declared test script, read from its
 review pass `HEAD` as the base ref. Run it once per changed package with that
 package's script; when the list is long, pass the changed files instead of
 the package directory and name in the report which guards were not sampled.
+
 The script samples the tree it runs in, and its first line prints that
 tree's HEAD and the merge base it used. Those must be the reviewed revision
 and its real base. A working-tree or branch review on the reviewed branch
@@ -358,11 +359,15 @@ a run, and a retry on a stale base hides the fix that is needed.
 gh pr checks <n>
 gh run view <run-id> --log-failed
 git diff "origin/$base...HEAD" --name-only
+git fetch origin "$base"
+git merge-base --is-ancestor "origin/$base" HEAD && echo "branch has the current base" || echo "branch is behind the base"
+gh run list --branch "$base" --workflow "<workflow name from the failing check>" --limit 3
 ```
 
 | Signal | Class | Do |
 |---|---|---|
-| The failing test or file is outside the diff's `--name-only` list and imports nothing the diff changed; the same check is red on `origin/$base` too | Stale base | The branch is behind the default branch. Rebase through `ship`'s rebase step and push; never rerun the check |
+| The failing test or file is outside the diff's `--name-only` list and imports nothing the diff changed; the branch is behind `origin/$base`; the same check is green on the current `origin/$base` | Stale base | The fix is already on the default branch. Rebase through `ship`'s rebase step and push; the run on the rebased head going green is the proof. Never rerun the old head |
+| The failing test or file is outside the diff and imports nothing the diff changed; the same check is red on the current `origin/$base` | Upstream failure | Not this PR's defect and not a rebase: rebasing onto a red base stays red. Report it as pre-existing with the base run's URL, and leave the check red until the default branch is fixed; it earns no rerun here |
 | The failing test or file is in the diff, or imports something the diff changed | Defect | A finding with an R id, into the work set like a valid comment; a fix round, then `verify` |
 | A timeout, a connection reset, a port already in use, a 429 or 5xx from a registry, a runner lost, and the same test passes locally on the same head | Suspected flake | One fresh run, once per failing check per head: `gh run rerun <run-id> --failed`. Then classify again |
 | The second run fails on the same test with the same message | Not flake | It is a defect. No third run; the job is open until a fix lands and the run on the new head is green |
@@ -505,10 +510,11 @@ to it as the verdict's evidence.
 | Running the guard-deletion script on a red baseline, or leaving a mutant behind | The script exits 2 on both; stop and report. The `git status` after the run matches the one before. |
 | Pressing rerun on a red check before reading its log | Classify first: stale base rebases, a defect becomes a finding, a suspected flake earns one fresh run. |
 | A second rerun because the first came back red again | An identical second failure is a defect, not a flake. The budget is one per failing check per head. |
-| Rerunning a failure in code the diff never touched | That is a stale base. Rebase and push; the rerun would fail the same way. |
+| Rerunning a failure in code the diff never touched | Read the base first. Behind the base and green there is a stale base: rebase and push. Red on the base too is an upstream failure that no rebase fixes. Neither earns a rerun. |
+| Prescribing a rebase because the same check is red on the default branch | That is an upstream failure, not a stale base. A rebase onto a red base stays red; report it as pre-existing with the base run's URL. |
+| Running `guard-deletion.py` in whatever tree happens to be checked out | It samples the tree it runs in. For a PR, or when HEAD is not the reviewed head, run it in a worktree detached at the PR head against the PR's base, and check its first line names that head. |
 | Polling the PR's checks or status in a loop | In the desktop app, bind the PR and turn the monitor on once; let the wake run the sweep. |
 | Sending each adversarial reviewer its own wording of the brief | One brief, written once, sent verbatim to every reviewer; otherwise the agreement map compares different questions. |
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |
 | Bucketing an adversarial finding on the vote count | Verify it at the line first. Two reviewers agreeing on a wrong claim is still dismissed, with the refuting line quoted. |
 | Applying the act-on bucket from an adversarial review | Mode 4 applies nothing. Working the list is `execute-plan`, and only when asked. |
-| Running `guard-deletion.py` in whatever tree happens to be checked out | It samples the tree it runs in. For a PR, or when HEAD is not the reviewed head, run it in a worktree detached at the PR head against the PR's base, and check its first line names that head. |

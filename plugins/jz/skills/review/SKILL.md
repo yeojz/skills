@@ -162,11 +162,34 @@ The test command is the package's declared test script, read from its
 review pass `HEAD` as the base ref. Run it once per changed package with that
 package's script; when the list is long, pass the changed files instead of
 the package directory and name in the report which guards were not sampled.
-The script exits 1 when a mutant survived, 2 when the baseline is already
-red or a file could not be restored, in which case stop and report that
-before anything else. Each survivor is a High finding that names the guard
+The script samples the tree it runs in, and its first line prints that
+tree's HEAD and the merge base it used. Those must be the reviewed revision
+and its real base. A working-tree or branch review on the reviewed branch
+runs it in place. A pull request review, or any review where
+`git rev-parse HEAD` is not the reviewed head, runs it in a throwaway
+worktree detached at that head, installed from the lock file, against the
+PR's own base branch; `gh pr diff` alone leaves the local tree on whatever
+was checked out, and sampling there reports zero guards for a PR that added
+some, or mutates code the PR never touched.
+
+```bash
+read -r head base_ref < <(gh pr view <n> --json headRefOid,baseRefName --jq '"\(.headRefOid) \(.baseRefName)"')
+git fetch origin "$base_ref"
+git fetch origin "refs/pull/<n>/head"
+[ "$(git rev-parse FETCH_HEAD)" = "$head" ] || echo "PR head moved since gh pr view"
+sample_dir="$(mktemp -d)"
+git worktree add --detach "$sample_dir" "$head"
+( cd "$sample_dir" && pnpm install --frozen-lockfile && python3 <skill-dir>/guard-deletion.py "origin/$base_ref" 'pnpm --filter <pkg> test:ci' packages/<pkg> )
+git worktree remove --force "$sample_dir"
+```
+
+The script exits 1 when a mutant survived, and 2 when the baseline is
+already red, a file could not be restored, or a guard was not sampled
+because its mutant did not parse or its construct cannot be wrapped; on a 2,
+stop and report that before anything else, and name every guard the output
+lists as not sampled. Each survivor is a High finding that names the guard
 by `file:line` and the test that should have failed. The `git status` after
-the run must match the one from Step 1.
+an in-place run must match the one from Step 1.
 
 ### Step 5: Ground every finding in a line
 
@@ -226,7 +249,7 @@ whether or not they produced a finding:
 
 - Design: R3, or clean, checked <what: the boundaries, the new surface>
 - Maintainability: clean, checked <what: duplicates grepped, names against <sibling>>
-- Guard deletion: <n> guards sampled with `<test command>`, <k> survived (R1), or no new rejecting guard in the diff
+- Guard deletion: <n> guards sampled at <sha> with `<test command>`, <k> survived (R1), <j> not sampled and named, or no new rejecting guard in the diff
 ```
 
 Severity: Critical is exploitable, data-losing or already broken. High is a
@@ -488,3 +511,4 @@ to it as the verdict's evidence.
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |
 | Bucketing an adversarial finding on the vote count | Verify it at the line first. Two reviewers agreeing on a wrong claim is still dismissed, with the refuting line quoted. |
 | Applying the act-on bucket from an adversarial review | Mode 4 applies nothing. Working the list is `execute-plan`, and only when asked. |
+| Running `guard-deletion.py` in whatever tree happens to be checked out | It samples the tree it runs in. For a PR, or when HEAD is not the reviewed head, run it in a worktree detached at the PR head against the PR's base, and check its first line names that head. |

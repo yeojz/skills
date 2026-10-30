@@ -147,11 +147,15 @@ pnpm why <pkg>
 ```
 
 For the guard deletion row, the sample is targeted, not exhaustive. List
-the rejecting guards the diff added, then choose which to sample:
+the rejecting guards the reviewed diff added, with the diff Step 1 chose,
+so a working-tree review inventories the uncommitted guard it is reviewing
+and a branch review does not inventory it twice:
 
-```bash
-git diff "origin/$base...HEAD" -U0 | grep -nE '^\+\s*(\}\s*)?(else\s+)?if\b'
-```
+| Scope from Step 1 | Inventory |
+|---|---|
+| working tree | `git diff HEAD -U0 \| grep -nE '^\+\s*(\}\s*)?(else\s+)?if\b'` |
+| branch | `git diff "origin/$base...HEAD" -U0 \| grep -nE '^\+\s*(\}\s*)?(else\s+)?if\b'` |
+| pull request | the same three-dot form against the PR's pinned base and head, inside the detached worktree below |
 
 Read each hit to see whether its body rejects. Sample in this order, and
 stop when the ones that matter are done:
@@ -537,3 +541,4 @@ to it as the verdict's evidence.
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |
 | Bucketing an adversarial finding on the vote count | Verify it at the line first. Two reviewers agreeing on a wrong claim is still dismissed, with the refuting line quoted. |
 | Applying the act-on bucket from an adversarial review | Mode 4 applies nothing. Working the list is `execute-plan`, and only when asked. |
+| Inventorying guards with the branch diff on a working-tree review | Use the diff Step 1 chose: `git diff HEAD` for the working tree, the three-dot form for a branch, the pinned base and head for a PR. |

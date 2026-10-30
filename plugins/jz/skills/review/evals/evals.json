@@ -37,6 +37,7 @@
         "Checks for duplicated logic by grepping the workspace for an existing function before accepting a new helper",
         "Checks for non-null assertions, `any`, or `as unknown as` introduced by the change",
         "Checks any new package.json dependency for justification, maintenance status and license",
+        "Inventories rejecting guards from `git diff HEAD`, not from the branch diff, so the uncommitted guard under review is listed",
         "Every finding cites file:line",
         "Does not commit, stage, or create a branch",
         "Reports in the session and writes no plan file",

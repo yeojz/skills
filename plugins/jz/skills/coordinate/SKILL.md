@@ -279,8 +279,10 @@ Sort it:
 | ADR-tier | Public API shape, data model, a new dependency, a specification interpretation, anything that would earn an ADR, and anything the kickoff listed as owner-decided | Present lettered options with a recommendation to the owner, move the row to `parked`, keep draining the other rows, and never decide it in the owner's absence |
 | Everything else | Naming inside a package, test layout, an internal helper's shape, the order of two commits | Decide it, write a `decisions.tsv` row of kind `fork` with the choice and the reason, tell the worker, and name it in the next report so it can be reversed |
 
-When the owner answers, append a `decisions.tsv` row with the letter chosen
-and relay it in the words they used.
+When the owner answers, append a `decisions.tsv` row with the same `unit`
+and `decision` text as the fork row and the letter chosen in `result`, so a
+reader pairing rows by `unit` and `decision` sees the fork as settled, and
+relay it in the words they used.
 
 ### Step 11: Answer "where are we" from the ledger
 

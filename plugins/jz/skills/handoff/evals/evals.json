@@ -68,13 +68,15 @@
     },
     {
       "id": 5,
-      "prompt": "Context is past 55 percent in this coordinator session. Hand off to a continuation session. The notes folder for this group is /Users/example/Library/Application Support/Claude/side-session-notes/local_1234 and it has units.tsv and decisions.tsv.",
-      "expected_output": "Gathers git state, then reads decisions.tsv from the notes folder with the command shown and carries its rows into the handoff by quoting them: answered forks as the choice made with the row's when and evidence, unanswered forks as open questions, verdict and relay rows as PR state. Decisions that exist only in the conversation are added with the source unlogged. The paste-ready prompt names the notes folder and both ledgers and tells the next session to read them first.",
+      "prompt": "Context is past 55 percent in this coordinator session. Hand off to a continuation session. The notes folder for this group is /Users/example/Library/Application Support/Claude/side-session-notes/local_1234 and it has units.tsv and decisions.tsv. The ledger has a fork row for unit 7 on where the refresh token lives with an empty result, a later row for unit 7 with the same decision text and result b, and a fork row for unit 8 on the retry budget with no later row.",
+      "expected_output": "Gathers git state, then reads decisions.tsv from the notes folder with the command shown, reconciles rows by unit and decision so the latest row is the state, and carries them into the handoff by quoting them: the unit 7 fork as the choice b with the answer row's when and evidence and the question row quoted as history, the unit 8 fork as an open question, verdict and relay rows as PR state. Decisions that exist only in the conversation are added with the source unlogged. The paste-ready prompt names the notes folder and both ledgers and tells the next session to read them first.",
       "files": [],
       "expectations": [
         "Runs ls and column on decisions.tsv in the named notes folder and shows the output before writing the decisions section",
+        "Reconciles rows by unit and decision before classifying, with the command shown, so the latest row for a pair is the one judged",
+        "Lists the unit 7 fork as answered with letter b and does not put it in the open questions table, even though its first row has an empty result",
         "Quotes rows from decisions.tsv rather than restating the decisions from the conversation",
-        "Puts an unanswered fork row into the open questions table with its options as the row states them",
+        "Puts the unit 8 fork row into the open questions table with its options as the row states them",
         "Marks any decision that is not in decisions.tsv as unlogged in a source column",
         "Does not append to or rewrite decisions.tsv as part of the handoff",
         "The paste-ready prompt names the notes folder and tells the next session to read units.tsv and decisions.tsv there first",

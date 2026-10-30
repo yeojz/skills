@@ -149,14 +149,28 @@ ls "$notes/decisions.tsv"
 column -t -s $'\t' "$notes/decisions.tsv"
 ```
 
-Carry rows forward by quoting them, never by paraphrase:
+The ledger is append-only, so a decision can have several rows: the fork as
+it was asked, then the answer, written by `coordinate` with the same `unit`
+and `decision` text. The latest row for a `unit` and `decision` pair is the
+state; the earlier rows are history. Reconcile before classifying anything:
 
-| Row | Goes in the handoff as |
+```bash
+awk -F'\t' 'NR > 1 { last[$2 FS $4] = $0 } END { for (k in last) print last[k] }' "$notes/decisions.tsv" | sort
+```
+
+Carry rows forward by quoting them, never by paraphrase. Classify each
+decision by its latest row:
+
+| Latest row | Goes in the handoff as |
 |---|---|
-| Kind `fork` with a letter chosen | The choice made, with the row's `when` and `evidence` so the next session can find it |
-| Kind `fork` with no answer yet | An open question in Step 6, options as the row states them |
+| Kind `fork`, `result` carries the letter chosen | The choice made, with the row's `when` and `evidence` so the next session can find it; the fork row it answers is quoted as history, not reopened |
+| Kind `fork`, `result` empty, no later row for the pair | An open question in Step 6, options as the row states them |
 | Kind `verdict` or `relay` | The state of that PR, quoted into Remaining or Completed |
-| Any row whose `result` is empty | A decision whose outcome the next session must still check, named as such |
+| Any other kind with `result` empty | A decision whose outcome the next session must still check, named as such |
+
+A fork row with an empty `result` is open only when no later row for the same
+`unit` and `decision` carries an answer: the raw listing shows the question,
+the reconciled listing shows whether it was settled.
 
 Then add the decisions and constraints the ledger does not carry: the ones
 agreed in this session that exist nowhere on disk. For each one, name where
@@ -292,6 +306,7 @@ State plainly:
 | Remaining items with no acceptance check | Each item states the command and the result that means done. |
 | Losing session-only decisions | Carry them forward in Step 5 and name where they should be recorded permanently. |
 | Writing the decisions section from memory when `decisions.tsv` exists | Read the ledger and quote its rows. Memory fills the table only when there is no trail, and then every row says `unlogged`. |
+| Reopening a fork the ledger already answers | Reconcile by `unit` and `decision` first. The latest row is the state; an earlier empty `result` under a later answer is history. |
 | Creating `decisions.tsv` at handoff to have a trail to point at | A ledger started at handoff is recollection in a file. Say there is none; `coordinate` opens it in the next session. |
 | Answering the open questions on the user's behalf | Present lettered options with a recommendation and leave them open. |
 | Clearing context after writing the handoff | That is the user's action. Stop after reporting. |

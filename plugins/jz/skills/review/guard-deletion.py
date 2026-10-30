@@ -529,15 +529,17 @@ def log_reports_compile_failure(log_path, path):
         prefix = line[:found.start()].strip()
         path_only = PATH_PREFIX.fullmatch(prefix) is not None
         rest = line[found.end():]
+        if prefix == '-->' and RUST_ERROR_LINE.search('\n'.join(lines[max(0, index - 3):index])):
+            return True
+        if not path_only:
+            continue
         if rest.startswith(':') and SAME_LINE_DIAGNOSTIC.match(rest[1:]):
             return True
         if rest.lstrip().startswith('-') and SAME_LINE_DIAGNOSTIC.match(rest):
             return True
-        if go_build_failed and path_only and re.match(r':\s', rest):
+        if go_build_failed and re.match(r':\s', rest):
             return True
-        if prefix == '-->' and RUST_ERROR_LINE.search('\n'.join(lines[max(0, index - 3):index])):
-            return True
-        if path_only and rest.strip() == '' and NODE_SYNTAX_LINE.search('\n'.join(lines[index + 1:index + 5])):
+        if rest.strip() == '' and NODE_SYNTAX_LINE.search('\n'.join(lines[index + 1:index + 5])):
             return True
     return False
 

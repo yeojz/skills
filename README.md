@@ -140,7 +140,7 @@ state when context runs out.
 |---|---|
 | `ship` | Branch, format, lint, verify, conventional commit; on one go-ahead push, draft PR, gate the pushed head on a clean detached checkout and mark ready; rebase when the default branch moves; clean up after the merge |
 | `pr-desc` | Write or refresh a PR title and body from the diff, with a Verification section listing the commands that actually ran |
-| `review` | Diff-scoped or PR-scoped review, plus the unresolved-comment sweep |
+| `review` | Diff-scoped or PR-scoped review with design, maintainability and guard-deletion lenses that always report; the unresolved-comment sweep with CI classified before any rerun; an adversarial mode that sends one brief to two model families and merges the findings |
 | `release` | Version PR, changeset, label gate, publish |
 
 #### Hand over

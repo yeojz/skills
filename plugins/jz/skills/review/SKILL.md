@@ -10,7 +10,8 @@ description: Use when asked to review a change rather than a whole repo, or to d
 Diff-scoped review. It resolves what changed, reads the change plus the code
 around it, and reports severity-ranked findings that each point at a real
 `file:line`. Design and maintainability weigh the same as correctness, and
-every new rejecting guard is sampled by deleting it and running the tests. It
+the new guards that enforce a boundary or a requested rejection are sampled
+by deleting them and running the tests. It
 also sweeps unresolved pull request review threads, judges whether each
 comment is actually correct, classifies a red CI run before any retry,
 addresses the valid ones and reports what is left. For a contested change it
@@ -122,7 +123,7 @@ them is incomplete, not clean.
 |---|---|
 | Design | the shape of the change: a public surface wider than the change needed, a decision an ADR or `docs/design.md` settled the other way, a seam placed where the next change in this area will have to move it. The Layering and Over-engineering rows feed this line. Must report |
 | Maintainability | what the next reader pays: a comment that explains what instead of why, a test coupled to implementation detail, a module nobody can name the owner of. The Duplication, Dead code and Naming rows feed this line. Must report |
-| Guard deletion | every new `if` that throws, returns early or rejects input: delete it, run the package tests, restore. A guard whose deletion stays green is a High. The script below does the loop. Must report |
+| Guard deletion | the new `if` branches that reject: throw, return early, exit, answer 4xx or 5xx. Sample the ones that enforce a security boundary, prevent data loss or implement the rejection the change was asked for: neutralise the condition, run the package tests, restore. A sampled guard whose deletion stays green is a High; a guard left unsampled is listed with its reason. Must report |
 | Duplication | logic reimplemented when a function already exists in this workspace. Grep for the behaviour before accepting a new helper |
 | Pass-through | a new parameter, option or context added at one layer and dropped at the next call site |
 | Assertions | non-null assertions `!`, `as unknown as`, `any`, `@ts-ignore` introduced by the change |
@@ -145,33 +146,54 @@ npm view <pkg> time.modified license
 pnpm why <pkg>
 ```
 
-For the guard deletion row, `guard-deletion.py` sits beside this file. It
-lists every rejecting guard the diff added, then for each one in turn
-neutralises its condition, runs the test command, restores the file byte for
-byte and records whether the suite went red. List first, so the count and
-the time per run are known before anything is mutated:
+For the guard deletion row, the sample is targeted, not exhaustive. List
+the rejecting guards the diff added, then choose which to sample:
 
 ```bash
-python3 <skill-dir>/guard-deletion.py --list "origin/$base" 'pnpm --filter <pkg> test:ci' packages/<pkg>
-python3 <skill-dir>/guard-deletion.py "origin/$base" 'pnpm --filter <pkg> test:ci' packages/<pkg>
+git diff "origin/$base...HEAD" -U0 | grep -nE '^\+\s*(\}\s*)?(else\s+)?if\b'
+```
+
+Read each hit to see whether its body rejects. Sample in this order, and
+stop when the ones that matter are done:
+
+| Sample first | Looks like |
+|---|---|
+| A security boundary | an authentication or authorization check, a signature or secret comparison, a path, origin or host check, a limit on input the outside world supplies |
+| A data-loss guard | a write, delete, overwrite, truncate or migration refused on a precondition |
+| The rejection the change was asked for | the guard that is the feature: the brief, issue or specification names the input it must reject |
+| Everything else | sampled when the suite is quick; otherwise listed as not sampled with the reason |
+
+For each sampled guard, neutralise the condition by hand so the file still
+parses and every name it used is still referenced, `if (cond)` becoming
+`if (false && (cond))`, then run the package's declared test script, read
+from its `package.json` as `verify` Step 2 does, and put the file back:
+
+```bash
+pnpm --filter <pkg> test:ci
+git checkout -- <path>
 git status --short
 ```
 
-The test command is the package's declared test script, read from its
-`package.json` as `verify` Step 2 does, never invented. For a working-tree
-review pass `HEAD` as the base ref. Run it once per changed package with that
-package's script; when the list is long, pass the changed files instead of
-the package directory and name in the report which guards were not sampled.
+A red run kills the mutant. A green run is a survivor: a High finding that
+names the guard by `file:line` and the test that should have failed. A
+compiler refusing the mutant is neither; a TypeScript guard that narrows a
+type fails `tsc` once it is gone, which shows the compiler covers it and
+nothing about whether a test does, so record it as not sampled, covered by
+the compiler, and judge by reading whether a runtime test is still owed.
+The suite must be green before the first guard is touched, and the
+`git status` after the last restore must match the one from Step 1.
 
-The script samples the tree it runs in, and its first line prints that
-tree's HEAD and the merge base it used. Those must be the reviewed revision
-and its real base. A working-tree or branch review on the reviewed branch
-runs it in place. A pull request review, or any review where
-`git rev-parse HEAD` is not the reviewed head, runs it in a throwaway
-worktree detached at that head, installed from the lock file, against the
-PR's own base branch; `gh pr diff` alone leaves the local tree on whatever
-was checked out, and sampling there reports zero guards for a PR that added
-some, or mutates code the PR never touched.
+A guard left unsampled is named with its reason. Reasons that hold: the
+guard only logs or counts, the compiler covers it, it duplicates a sampled
+guard, or the suite is slow and the guard checks a low-stakes argument.
+"Not enough time" without the list of what was skipped does not.
+
+Sample in the reviewed revision. A working-tree or branch review on the
+reviewed branch samples in place. A pull request review, or any review
+where `git rev-parse HEAD` is not the reviewed head, samples in a throwaway
+worktree detached at that head, installed from the lock file; `gh pr diff`
+alone leaves the local tree on whatever was checked out, and a guard
+neutralised there mutates code the PR never touched.
 
 ```bash
 read -r head base_ref < <(gh pr view <n> --json headRefOid,baseRefName --jq '"\(.headRefOid) \(.baseRefName)"')
@@ -180,21 +202,12 @@ git fetch origin "refs/pull/<n>/head"
 [ "$(git rev-parse FETCH_HEAD)" = "$head" ] || echo "PR head moved since gh pr view"
 sample_dir="$(mktemp -d)"
 git worktree add --detach "$sample_dir" "$head"
-( cd "$sample_dir" && pnpm install --frozen-lockfile && python3 <skill-dir>/guard-deletion.py "origin/$base_ref" 'pnpm --filter <pkg> test:ci' packages/<pkg> )
+( cd "$sample_dir" && pnpm install --frozen-lockfile && pnpm --filter <pkg> test:ci )
 git worktree remove --force "$sample_dir"
 ```
 
-The script exits 1 when a mutant survived, and 2 when the baseline is
-already red, a file could not be restored, or a guard was not sampled
-because its mutant did not parse or compile or its construct cannot be
-wrapped; on a 2, stop and report that before anything else, and name every
-guard the output lists as not sampled. A compiler refusing the mutant is
-not a kill: a TypeScript guard that narrows a type fails `tsc` once it is
-gone, which shows the compiler covers it and nothing about whether a test
-does, so it is reported as not sampled and the reviewer judges by reading
-whether a runtime test is still owed. Each survivor is a High finding that
-names the guard by `file:line` and the test that should have failed. The
-`git status` after an in-place run must match the one from Step 1.
+The sampling loop runs inside `$sample_dir`, one guard at a time, with the
+same neutralise, test, restore steps as above.
 
 ### Step 5: Ground every finding in a line
 
@@ -254,7 +267,7 @@ whether or not they produced a finding:
 
 - Design: R3, or clean, checked <what: the boundaries, the new surface>
 - Maintainability: clean, checked <what: duplicates grepped, names against <sibling>>
-- Guard deletion: <n> guards sampled at <sha> with `<test command>`, <k> survived (R1), <j> not sampled and named, or no new rejecting guard in the diff
+- Guard deletion: <n> rejecting guards in the diff, <k> sampled at <sha> with `<test command>`, <s> survived (R1), <m> not sampled: <guard, reason> each; or no new rejecting guard in the diff
 ```
 
 Severity: Critical is exploitable, data-losing or already broken. High is a
@@ -510,14 +523,15 @@ to it as the verdict's evidence.
 | Padding a clean review with Low-severity filler | Say nothing needs changing and name what was checked. |
 | A report with no Design, Maintainability or Guard deletion line | The three lenses report every time, clean or not, with what was checked. Silence is an incomplete review, not a clean one. |
 | Demoting a design finding because "it works" | Design and maintainability weigh the same as correctness; severity comes from the consequence. |
-| Calling guard-deletion sampling done from reading the tests | Run `guard-deletion.py` with the package's declared test script and paste its table. A survivor is a High. |
-| Running the guard-deletion script on a red baseline, or leaving a mutant behind | The script exits 2 on both; stop and report. The `git status` after the run matches the one before. |
-| Counting a mutant the compiler refused as killed | A compile or type error names the mutated file, not a test. The script reports it as not sampled with exit 2; name it, and judge whether a runtime test is still owed. |
+| Judging guard coverage by reading the tests | Neutralise the guard, run the package's declared test script, restore, and paste the red or green run. A survivor is a High. |
+| Sampling every guard, or none, because the diff has many | The sample is targeted: security boundaries, data-loss guards and the rejection the change was asked for first. List the rest as not sampled with a reason each. |
+| Sampling on a red baseline, or leaving a neutralised guard in the tree | The suite is green before the first guard is touched, and the `git status` after the last restore matches the one from Step 1. |
+| Counting a mutant the compiler refused as killed | A compile or type error is the compiler covering the guard, not a test. Record it as not sampled, covered by the compiler, and judge whether a runtime test is still owed. |
 | Pressing rerun on a red check before reading its log | Classify first: stale base rebases, a defect becomes a finding, a suspected flake earns one fresh run. |
 | A second rerun because the first came back red again | An identical second failure is a defect, not a flake. The budget is one per failing check per head. |
 | Rerunning a failure in code the diff never touched | Read the base first. Behind the base and green there is a stale base: rebase and push. Red on the base too is an upstream failure that no rebase fixes. Neither earns a rerun. |
 | Prescribing a rebase because the same check is red on the default branch | That is an upstream failure, not a stale base. A rebase onto a red base stays red; report it as pre-existing with the base run's URL. |
-| Running `guard-deletion.py` in whatever tree happens to be checked out | It samples the tree it runs in. For a PR, or when HEAD is not the reviewed head, run it in a worktree detached at the PR head against the PR's base, and check its first line names that head. |
+| Sampling guards in whatever tree happens to be checked out | For a PR, or when HEAD is not the reviewed head, sample in a worktree detached at the PR head, installed from the lock file. |
 | Polling the PR's checks or status in a loop | In the desktop app, bind the PR and turn the monitor on once; let the wake run the sweep. |
 | Sending each adversarial reviewer its own wording of the brief | One brief, written once, sent verbatim to every reviewer; otherwise the agreement map compares different questions. |
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |

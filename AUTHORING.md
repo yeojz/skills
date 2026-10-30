@@ -103,14 +103,6 @@ inline. Point to it from `SKILL.md` by relative path, for example
 `see reference.md`. Never use an `@path` reference: it force-loads the file
 into every session that loads the skill.
 
-A script beside a skill is `.sh` or `.py`, opens with a comment that gives its
-usage line, one example invocation and its exit codes, depends on nothing
-beyond `bash`, `git` and `python3`, and is invoked from `SKILL.md` as
-`bash <skill-dir>/<name>.sh` or `python3 <skill-dir>/<name>.py`. It
-restores anything it changes in the working tree before it exits.
-`validate.sh` runs `bash -n` and `shellcheck` over every `.sh` and parses
-every `.py` beside a skill, the same checks the hooks get.
-
 ## Eval format
 
 `evals/evals.json` is a transcript-review checklist: prompts a user would type,
@@ -185,7 +177,7 @@ check that fails, then a test, with prose last.
 | A repository's own restricted words stay out of its PR text | `no-restricted-words.sh`, reading `## Restricted words` in `AGENTS.md` or `CLAUDE.md` |
 | Rules are read in every session | `load-house-rules.sh`, SessionStart |
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
-| Skills, rules, agents, templates, manifests and the scripts beside skills are well formed | `validate.sh`, in CI |
+| Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
 | Open as draft, mark ready only after the gate is green | `ship` steps 11 and 12: the pushed head is gated on a clean detached checkout, and ready is flipped only when a go-ahead or brief named it; no hook yet |
 | Model tier matches the job | nothing; `models.md` describes it |
 

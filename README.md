@@ -89,8 +89,7 @@ same three commands there.
 .agents/plugins/marketplace.json  the same marketplace, for Codex
 plugins/jz/                       the plugin
   skills/      loaded on demand when a request matches the description;
-               a skill that fills in a template carries it as template.md,
-               and one that runs a loop carries the script beside SKILL.md
+               a skill that fills in a template carries it as template.md
   rules/       always on, injected at session start by a hook
   agents/      four read-only review personas the audit skill fans out to
   hooks/       the hook scripts and the hooks.json that wires them up

@@ -138,14 +138,21 @@ throwaway worktree detached at `HEAD`, carry the uncommitted fix into it by
 name, and reconstruct the mistake there:
 
 ```bash
-git status --short
+git status --short --untracked-files=all
 git hash-object <fixed-path>
 red_dir="$(mktemp -d)"
 git worktree add --detach "$red_dir" HEAD
-for f in <every path git status --short listed>; do
-  if [ -e "$f" ]; then mkdir -p "$red_dir/$(dirname "$f")" && cp -p "$f" "$red_dir/$f"; else rm -f "${red_dir:?}/${f:?}"; fi
-done
+git -c core.quotepath=false ls-files -z --modified --others --exclude-standard | sort -zu | while IFS= read -r -d '' f; do
+  if [ -e "$f" ]; then mkdir -p "$red_dir/$(dirname "$f")" && cp -p "$f" "$red_dir/$f" || exit 1; else rm -f "${red_dir:?}/${f:?}"; fi
+done; echo "copy exit=$?"
+diff <(git status --short --untracked-files=all) <(git -C "$red_dir" status --short --untracked-files=all) && echo "fix carried over"
 ```
+
+The inventory is `git ls-files`, file by file, not `git status --short`: a
+check written into a new directory shows there as one `?? checks/` entry,
+and `cp -p` of a directory fails, so the red run would fail because the
+check is missing rather than because it rejected the mistake. A non-zero
+copy exit or a status diff is a stop; the fix is not in the throwaway yet.
 
 When the check needs dependencies, install them inside `$red_dir` from the
 lock file, with `pnpm install --frozen-lockfile` or the equivalent the lock
@@ -165,7 +172,7 @@ it:
 git worktree remove --force "$red_dir"
 git worktree prune
 pnpm lint; echo "exit=$?"
-git status --short
+git status --short --untracked-files=all
 git hash-object <fixed-path>
 ```
 
@@ -236,6 +243,7 @@ in this session.
 | Two classes in one commit | One class, one commit. The second class is the next run |
 | Fixing a plugin skill or rule here | That is `reflect`. List it under "For reflect" and leave it |
 | Reconstructing the mistake in the task worktree | The fix is uncommitted there; `git checkout --` restores the index version and discards it. Red runs happen in a throwaway worktree with the fixed paths copied in, and the fixed file's hash matches before and after |
+| Copying the fix from a `git status --short` listing | A new directory is one `?? dir/` entry and `cp -p` of it fails, so the red run fails for the wrong reason. Enumerate files with `git ls-files -z`, stop on a copy error, and diff the two status listings before reconstructing |
 | An enforcement row that names no runnable thing | Name the file and the script or workflow that runs it |
 | Weakening the check so the current tree passes | Root-cause the current red; the verification rule forbids the shortcut |
 | Writing the fix on the default branch | Branch first, as `ship` Step 1 describes |

@@ -11,6 +11,7 @@
         "Prints a ledger with one row per class carrying a count, the sources and what enforces it today",
         "Names the level chosen and says why each higher level does not hold, or presents the levels that hold as lettered options and waits",
         "Reconstructs the past mistake from its real commit inside a throwaway worktree detached at HEAD, never in the task worktree, and pastes a non-zero exit code taken from output",
+        "Carries the uncommitted fix into the throwaway worktree file by file from git ls-files, including a check created inside a new untracked directory, and shows the two status listings match before reconstructing the mistake",
         "Runs the check on the fixed tree and pastes exit 0, and shows git status --short and the fixed file's hash unchanged from before the red run, so the uncommitted fix survived it",
         "Adds or updates a row in the project's Enforcement table in the same commit as the fix",
         "The commit contains the fix for one class only"

@@ -54,19 +54,19 @@ Pick the behaviour the phase brief says you see when it works. Exercise it on th
 | Correctness | A branch the probe did not cover, an error path that swallows, a spec clause the code contradicts, cited against the spec text |
 | Design | A boundary crossed the wrong way, an abstraction with one use, an option nobody passes, a public surface wider than the row asked for |
 | Maintainability | Duplication of something the workspace already has, a name that disagrees with the glossary or the sibling package, a comment that explains what instead of why, a file that will not survive the next row |
-| Tests | Guard-deletion sampling: for each new rejecting branch, delete the guard, run the package tests, restore. A guard whose deletion stays green is a P2 and the test that should have caught it is named |
+| Tests | Guard deletion, as the `review` skill's Step 4 runs it: inventory the new rejecting branches in the PR diff, then sample the ones that enforce a security boundary, prevent data loss or implement the rejection the change was asked for, in the detached worktree installed from the lock file. Snapshot the file, neutralise the condition so the file still parses, run the package's declared test script, restore from the snapshot. A sampled guard whose deletion stays green is a P1 that names the test that should have failed; every guard left unsampled is listed with its reason, and "not enough time" without the list is not one |
 | Scope | Anything built that Not asked for now excludes, and anything in Done means that is missing |
 | Docs | A README, guide or doc comment the change made wrong |
 
 ## Findings
 
-Every finding has a priority and a `file:line` that exists on the reviewed head. One without a line is dropped.
+Every finding has a priority and a `file:line` that exists on the reviewed head. One without a line is dropped. The priorities follow the `review` skill's severities so the two reports read the same: Critical and High are P1, Medium is P2, Low is P3.
 
 | Priority | Means |
 |---|---|
-| P1 | Blocks merge: wrong behaviour, a red gate, a claim the probe disproves, a one-way door taken without an ADR |
-| P2 | Fix before merge unless the coordinator says otherwise: a surviving guard deletion, a boundary violation, a duplicate of existing code, a missing negative test |
-| P3 | Fix now or in the next row: naming, a doc drift, tidying |
+| P1 | Blocks merge: wrong behaviour, a red gate, a claim the probe disproves, a one-way door taken without an ADR, a surviving guard deletion, a boundary violation that will cause a defect |
+| P2 | Fix before merge unless the coordinator says otherwise: a duplicate of existing code, a missing negative test, a doc the change made wrong |
+| P3 | Fix now or in the next row: naming, consistency, tidying |
 
 Format, in the review file and in the posted review:
 
@@ -91,6 +91,7 @@ Message the coordinator with:
 - Verdict: merge as is, after fixes, or rework. After fixes means every P1 and P2 has a named fix; rework means the approach is wrong for a reason an ADR or the phase brief settles
 - Head SHA reviewed, and the detached gate: command, exit code, counts line
 - The probe result on base and on candidate
+- One line each for Design, Maintainability and Guard deletion, clean or not, with what was checked; the guard deletion line gives the counts: rejecting guards in the diff, sampled at which sha with which test command, survived, and not sampled with a reason each
 - The findings table
 - The review file path, and the URL of the posted review or that it is held
 - A second pass on a new head classifies each earlier finding as fixed, not fixed or no longer applicable, each with a line

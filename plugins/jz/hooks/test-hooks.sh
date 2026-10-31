@@ -407,11 +407,27 @@ printf '\nrequire-ship-skill.sh\n'
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"jz:verify"}}]}}' \
   '{"type":"user","message":{"content":"please ship it when the gate is green"}}' \
   '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git status"}}]}}' > "$FIXTURE/no-ship.jsonl"
-printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"jz:ship"}}]}}' > "$FIXTURE/skill-ship.jsonl"
-printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"house:ship"}}]}}' > "$FIXTURE/other-plugin-ship.jsonl"
+# A Skill call is a tool_use with an id; its result answers with the same id,
+# is_error null on success and true when the load failed.
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"jz:ship"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":null,"content":"Launching skill: jz:ship"}]}}' > "$FIXTURE/skill-ship.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"house:ship"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"Launching skill: house:ship"}]}}' > "$FIXTURE/other-plugin-ship.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"jz:ship"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":true,"content":"Unknown skill: jz:ship"}]}}' > "$FIXTURE/skill-ship-failed.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"jz:ship"}}]}}' > "$FIXTURE/skill-ship-pending.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"jz:ship"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_9","content":"Launching skill: jz:verify"}]}}' > "$FIXTURE/skill-ship-other-result.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"jz:ship"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":true,"content":"Unknown skill: jz:ship"}]}}' \
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_2","name":"Skill","input":{"skill":"jz:ship"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_2","content":"Launching skill: jz:ship"}]}}' > "$FIXTURE/skill-ship-retry.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":"<command-message>jz:ship</command-message>\n<command-name>/jz:ship</command-name>"}}' > "$FIXTURE/typed-ship.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":[{"type":"text","text":"<command-name>/jz:ship</command-name>"}]}}' > "$FIXTURE/typed-ship-blocks.jsonl"
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"jz:shipping"}}]}}' > "$FIXTURE/near-miss.jsonl"
+# A typed command for a skill that is not installed arrives as plain text,
+# with no command-name tag and no skill body after it.
+printf '%s\n' '{"type":"user","message":{"content":"/jz:ship"}}' > "$FIXTURE/typed-ship-missing.jsonl"
 printf 'not json, mentions ship\n' > "$FIXTURE/broken.jsonl"
 gate() {
   # gate <json-quoted command> <label> <expected exit> <transcript path or ->
@@ -443,8 +459,15 @@ gate '"git commit -m \"unbalanced"'              "unparseable line naming commit
 gate '"git commit -m x"'                         "commit after Skill jz:ship"     0 "$FIXTURE/skill-ship.jsonl"
 gate '"git push origin topic"'                   "push after Skill jz:ship"       0 "$FIXTURE/skill-ship.jsonl"
 gate '"gh pr create --draft"'                    "PR create after Skill jz:ship"  0 "$FIXTURE/skill-ship.jsonl"
-gate '"git commit -m x"'                         "commit after Skill house:ship"  0 "$FIXTURE/other-plugin-ship.jsonl"gate '"git commit -m x"'                         "commit after a typed /jz:ship"  0 "$FIXTURE/typed-ship.jsonl"
-gate '"git commit -m x"'                         "typed /jz:ship in text blocks"  0 "$FIXTURE/typed-ship-blocks.jsonl"gate '"git commit -m x"'                         "Skill jz:shipping is not ship"  2 "$FIXTURE/near-miss.jsonl"
+gate '"git commit -m x"'                         "commit after Skill house:ship"  0 "$FIXTURE/other-plugin-ship.jsonl"
+gate '"git commit -m x"'                         "Skill call whose result is an error" 2 "$FIXTURE/skill-ship-failed.jsonl"
+gate '"git commit -m x"'                         "Skill call with no result yet"  2 "$FIXTURE/skill-ship-pending.jsonl"
+gate '"git commit -m x"'                         "result that answers another call" 2 "$FIXTURE/skill-ship-other-result.jsonl"
+gate '"git commit -m x"'                         "failed call, then a successful one" 0 "$FIXTURE/skill-ship-retry.jsonl"
+gate '"git commit -m x"'                         "commit after a typed /jz:ship"  0 "$FIXTURE/typed-ship.jsonl"
+gate '"git commit -m x"'                         "typed /jz:ship in text blocks"  0 "$FIXTURE/typed-ship-blocks.jsonl"
+gate '"git commit -m x"'                         "typed /jz:ship as plain text, not installed" 2 "$FIXTURE/typed-ship-missing.jsonl"
+gate '"git commit -m x"'                         "Skill jz:shipping is not ship"  2 "$FIXTURE/near-miss.jsonl"
 gate '"git commit -m x"'                         "a transcript that is not JSON"  2 "$FIXTURE/broken.jsonl"
 printf '  %-52s' "the reason names Skill jz:ship"
 reason="$(printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"},"cwd":"%s","transcript_path":"%s"}' "$FIXTURE" "$FIXTURE/no-ship.jsonl" \

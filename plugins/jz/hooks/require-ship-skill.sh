@@ -11,7 +11,12 @@
 # remembers.
 #
 # The transcript the payload names is the evidence: a Skill tool call whose
-# skill is `ship` or `<plugin>:ship`, or a typed `/ship` command. A payload
+# skill is `ship` or `<plugin>:ship` and whose result did not report an
+# error, or a typed `/ship` command. A call that failed or has no result yet
+# unlocks nothing, since the procedure never reached the session. A typed
+# command reaches the transcript inside a `<command-name>` tag only when the
+# skill is installed; one that is not arrives as plain text and the skill body
+# never follows it, so the tag is the evidence on that path. A payload
 # without a transcript path, from another host, the test suite or a headless
 # run, is allowed through, so the gate holds on Claude Code only until another
 # host's payload is known to carry one. A subagent is judged on its own
@@ -72,9 +77,18 @@ def user_turn_types_ship(content):
 
 
 def ship_loaded(path):
+    """True once the transcript shows the skill loaded.
+
+    A Skill call counts only with its result: the tool_use block carries an id,
+    and the tool_result block that answers it carries the same id. A result
+    with is_error true is a load that failed, so the session never received
+    the procedure, and a call with no result yet is pending; neither unlocks
+    anything. A later call that succeeds does.
+    """
+    pending = set()
     with open(path, encoding="utf-8", errors="replace") as transcript:
         for line in transcript:
-            if "ship" not in line:
+            if "ship" not in line and "tool_result" not in line:
                 continue
             try:
                 entry = json.loads(line)
@@ -85,10 +99,22 @@ def ship_loaded(path):
             message = entry.get("message")
             content = message.get("content") if isinstance(message, dict) else None
             if entry.get("type") == "assistant" and isinstance(content, list):
-                if any(skill_call_loads_ship(block) for block in content):
+                for block in content:
+                    if skill_call_loads_ship(block) and block.get("id"):
+                        pending.add(block["id"])
+            elif entry.get("type") == "user":
+                if isinstance(content, list):
+                    for block in content:
+                        if not isinstance(block, dict) or block.get("type") != "tool_result":
+                            continue
+                        if block.get("tool_use_id") not in pending:
+                            continue
+                        if block.get("is_error") is True:
+                            pending.discard(block["tool_use_id"])
+                        else:
+                            return True
+                if user_turn_types_ship(content):
                     return True
-            elif entry.get("type") == "user" and user_turn_types_ship(content):
-                return True
     return False
 
 

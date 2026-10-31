@@ -371,6 +371,63 @@ deny '"cd child && git merge origin/stable | cat"' "merge stable piped after cd"
 deny '"{ cd child; git merge origin/stable; }"'  "merge stable after cd in braces" 2 rebase-not-merge.sh
 deny '"{ cd child; git status; }; git merge origin/stable"' "merge stable after a brace group" 2 rebase-not-merge.sh
 
+printf '\nrequire-ship-skill.sh\n'
+# Transcript fixtures in the shape Claude Code writes: a Skill call is an
+# assistant tool_use block, a typed slash command is a user turn.
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"jz:verify"}}]}}' \
+  '{"type":"user","message":{"content":"please ship it when the gate is green"}}' \
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git status"}}]}}' > "$FIXTURE/no-ship.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"jz:ship"}}]}}' > "$FIXTURE/skill-ship.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"house:ship"}}]}}' > "$FIXTURE/other-plugin-ship.jsonl"
+printf '%s\n' '{"type":"user","message":{"content":"<command-message>jz:ship</command-message>\n<command-name>/jz:ship</command-name>"}}' > "$FIXTURE/typed-ship.jsonl"
+printf '%s\n' '{"type":"user","message":{"content":[{"type":"text","text":"<command-name>/jz:ship</command-name>"}]}}' > "$FIXTURE/typed-ship-blocks.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"jz:shipping"}}]}}' > "$FIXTURE/near-miss.jsonl"
+printf 'not json, mentions ship\n' > "$FIXTURE/broken.jsonl"
+gate() {
+  # gate <json-quoted command> <label> <expected exit> <transcript path or ->
+  printf '  %-52s' "$2"
+  if [ "$4" = "-" ]; then
+    printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "$FIXTURE"
+  else
+    printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s","transcript_path":"%s"}' "$1" "$FIXTURE" "$4"
+  fi | "$HOOK_DIR/require-ship-skill.sh" >/dev/null 2>&1
+  local got=$?
+  if [ "$got" = "$3" ]; then
+    echo "exit=$got PASS"
+  else
+    echo "exit=$got FAIL, expected $3"
+    fail=1
+  fi
+}
+gate '"git status"'                              "git status without the skill"   0 "$FIXTURE/no-ship.jsonl"
+gate '"git commit -m x"'                         "commit, no transcript path"     0 -
+gate '"git commit -m x"'                         "commit, transcript file absent" 0 "$FIXTURE/absent.jsonl"
+gate '"git commit -m x"'                         "commit without the skill"       2 "$FIXTURE/no-ship.jsonl"
+gate '"git push -u origin HEAD"'                 "push without the skill"         2 "$FIXTURE/no-ship.jsonl"
+gate '"gh pr create --draft --title t --body b"' "draft PR without the skill"     2 "$FIXTURE/no-ship.jsonl"
+gate '"gh -R o/r pr create --draft"'             "PR create behind a global option" 2 "$FIXTURE/no-ship.jsonl"
+gate '"gh pr view 42"'                           "pr view without the skill"      0 "$FIXTURE/no-ship.jsonl"
+gate '"git add a && git -C sub commit -m x"'     "commit behind git -C after &&"  2 "$FIXTURE/no-ship.jsonl"
+gate '"echo '"'"'git commit'"'"'"'                "commit inside quotes"           0 "$FIXTURE/no-ship.jsonl"
+gate '"git commit -m \"unbalanced"'              "unparseable line naming commit" 2 "$FIXTURE/no-ship.jsonl"
+gate '"git commit -m x"'                         "commit after Skill jz:ship"     0 "$FIXTURE/skill-ship.jsonl"
+gate '"git push origin topic"'                   "push after Skill jz:ship"       0 "$FIXTURE/skill-ship.jsonl"
+gate '"gh pr create --draft"'                    "PR create after Skill jz:ship"  0 "$FIXTURE/skill-ship.jsonl"
+gate '"git commit -m x"'                         "commit after Skill house:ship"  0 "$FIXTURE/other-plugin-ship.jsonl"
+gate '"git commit -m x"'                         "commit after a typed /jz:ship"  0 "$FIXTURE/typed-ship.jsonl"
+gate '"git commit -m x"'                         "typed /jz:ship in text blocks"  0 "$FIXTURE/typed-ship-blocks.jsonl"
+gate '"git commit -m x"'                         "Skill jz:shipping is not ship"  2 "$FIXTURE/near-miss.jsonl"
+gate '"git commit -m x"'                         "a transcript that is not JSON"  2 "$FIXTURE/broken.jsonl"
+printf '  %-52s' "the reason names Skill jz:ship"
+reason="$(printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"},"cwd":"%s","transcript_path":"%s"}' "$FIXTURE" "$FIXTURE/no-ship.jsonl" \
+    | "$HOOK_DIR/require-ship-skill.sh" 2>&1 >/dev/null)"
+if printf '%s' "$reason" | grep -q 'jz:ship'; then
+  echo "PASS"
+else
+  echo "FAIL"
+  fail=1
+fi
+
 printf '\nno-restricted-words.sh\n'
 printf '## Restricted words\n\n- oracle\n- predecessor\n' > "$FIXTURE/AGENTS.md"
 printf 'Summary with a tick \342\234\223 mark\n' > "$FIXTURE/body-emoji.md"

@@ -381,7 +381,16 @@ git -C "$FIXTURE" checkout -q -b main 2>/dev/null || git -C "$FIXTURE" checkout 
 deny '"git merge --ff-only origin/main"'         "ff-only origin/main while on main" 0 rebase-not-merge.sh
 deny '"git merge origin/main"'                   "merge origin/main while on main" 0 rebase-not-merge.sh
 deny '"git pull origin main"'                    "pull main while on main"        0 rebase-not-merge.sh
+deny '"git fetch origin main && git merge --ff-only origin/main"' "fetch then ff-only while on main" 0 rebase-not-merge.sh
 deny '"git -C child merge origin/stable"'        "merge stable in child, not on stable" 2 rebase-not-merge.sh
+# A checkout or switch earlier on the line moves the branch before the merge
+# runs, so the branch the hook reads is stale and the exception is withheld.
+deny '"git switch topic && git merge origin/main"' "switch then merge main, on main" 2 rebase-not-merge.sh
+deny '"git checkout topic && git pull --no-rebase origin main"' "checkout then pull main, on main" 2 rebase-not-merge.sh
+deny '"git checkout -b fresh && git merge main"'  "checkout -b then merge main, on main" 2 rebase-not-merge.sh
+deny '"git switch -c fresh; git merge --ff-only origin/main"' "switch -c then ff-only, on main" 2 rebase-not-merge.sh
+deny '"git -C child checkout -b x && git merge --ff-only origin/main"' "switch in another repo keeps the exception" 0 rebase-not-merge.sh
+deny '"git merge --ff-only origin/main && git switch topic"' "ff-only then switch, on main" 0 rebase-not-merge.sh
 # Without origin/HEAD every common default name counts, and a branch with one
 # of those names merging a different one is still a merge of the default.
 git -C "$FIXTURE" symbolic-ref --delete refs/remotes/origin/HEAD
@@ -434,10 +443,8 @@ gate '"git commit -m \"unbalanced"'              "unparseable line naming commit
 gate '"git commit -m x"'                         "commit after Skill jz:ship"     0 "$FIXTURE/skill-ship.jsonl"
 gate '"git push origin topic"'                   "push after Skill jz:ship"       0 "$FIXTURE/skill-ship.jsonl"
 gate '"gh pr create --draft"'                    "PR create after Skill jz:ship"  0 "$FIXTURE/skill-ship.jsonl"
-gate '"git commit -m x"'                         "commit after Skill house:ship"  0 "$FIXTURE/other-plugin-ship.jsonl"
-gate '"git commit -m x"'                         "commit after a typed /jz:ship"  0 "$FIXTURE/typed-ship.jsonl"
-gate '"git commit -m x"'                         "typed /jz:ship in text blocks"  0 "$FIXTURE/typed-ship-blocks.jsonl"
-gate '"git commit -m x"'                         "Skill jz:shipping is not ship"  2 "$FIXTURE/near-miss.jsonl"
+gate '"git commit -m x"'                         "commit after Skill house:ship"  0 "$FIXTURE/other-plugin-ship.jsonl"gate '"git commit -m x"'                         "commit after a typed /jz:ship"  0 "$FIXTURE/typed-ship.jsonl"
+gate '"git commit -m x"'                         "typed /jz:ship in text blocks"  0 "$FIXTURE/typed-ship-blocks.jsonl"gate '"git commit -m x"'                         "Skill jz:shipping is not ship"  2 "$FIXTURE/near-miss.jsonl"
 gate '"git commit -m x"'                         "a transcript that is not JSON"  2 "$FIXTURE/broken.jsonl"
 printf '  %-52s' "the reason names Skill jz:ship"
 reason="$(printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"},"cwd":"%s","transcript_path":"%s"}' "$FIXTURE" "$FIXTURE/no-ship.jsonl" \

@@ -10,7 +10,9 @@
 # the default is the house workflow: after a PR lands on GitHub, the main
 # checkout is brought level with `git merge --ff-only origin/<default>`, as
 # the ship skill's cleanup step runs it. That call is allowed. A merge of the
-# default into any other branch, default-named or not, is still denied.
+# default into any other branch, default-named or not, is still denied, and so
+# is one that follows a checkout or switch on the same line, since the branch
+# the hook can read is not the one the merge will run on.
 #
 # The command line is split by command_lines.py, the parser every hook shares,
 # and each command is judged in the directory it runs in, so a leading `cd` or
@@ -121,13 +123,24 @@ def pull_rebases(args, directory, config_overrides):
     return False
 
 
-def reason_for(argv, directory):
+def reason_for(argv, directory, switched):
+    """The reason to deny this call, or None, and the directory it was judged in.
+
+    `switched` holds the git directories where an earlier command on the same
+    line was a checkout or switch. The checkout is read before any of the line
+    runs, so after such a command the branch it reports is not the branch the
+    merge will run on, and the default branch's own fast-forward exception is
+    withheld there.
+    """
     call = git_call(argv, directory)
     if call is None:
         return None, directory
     sub, args, git_directory = call
+    if sub in {"checkout", "switch"}:
+        switched.add(git_directory)
+        return None, git_directory
     defaults = default_branch(git_directory)
-    current = current_branch(git_directory)
+    current = None if git_directory in switched else current_branch(git_directory)
     if sub == "merge":
         if any(a in {"--abort", "--continue", "--quit"} for a in args):
             return None, git_directory
@@ -163,9 +176,10 @@ if not isinstance(command, str):
     sys.exit(0)
 start = cwd if isinstance(cwd, str) and cwd else os.getcwd()
 
+switched = set()
 try:
     for argv, _, directory in commands_with_directory(command, start):
-        reason, git_directory = reason_for(argv, directory)
+        reason, git_directory = reason_for(argv, directory, switched)
         if reason:
             deny(reason, git_directory)
 except ValueError:

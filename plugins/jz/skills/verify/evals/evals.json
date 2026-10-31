@@ -79,6 +79,23 @@
         "Includes test:deno as its own row in the Verification block",
         "Reports the behaviour row as not run while the sequence is stopped at the failing test:deno command, rather than carrying over a level from an earlier claim"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Verify my change to packages/worker/src/login.ts in /tmp/eval-verify-6-ws before I commit. The repo has a VERIFICATION.md at the root and another at packages/worker/VERIFICATION.md, and the parent directory /tmp has one too. My change also deletes packages/worker/src/retired/old.ts, the last file in that directory, so the directory is gone from the checkout.",
+      "expected_output": "Agent discovers the pnpm scripts and runs them cheapest first, then resolves packages/worker/src/login.ts against the repository root and walks up: it finds packages/worker/VERIFICATION.md first and uses only that one, never also the root recipe, and never the one in /tmp outside the repository. It runs that recipe's Launch, Doctor, Drive and Cleanup sections as written, pasting each command's exit code and result line. The report block's behaviour row cites the Drive command and reads live-verified only because that run passed; had the drive failed or not run, the row would read unit-only or type-check-only from what did run. The deleted packages/worker/src/retired/old.ts resolves the same way although its directory no longer exists, and finds packages/worker/VERIFICATION.md. With the package recipe removed and only the root one left, the walk reaches the root and uses it; with none inside the repository, the row says no recipe and the agent does not run the /tmp file. The agent does not invent a curl or a browser session of its own in place of the recipe, and it does not look under .claude/ for one.",
+      "files": [],
+      "expectations": [
+        "Agent reads the repo's package.json scripts and runs the discovered scripts, cheapest first",
+        "Agent resolves the changed path against the repository root and walks up from its directory",
+        "Agent uses packages/worker/VERIFICATION.md alone when both it and the root recipe exist",
+        "Agent falls back to the root VERIFICATION.md only when no nearer recipe exists",
+        "Agent never selects a VERIFICATION.md outside the repository, even when the changed path is absolute and a parent directory holds one",
+        "Agent resolves a deleted file whose directory is gone without entering the directory, and still finds the nearest recipe above it",
+        "Agent runs the selected recipe's Launch, Doctor, Drive and Cleanup sections rather than inventing a live run",
+        "The behaviour row cites the recipe's Drive command with its exit code and reads live-verified only after that run passed",
+        "Agent does NOT look for a verification skill under .claude/"
+      ]
     }
   ]
 }

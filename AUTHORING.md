@@ -268,6 +268,19 @@ words` heading in `AGENTS.md` or `CLAUDE.md`, one word per bullet.
 The defaults this setup assumes. Skills must take these as given rather than
 asking about them each time.
 
+### Verification recipes
+
+A repository that can be driven end to end keeps the recipe in a
+`VERIFICATION.md` next to its `AGENTS.md`, or next to a package's manifest in a
+monorepo: Launch, Doctor, Drive, Evidence, Cleanup, and a map from each
+acceptance to the drive step that proves it. `verify` reads the nearest one
+upward from the changed paths and cites its Drive section on the `behaviour`
+row. It is a plain file a person or Codex runs the same way, never a skill
+under `.claude/`, which the `no-claude-artifacts.sh` hook keeps out of git. A
+recipe drives the system locally, against mocks or fixtures for anything
+external, and carries no step that deploys to, logs in to or writes to a live
+or shared environment; such a step is the owner's, taken when they ask.
+
 ### Stack
 
 | Concern | Default |

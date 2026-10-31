@@ -129,7 +129,7 @@ question the worker will stall on.
 | Decisions already made | The ADRs and `docs/design.md` lines that touch this row, plus any base-on-branch decision from Step 3 |
 | Scope and owns | The row's owns and builds fields, as absolute paths |
 | Not asked for now | The neighbouring rows, so the worker stops at the boundary |
-| Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the value the `behaviour` row of the `verify` report must reach (`live-verified`, `unit-only` or `type-check-only`), and any conformance or fixture run |
+| Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the value the `behaviour` row of the `verify` report must reach (`live-verified`, `unit-only` or `type-check-only`), and any conformance or fixture run; a repository with a `VERIFICATION.md` reaches `live-verified` through its Drive section |
 | Model tier | The tier `rules/models.md` gives a scoped unit with named files and a done condition; one tier up when the row is subtle or security-sensitive. Name the tier in the brief |
 | Ship | The `ship` skill, with the go-ahead for push, draft PR, gate on a clean detached checkout and ready granted in the brief, so the worker asks for none of them |
 | Standing orders | The `AGENTS.md` block from Step 1, verbatim |

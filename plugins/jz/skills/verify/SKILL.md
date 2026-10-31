@@ -82,6 +82,52 @@ Makefile target. The same names apply to both:
 | build | `build`, `build:ci` |
 | cross-runtime | `test:bun`, `test:deno`, `test:platform-*`, `test:dist-*` |
 | validate | `validate`, `check` (a single repo-wide gate, common in a Makefile) |
+| behaviour | the nearest `VERIFICATION.md`, found as described below; "no recipe" when there is none |
+
+The `behaviour` concern has a different source: a repository that can be driven
+end to end keeps the recipe in `VERIFICATION.md`, a plain file next to
+`AGENTS.md` with Launch, Doctor, Drive, Evidence and Cleanup sections and a map
+from each acceptance to the drive step that proves it. Find it the way agents
+find `AGENTS.md`: resolve each changed path against the repository root, walk
+up from its directory and take the first `VERIFICATION.md` on the way, stopping
+at the root, so a monorepo may keep one per package and one at the root and the
+package one wins for a change under it. The walk never leaves the repository: a
+path outside it, or a repository with no recipe at any level, is "no recipe",
+never a file from a parent workspace or another project. Its Drive section is
+the command the `behaviour` row cites when it reads `live-verified`. It is never under `.claude/`, which
+stays out of git, and it is not a skill: Codex and a person run it the same way.
+When there is none, the row can still reach `live-verified` from another pasted
+run that drove the feature, a browser, a real request, a conformance tier, but
+not from this skill inventing one.
+
+```bash
+root="$(git rev-parse --show-toplevel)"
+dir="$(python3 - "$root" "<changed path>" <<'PY'
+import os, sys
+root, changed = sys.argv[1], sys.argv[2]
+wanted = os.path.normpath(os.path.join(root, os.path.dirname(changed)))
+kept = wanted
+while not os.path.isdir(kept) and os.path.dirname(kept) != kept:
+    kept = os.path.dirname(kept)
+print(os.path.normpath(os.path.join(os.path.realpath(kept), os.path.relpath(wanted, kept))))
+PY
+)"
+recipe="no recipe"
+while case "$dir" in "$root"|"$root"/*) true ;; *) false ;; esac; do
+  if [ -f "$dir/VERIFICATION.md" ]; then recipe="$dir/VERIFICATION.md"; break; fi
+  [ "$dir" = "$root" ] && break
+  dir="$(dirname "$dir")"
+done
+echo "$recipe"
+```
+
+The loop prints exactly one line. The directory is resolved without being
+entered: a deleted file whose directory went with it is still a changed path in
+`git diff --name-only`, so the path is normalised against the root as text and
+canonicalised through its nearest surviving ancestor, which also resolves a
+symlinked prefix the way `pwd -P` would. The `case` keeps the walk inside the
+repository, the root test ends it after the root has been checked once, and the
+first match ends it early, so a package recipe is never joined by the root one.
 
 If a concern has no script, write "no script" in that row and move on. Do not
 substitute an invented equivalent such as a bare `tsc --noEmit` or `npx biome`
@@ -256,7 +302,7 @@ Rules for the block:
 
 | Value | Holds when |
 |---|---|
-| `live-verified` | The changed behaviour was driven end to end on a running system and the run is pasted: a browser, a real request, the built CLI on a fixture, a conformance tier, a `verify-<app>` skill |
+| `live-verified` | The changed behaviour was driven end to end on the real system started locally, against mocks or fixtures where it has external dependencies, and the run is pasted: the Drive section of the nearest `VERIFICATION.md`, a browser against the dev server, a real request to a local process, the built CLI on a fixture, a conformance tier. A live or shared environment is never required for this level and is never touched unless the owner asked for that run |
 | `unit-only` | The test script passed and a test in it exercises the changed behaviour; nothing drove the feature itself |
 | `type-check-only` | Only typecheck, lint or format ran green over the change; no test exercises it |
 | `not run` | Nothing above ran, or the sequence stopped at a failure before reaching it |
@@ -292,4 +338,7 @@ Rules for the block:
 | Claiming a fix for a command the user says still errors | Re-run that exact command and paste its output |
 | Reporting "no script" for every concern on a repo with no `package.json` | Read the `Makefile`. Its targets are the repo's declared commands. |
 | Writing `live-verified` because the test suite is green | Green scripts are `unit-only` at most. `live-verified` needs a pasted run that drove the feature on a running system |
+| Inventing a live run when the repository has a `VERIFICATION.md` | Walk up from the changed paths, read the nearest one, run its Launch, Doctor, Drive and Cleanup as written, and cite its Drive step |
+| Reading `VERIFICATION.md` and writing `live-verified` without running it | The recipe is the command; the row carries its pasted exit code and result, or the row stays at what did run |
+| Deploying to, logging in to or writing to a cloud account, a preview, staging or production to verify | Verification runs the real system locally against mocks or fixtures. A live environment is the owner's step, taken only when they asked for that run |
 | Leaving the `behaviour` row out, or filling it from the level the brief asked for | The row is always present, filled from what ran; a brief's level is a target the row is compared against, not a value to copy |

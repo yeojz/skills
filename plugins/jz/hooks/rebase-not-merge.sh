@@ -6,6 +6,12 @@
 # correction had to be typed in three repositories before this hook existed.
 # The desktop app's own "merge the base branch in" prompt lands here too.
 #
+# A checkout that is on the default branch itself is the one place a merge of
+# the default is the house workflow: after a PR lands on GitHub, the main
+# checkout is brought level with `git merge --ff-only origin/<default>`, as
+# the ship skill's cleanup step runs it. That call is allowed. A merge of the
+# default into any other branch, default-named or not, is still denied.
+#
 # The command line is split by command_lines.py, the parser every hook shares,
 # and each command is judged in the directory it runs in, so a leading `cd` or
 # a `git -C` resolves the default branch of the repository it targets.
@@ -121,14 +127,20 @@ def reason_for(argv, directory):
         return None, directory
     sub, args, git_directory = call
     defaults = default_branch(git_directory)
+    current = current_branch(git_directory)
     if sub == "merge":
         if any(a in {"--abort", "--continue", "--quit"} for a in args):
             return None, git_directory
-        if any(names_default(a, defaults) for a in args if not a.startswith("-")):
+        for a in args:
+            if a.startswith("-") or not names_default(a, defaults):
+                continue
+            if current is not None and names_default(a, {current}):
+                continue
             return "Merging the default branch into this branch is not the house workflow.", git_directory
     if sub == "pull":
         positional = [a for a in args if not a.startswith("-")]
         if (len(positional) >= 2 and names_default(positional[1], defaults)
+                and not (current is not None and names_default(positional[1], {current}))
                 and not pull_rebases(args, git_directory, git_config_overrides(argv))):
             return "Pulling the default branch without an effective --rebase merges it into this branch.", git_directory
     return None, git_directory

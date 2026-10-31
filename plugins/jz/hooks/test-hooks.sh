@@ -287,6 +287,10 @@ else
 fi
 
 printf '\nrebase-not-merge.sh\n'
+# The merge cases are judged from a feature branch, since git init leaves the
+# fixture on a default-branch name; the default branch's own fast-forward is
+# tested at the end of this block.
+git -C "$FIXTURE" checkout -q -b topic
 deny() {
   # deny <json-quoted command> <label> <expected exit> <hook>
   printf '  %-52s' "$2"
@@ -370,6 +374,23 @@ deny '"cd child & git merge origin/main"'        "cd as a background job"       
 deny '"cd child && git merge origin/stable | cat"' "merge stable piped after cd"   2 rebase-not-merge.sh
 deny '"{ cd child; git merge origin/stable; }"'  "merge stable after cd in braces" 2 rebase-not-merge.sh
 deny '"{ cd child; git status; }; git merge origin/stable"' "merge stable after a brace group" 2 rebase-not-merge.sh
+# On the default branch itself, merging or pulling the default is the
+# fast-forward of that checkout after a merge on GitHub, which ship Step 14
+# runs. Any other branch, default-named or not, is still denied.
+git -C "$FIXTURE" checkout -q -b main 2>/dev/null || git -C "$FIXTURE" checkout -q main
+deny '"git merge --ff-only origin/main"'         "ff-only origin/main while on main" 0 rebase-not-merge.sh
+deny '"git merge origin/main"'                   "merge origin/main while on main" 0 rebase-not-merge.sh
+deny '"git pull origin main"'                    "pull main while on main"        0 rebase-not-merge.sh
+deny '"git -C child merge origin/stable"'        "merge stable in child, not on stable" 2 rebase-not-merge.sh
+# Without origin/HEAD every common default name counts, and a branch with one
+# of those names merging a different one is still a merge of the default.
+git -C "$FIXTURE" symbolic-ref --delete refs/remotes/origin/HEAD
+git -C "$FIXTURE" checkout -q -b develop
+deny '"git merge main"'                          "merge main while on develop"    2 rebase-not-merge.sh
+deny '"git merge develop"'                       "merge develop while on develop" 0 rebase-not-merge.sh
+git -C "$FIXTURE" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+git -C "$FIXTURE" checkout -q topic
+deny '"git merge --ff-only origin/main"'         "ff-only origin/main while on topic" 2 rebase-not-merge.sh
 
 printf '\nrequire-ship-skill.sh\n'
 # Transcript fixtures in the shape Claude Code writes: a Skill call is an

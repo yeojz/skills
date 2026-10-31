@@ -48,6 +48,11 @@ Owns, and may edit nothing outside it:
 
 Behaviour level: <live-verified | unit-only | type-check-only: the value the `behaviour` row of the verify report must reach, filled from what ran, never copied from here>
 
+Acceptance, copied line for line from the roadmap row. Each criterion gets its own row in the verify report, before the `behaviour` row, with this command run as written, its exit code and pass or fail; a criterion whose command did not run reads `not run` and is never left out. A criterion whose command is a Drive step of `VERIFICATION.md` means this phase adds that step to the recipe, and the recipe is listed under Owns:
+
+- <criterion as a sentence>. `<command that proves it>`
+- <criterion as a sentence>. Drive step <id> of `<path to VERIFICATION.md>`
+
 Gate, read from `package.json` scripts or the Makefile, run through the `verify` skill, output and exit codes pasted:
 
 ```bash
@@ -76,6 +81,7 @@ Message the coordinator when the PR is ready, and again if blocked, with:
 
 - Branch, PR URL, head SHA
 - The gate on the clean detached checkout: command, exit code, the counts line
+- One row per acceptance criterion from the verify report, each with the command, its exit code and pass, fail or not run
 - The `behaviour` row of the verify report, with the command that supports it, and what was not driven and why when it is below the level Done means names
 - Forks decided below the ADR tier, each with the choice made
 - Forks parked for the coordinator, as lettered options
@@ -88,7 +94,7 @@ Message the coordinator when the PR is ready, and again if blocked, with:
 - Work only on this branch in this worktree; never on the default branch.
 - Rebase onto the default branch; never merge it in.
 - Open the PR as a draft; mark it ready only after the gate is green on a clean detached checkout of the pushed head.
-- Run the gate named under Done means and paste its output with exit codes; never say done, fixed or passing without it.
+- Run the gate and every acceptance command named under Done means and paste their output with exit codes; never say done, fixed or passing without them.
 - Never weaken, skip or delete a test to reach green; root-cause the failure.
 - Never commit `docs/plans/`, `.claude/` or `.plans/`.
 - No emoji, model names, AI identifiers or session links in commits, PR text, reviews or comments; the repo's restricted words stay out too.

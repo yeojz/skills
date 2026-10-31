@@ -82,6 +82,7 @@ Makefile target. The same names apply to both:
 | build | `build`, `build:ci` |
 | cross-runtime | `test:bun`, `test:deno`, `test:platform-*`, `test:dist-*` |
 | validate | `validate`, `check` (a single repo-wide gate, common in a Makefile) |
+| acceptance | the Acceptance list of the phase brief or the roadmap row, one concern per criterion, its command the one the list names; "no list" when neither carries one |
 | behaviour | the nearest `VERIFICATION.md`, found as described below; "no recipe" when there is none |
 
 The `behaviour` concern has a different source: a repository that can be driven
@@ -129,6 +130,18 @@ symlinked prefix the way `pwd -P` would. The `case` keeps the walk inside the
 repository, the root test ends it after the root has been checked once, and the
 first match ends it early, so a package recipe is never joined by the root one.
 
+The `acceptance` concerns come from the phase brief's Done means or the
+roadmap row, where each criterion is a sentence plus the command that proves
+it. The command is read from the list as written, never chosen here. A
+criterion whose command drives the running system cites a Drive step of the
+nearest `VERIFICATION.md`; when the step is not in the recipe yet, adding it
+is part of the same change, in the Drive section with a line in the recipe's
+acceptance map, so the recipe stays the one place the drive commands live
+and the roadmap never carries a second copy. A criterion with no command, or
+whose Drive step is absent from the recipe, keeps its row in Step 8 with
+`(no command)` as its command and `not run` as its result, and is reported as
+not met; this skill does not write a command for it.
+
 If a concern has no script, write "no script" in that row and move on. Do not
 substitute an invented equivalent such as a bare `tsc --noEmit` or `npx biome`
 when the repo does not define one. An invented command that passes proves
@@ -143,6 +156,8 @@ Fast failures must surface first, so run in this order:
 3. `test`, or `validate` when the repo exposes a single repo-wide gate
 4. `build`
 5. cross-runtime: `test:bun`, `test:deno`, `test:platform-*`, `test:dist-*`
+6. the `acceptance` commands, each as the list names it, one exit code each;
+   a Drive step runs inside the recipe's Launch and Cleanup
 
 The first non-zero exit stops the sequence. Go to Step 5. Do not run the
 expensive tail on a tree that is already broken, and do not report the concerns
@@ -288,6 +303,8 @@ Commands read from: <path/to/package.json or Makefile>
 | build | pnpm build | 0 | pass |
 | test:deno | pnpm test:deno | 0 | pass |
 | format | (no script) | - | not covered |
+| acceptance: an unbalanced transaction is refused with exit 1 | pnpm test -- -t "unbalanced transaction" | 0 | pass |
+| acceptance: balance lists every account in the fixture journal | Drive step D3 of VERIFICATION.md | 0 | pass |
 | behaviour | pnpm test:conformance -- fixtures/journal.ledger | 0 | live-verified |
 ```
 
@@ -296,6 +313,20 @@ Rules for the block:
 - One row per concern from the Step 2 table. No concern is omitted.
 - `Result` is `pass`, `fail`, `not covered` or `not run`. Nothing else, except
   on the `behaviour` row.
+- When the brief or the roadmap row carries an Acceptance list, one row per
+  criterion sits before the `behaviour` row. Its `Concern` is the criterion's
+  sentence after `acceptance:`, its `Command` is the command the list names,
+  run as written, and its `Result` is `pass` or `fail` from that run. A
+  criterion whose command did not run reads `not run`, never omitted; one
+  with no command reads `not run` with `(no command)` in the Command cell.
+  The brief's criteria are compared against these rows, so a missing row
+  hides a gap. With no list, one row reads `acceptance | (no list) | - |
+  not covered`, like a concern with no script.
+- The `behaviour` row stays as it is: how far the proof went, filled from
+  the kind of run as the table below says, never raised because the
+  acceptance rows pass. The acceptance rows say what was proved; the
+  `behaviour` row says how far. A Drive step run for a criterion supports
+  `live-verified` like any pasted Drive run; a test run for one does not.
 - The `behaviour` row is always present and last. Its `Result` is the highest
   level the pasted runs support, never the one intended, and its `Command` is
   the run that supports it:
@@ -312,7 +343,8 @@ Rules for the block:
   exercised, which is what this row exists to separate.
 - A brief or roadmap row that names a level under Done means is met only when
   this row reads that level or higher; a lower value is reported as not met,
-  with what was not driven and why.
+  with what was not driven and why. An acceptance row that reads `fail` or
+  `not run` is reported as not met the same way, naming the criterion.
 - Any `fail` row means the reply says blocked and pastes the failing output.
 - The words done, fixed, passing, complete, working and green may not appear in
   the reply unless this block is present and no row says `fail`.
@@ -342,3 +374,7 @@ Rules for the block:
 | Reading `VERIFICATION.md` and writing `live-verified` without running it | The recipe is the command; the row carries its pasted exit code and result, or the row stays at what did run |
 | Deploying to, logging in to or writing to a cloud account, a preview, staging or production to verify | Verification runs the real system locally against mocks or fixtures. A live environment is the owner's step, taken only when they asked for that run |
 | Leaving the `behaviour` row out, or filling it from the level the brief asked for | The row is always present, filled from what ran; a brief's level is a target the row is compared against, not a value to copy |
+| Leaving an acceptance criterion out of the block because its command did not run | The row is present and reads `not run`. The brief's criteria are compared against the rows, and a missing row hides a gap |
+| Running a command of your own for a criterion | The command is part of the criterion. Run the one the list names, as written, or the row reads `not run` with why |
+| Raising the `behaviour` row because the acceptance rows pass | The `behaviour` row is filled from the kind of run; acceptance rows say what was proved, not how far |
+| Typing a drive command into a roadmap row or a brief for a criterion | Cite a Drive step of the nearest `VERIFICATION.md` and add the step there as part of the change; the recipe is the one place drive commands live |

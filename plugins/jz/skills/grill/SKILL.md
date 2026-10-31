@@ -127,10 +127,36 @@ written; the decision is a design-document line instead.
 A roadmap row carries, in this order: depends on, owns (the packages or
 files), builds, you see (one observable result), done means (the real gate
 commands, the behaviour level the `verify` skill reports, and any
-conformance or fixture run), and review gate (whether the owner reviews it
-before merge). A field the interview has not settled is written as
-`not scoped`, and a row with one stays a question for a later round rather
-than a phase to start.
+conformance or fixture run), acceptance (the list below), and review gate
+(whether the owner reviews it before merge). A field the interview has not
+settled is written as `not scoped`, and a row with one stays a question for
+a later round rather than a phase to start.
+
+```markdown
+### 4. Session cookie
+
+Depends on: 3
+Owns: `packages/core/src/session.ts`, `packages/core/test/session.test.ts`
+Builds: the signed session cookie and its check on every request
+You see: a request with a tampered cookie is answered 401
+Done means: `pnpm typecheck`, `pnpm test`; behaviour `live-verified` through the Drive section of `VERIFICATION.md`
+Acceptance:
+- A tampered cookie is refused with 401. `pnpm test -- -t "tampered cookie"`
+- A cookie past its TTL is refused and cleared. Drive step L4 of `VERIFICATION.md`
+Review gate: owner reviews before merge
+```
+
+The Acceptance list is what the phase proves, one criterion per line: a
+sentence a reader can judge, then the command that proves it. The command
+is part of the criterion. A line with no command is not accepted: ask for
+the command, as lettered options drawn from the repo's scripts, test names
+or recipe steps when there is a choice, or drop the line and say so. A
+criterion whose command drives the running system cites a Drive step of the
+nearest `VERIFICATION.md`, and the phase adds that step to the recipe, so
+the recipe stays the one place the drive commands live. The behaviour level
+under done means says how far the proof goes; the list says what it proves,
+and the `coordinate` skill copies it into the brief and checks every line
+against the worker's `verify` block.
 
 Files are created lazily, when there is something to put in them, and
 updated in place after that. Committing them is the `ship` skill's job, on
@@ -161,8 +187,9 @@ In kickoff mode, the reply ends with:
   back to the user as options rather than decide alone. Public API shape,
   data model, a new dependency, a specification interpretation and anything
   that would earn an ADR are the default members.
-- The first roadmap row that is fully scoped, named as where the
-  coordinating session starts.
+- The first roadmap row that is fully scoped, with every acceptance
+  criterion carrying its command, named as where the coordinating session
+  starts.
 - Any row still marked `not scoped`, with the question that would scope it.
 
 ## Common Mistakes
@@ -179,6 +206,8 @@ In kickoff mode, the reply ends with:
 | Treating a predecessor repository as the design | Read it for facts, name them, decide fresh |
 | Acting on the plan before the user confirms | Say the frontier is empty, list the assumptions, wait |
 | Starting a phase whose roadmap row has a `not scoped` field | The field is a question. Ask it, or leave the row for later |
+| An acceptance criterion written as a sentence alone | The command is part of the criterion. Ask for it as lettered options from the repo's scripts, tests or recipe steps, or drop the line |
+| An acceptance command that drives the system typed into the roadmap | Cite a Drive step of the nearest `VERIFICATION.md` and add the step in the phase; the recipe is the one place drive commands live |
 | Writing kickoff files on the default branch | Branch first, as `ship` Step 1 describes |
 | Committing the files inside this skill | Offer `ship` when the frontier is empty |
 | Emoji or symbols in the round format | Plain numbered questions and lettered options |

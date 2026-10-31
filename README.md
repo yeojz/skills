@@ -179,8 +179,8 @@ context runs out.
 
 | Skill | Use it for |
 |---|---|
-| `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land |
-| `coordinate` | Drive a roadmap to merge-ready: fill the phase and review briefs from their templates, one fresh worker session per phase and one fresh reviewer per PR, keep the units and decisions ledgers, report one line per PR |
+| `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land, each row with acceptance criteria that carry the command proving them |
+| `coordinate` | Drive a roadmap to merge-ready: fill the phase and review briefs from their templates, with the row's acceptance criteria copied into the brief and checked against the worker's verify block, one fresh worker session per phase and one fresh reviewer per PR, keep the units and decisions ledgers, report one line per PR |
 | `audit` | Read-only repo assessment that writes a prioritised plan file |
 | `naming` | Lettered naming options with trade-offs, then rename everywhere |
 
@@ -200,7 +200,7 @@ context runs out.
 
 | Skill | Use it for |
 |---|---|
-| `verify` | The completion gate. Runs the repo's own scripts and the drive recipe of the nearest `VERIFICATION.md`, pastes real output before any done claim, and names the behaviour level those runs support: live-verified, unit-only, type-check-only or not run |
+| `verify` | The completion gate. Runs the repo's own scripts and the drive recipe of the nearest `VERIFICATION.md`, pastes real output before any done claim, reports one row per acceptance criterion with its command and result, and names the behaviour level those runs support: live-verified, unit-only, type-check-only or not run |
 
 #### Ship and review
 
@@ -208,7 +208,7 @@ context runs out.
 |---|---|
 | `ship` | Branch, format, lint, verify, conventional commit; on one go-ahead push, draft PR, gate the pushed head on a clean detached checkout and mark ready; rebase when the default branch moves; clean up after the merge |
 | `pr-desc` | Write or refresh a PR title and body from the diff, with a Verification section listing the commands that actually ran |
-| `review` | Diff-scoped or PR-scoped review with design, maintainability and guard-deletion lenses that always report; the unresolved-comment sweep with CI classified before any rerun; an adversarial mode that sends one brief to two model families and merges the findings |
+| `review` | Diff-scoped or PR-scoped review with design, maintainability and guard-deletion lenses that always report, and each acceptance criterion's command run on the reviewed head; the unresolved-comment sweep with CI classified before any rerun; an adversarial mode that sends one brief to two model families and merges the findings |
 | `release` | Version PR, changeset, label gate, publish |
 
 #### Close the loop

@@ -3,8 +3,8 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "As a principal software engineer, review the code changes between this branch and main and assess the risks and any optimisations.",
-      "expected_output": "The review is scoped to the branch diff using the three-dot form after fetching origin/main, reads the changed files and their callers rather than only the hunks, works the design and maintainability lenses at the same weight as correctness, samples the guards that enforce a boundary or the requested rejection by neutralising each, running the package's declared test script and restoring, and prints a severity-ranked findings table plus per-finding detail and a line per required lens in the session. No plan file is written.",
+      "prompt": "As a principal software engineer, review the code changes between this branch and main and assess the risks and any optimisations. The phase brief for this branch is in the notes folder and lists three acceptance criteria with their commands.",
+      "expected_output": "The review is scoped to the branch diff using the three-dot form after fetching origin/main, reads the changed files and their callers rather than only the hunks, works the design and maintainability lenses at the same weight as correctness, samples the guards that enforce a boundary or the requested rejection by neutralising each, running the package's declared test script and restoring, runs each of the three acceptance criteria's commands as the brief names them on the reviewed revision and sets the exit codes against the rows in the author's verify block, and prints a severity-ranked findings table plus per-finding detail and a line per required lens in the session. No plan file is written.",
       "files": [],
       "expectations": [
         "Runs `git fetch origin main` before diffing",
@@ -19,6 +19,7 @@
         "Reports every surviving guard deletion as a High finding citing the guard's file:line and the test that should have failed",
         "Lists each rejecting guard left unsampled with its reason, and records a guard the compiler covers as not sampled rather than killed",
         "Reports on the Guard deletion line how many rejecting guards the diff added, how many were sampled with which test command, how many survived, and the unsampled ones with reasons, or that the diff added no rejecting guard",
+        "Runs each acceptance criterion's command as the brief names it on the reviewed revision rather than trusting the author's rows, reports a criterion that fails or has no row in the author's verify block as a High naming the criterion by its sentence, and prints an Acceptance line with the counts run, pass and fail or missing",
         "Does not demote a design or maintainability finding below the severity its consequence earns",
         "Prints a severity-ranked findings table with stable R-prefixed ids and a detail section per finding",
         "Severity values are limited to Critical, High, Medium and Low",

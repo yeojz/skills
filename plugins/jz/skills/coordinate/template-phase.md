@@ -64,7 +64,7 @@ Gate, read from `package.json` scripts or the Makefile, run through the `verify`
 
 ## Ship
 
-Use the `ship` skill in ship-to-ready mode. This brief is the go-ahead for push, draft PR, the gate on a clean detached checkout, and marking the PR ready once that gate is green; ask for none of them again. The PR body comes from `pr-desc`, with the detached gate run in its Verification section. The PR stays draft until that gate passes on the pushed head.
+Use the `pr` skill through to Ready. This brief is the go-ahead for push, draft PR, and marking the PR ready once `verify` passes on the pushed head and no check has failed; ask for none of them again. The PR stays draft until then.
 
 ## Forbidden
 
@@ -80,7 +80,7 @@ Use the `ship` skill in ship-to-ready mode. This brief is the go-ahead for push,
 Message the coordinator when the PR is ready, and again if blocked, with:
 
 - Branch, PR URL, head SHA
-- The gate on the clean detached checkout: command, exit code, the counts line
+- The `verify` run on the pushed head: command, exit code, the counts line
 - One row per acceptance criterion from the verify report, each with the command, its exit code and pass, fail or not run
 - The `behaviour` row of the verify report, with the command that supports it, and what was not driven and why when it is below the level Done means names
 - Forks decided below the ADR tier, each with the choice made
@@ -93,7 +93,7 @@ Message the coordinator when the PR is ready, and again if blocked, with:
 
 - Work only on this branch in this worktree; never on the default branch.
 - Rebase onto the default branch; never merge it in.
-- Open the PR as a draft; mark it ready only after the gate is green on a clean detached checkout of the pushed head.
+- Open the PR as a draft; mark it ready only after `verify` passes on the pushed head and no check has failed.
 - Run the gate and every acceptance command named under Done means and paste their output with exit codes; never say done, fixed or passing without them.
 - Never weaken, skip or delete a test to reach green; root-cause the failure.
 - Never commit `docs/plans/`, `.claude/` or `.plans/`.

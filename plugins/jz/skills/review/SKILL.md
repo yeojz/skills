@@ -408,7 +408,7 @@ gh run list --branch "$base" --workflow "<workflow name from the failing check>"
 
 | Signal | Class | Do |
 |---|---|---|
-| The failing test or file is outside the diff's `--name-only` list and imports nothing the diff changed; the branch is behind `origin/$base`; the same check is green on the current `origin/$base` | Stale base | The fix is already on the default branch. Rebase through `ship`'s rebase step and push; the run on the rebased head going green is the proof. Never rerun the old head |
+| The failing test or file is outside the diff's `--name-only` list and imports nothing the diff changed; the branch is behind `origin/$base`; the same check is green on the current `origin/$base` | Stale base | The fix is already on the default branch. Rebase through `pr`'s rebase step and push; the run on the rebased head going green is the proof. Never rerun the old head |
 | The failing test or file is outside the diff and imports nothing the diff changed; the same check is red on the current `origin/$base` | Upstream failure | Not this PR's defect and not a rebase: rebasing onto a red base stays red. Report it as pre-existing with the base run's URL, and leave the check red until the default branch is fixed; it earns no rerun here |
 | The failing test or file is in the diff, or imports something the diff changed | Defect | A finding with an R id, into the work set like a valid comment; a fix round, then `verify` |
 | A timeout, a connection reset, a port already in use, a 429 or 5xx from a registry, a runner lost, and the same test passes locally on the same head | Suspected flake | One fresh run, once per failing check per head: `gh run rerun <run-id> --failed`. Then classify again |

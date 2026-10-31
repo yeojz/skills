@@ -61,7 +61,7 @@ Dependency work is `chore`, `fix` or `ci`:
 | Install-time settings | `chore/supply-chain-minimum-release-age` |
 
 Create the branch in its own worktree under `.claude/worktrees/`, as the
-`ship` skill's step 1 describes, reusing one that already belongs to this
+`pr` skill's Worktree section describes, reusing one that already belongs to this
 advisory. Do not stash. If the checkout is blocked, stop and report.
 
 ### Step 2: Detect the package manager
@@ -159,12 +159,12 @@ If `verify` is unavailable, run the repo's `package.json` scripts directly and
 paste the output. Do not report success without pasted output, and do not weaken
 a test or a lint rule to absorb a dependency change: root-cause it.
 
-### Step 7: Hand off to ship
+### Step 7: Hand off to pr
 
-Call the `ship` skill for the branch, commit and pull request. Do not commit,
+Call the `pr` skill for the branch, commit and pull request. Do not commit,
 push or open a PR by hand from this skill.
 
-Give `ship` the material it needs for the PR body:
+Give `pr` the material it needs for the PR body:
 
 - Summary: which advisories, actions, settings or packages changed.
 - Trade-offs: every override, and every ignore with its reason and expiry date.
@@ -660,6 +660,6 @@ user then asks to add the package, that is a new request and it starts at step 1
 | Editing on the default branch instead of branching first | Hard gate in step 1. Create `<type>/<scope>-<description>` before touching a file. |
 | Claiming the audit is clean without output | Re-run the audit and paste it, with before and after counts by severity. |
 | Skipping `verify` because the change is only YAML | A dependency or workflow change breaks builds silently. Always run step 6. |
-| Committing or opening the PR from this skill | Hand off to `ship`, which owns branch, commit and PR. |
+| Committing or opening the PR from this skill | Hand off to `pr`, which owns branch, commit and PR. |
 | Recommending a dependency without checking the workspace first | Step M4.1. If something already present does the job, stop there. |
 | Answering a vetting question with a survey instead of a decision | End with one recommendation. The default is do not add. |

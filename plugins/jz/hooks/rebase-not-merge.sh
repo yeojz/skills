@@ -9,7 +9,7 @@
 # A checkout that is on the default branch itself is the one place a merge of
 # the default is the house workflow: after a PR lands on GitHub, the main
 # checkout is brought level with `git merge --ff-only origin/<default>`, as
-# the ship skill's cleanup step runs it. That call is allowed. A merge of the
+# the pr skill's cleanup step runs it. That call is allowed. A merge of the
 # default into any other branch, default-named or not, is still denied, and so
 # is one that follows a checkout or switch on the same line, since the branch
 # the hook can read is not the one the merge will run on.

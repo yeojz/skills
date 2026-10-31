@@ -245,7 +245,7 @@ check that fails, then a test, with prose last.
 |---|---|
 | Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts.sh`, PreToolUse |
 | Ask before a `gh pr create` without `--draft`, `gh pr ready`, `gh pr merge` and any force push | `confirm-remote-writes.sh`, PreToolUse |
-| Commit, push and open PRs through the `ship` skill | `require-ship-skill.sh`, PreToolUse, from the transcript the payload names; a host whose payload carries no transcript path is not gated |
+| Commit, push and open PRs through the `pr` skill | `require-pr-skill.sh`, PreToolUse, from the transcript the payload names; a host whose payload carries no transcript path is not gated |
 | Rebase onto the default branch, never merge it in; the default branch's own checkout may fast-forward | `rebase-not-merge.sh`, PreToolUse |
 | No secret, token or credential reaches a remote | `scan-secrets-before-push.sh`, PreToolUse, through betterleaks or gitleaks when installed |
 | No emoji, attribution trailer, session link or model slug in commit or PR text | `no-restricted-words.sh`, PreToolUse |
@@ -254,7 +254,7 @@ check that fails, then a test, with prose last.
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
 | A mod plugin is listed for Claude Code only, its hooks module exists, its sources carry no `any`, `enum` or `interface`, its tests pass and it type-checks | `validate.sh`: manifests, the grep, `claude plugin test` and `tsc` when present |
-| Open as draft, mark ready only after the gate is green | `ship` steps 11 and 12: the pushed head is gated on a clean detached checkout, and ready is flipped only when a go-ahead or brief named it; no hook yet |
+| Open as draft, mark ready only after the gate is green | `pr` Ready section: ready is flipped only when a go-ahead or brief named it, `verify` passed on the pushed head and no check has failed; no hook yet |
 | Model tier matches the job | nothing; `models.md` describes it |
 | Done means a behaviour level, not only a green script | nothing; the `behaviour` row in `verify` Step 8 names the level the runs support, and `coordinate` Step 5 checks it against the level Done means named |
 | A throwaway worktree is removed only after the last step that runs in it | `validate.sh`: a skill or template that names the directory variable after its `git worktree remove` fails |

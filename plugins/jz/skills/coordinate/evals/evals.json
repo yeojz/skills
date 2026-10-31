@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Coordinate phases 12 to 14 of docs/roadmap.md. I will review on GitHub.",
-      "expected_output": "The agent reads AGENTS.md, CONTEXT.md, the ADRs and the roadmap rows, opens units.tsv and decisions.tsv in the group's notes folder, refuses any row with a not scoped field, fills template-phase.md for each scoped row that is independent of the others, names the implementation tier in each brief, pastes the Standing orders section of AGENTS.md verbatim, grants push, draft PR, detached gate and ready in the brief, and starts one fresh worker session per row in its own worktree. It implements nothing itself.",
+      "expected_output": "The agent reads AGENTS.md, CONTEXT.md, the ADRs and the roadmap rows, opens units.tsv and decisions.tsv in the group's notes folder, refuses any row with a not scoped field, fills template-phase.md for each scoped row that is independent of the others, names the implementation tier in each brief, pastes the Standing orders section of AGENTS.md verbatim, grants push, draft PR and ready in the brief, and starts one fresh worker session per row in its own worktree. It implements nothing itself.",
       "files": [],
       "expectations": [
         "Reads AGENTS.md, CONTEXT.md, docs/adr and docs/roadmap.md before filling any brief",
@@ -35,7 +35,7 @@
     {
       "id": 3,
       "prompt": "Reviewer verdict on PR 42: after fixes. R1 P2 packages/core/src/verify.ts:42 secret compared with ===, R2 P2 guard at src/parse.ts:88 survives deletion, R3 P3 naming.",
-      "expected_output": "The agent does not fix anything itself. It decides whether the fix needs state that lives only in the worker session; if not, it starts a fresh fix session with the original phase brief plus the findings consolidated, standing orders pasted verbatim, one commit per finding, no weakened tests, PR kept draft until the detached gate is green again. It logs a relay row in decisions.tsv, and after the fix the same reviewer flow re-checks the new head, bounded at three rounds.",
+      "expected_output": "The agent does not fix anything itself. It decides whether the fix needs state that lives only in the worker session; if not, it starts a fresh fix session with the original phase brief plus the findings consolidated, standing orders pasted verbatim, one commit per finding, no weakened tests, PR kept draft until verify passes on the pushed head and no check has failed. It logs a relay row in decisions.tsv, and after the fix the same reviewer flow re-checks the new head, bounded at three rounds.",
       "files": [],
       "expectations": [
         "The coordinator makes no code edit in response to the findings",

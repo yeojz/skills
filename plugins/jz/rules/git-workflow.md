@@ -14,7 +14,7 @@
 - Write the PR title as a Conventional Commit subject (why: PRs squash-merge into the default branch).
 - Keep the commit body to why the change was made, not a list of touched files.
 
-- Limit the PR body to summary, trade-offs, follow-ups and verification. Verification records the commands that ran, each with its exit code.
+- Limit the PR body to summary, trade-offs, follow-ups and verification, plus requirements and decisions when the branch serves a spec. Verification records the commands that ran, each with its exit code.
 - Do not add a test plan section.
 - Do not paste chat narrative or session transcript.
 - Do not add security-review commentary.
@@ -30,9 +30,9 @@
 - Never pass `--no-verify`.
 - Fix what the hook reports instead of bypassing it.
 
-- Commit, push and open PRs through the `ship` skill, in the mode the request named. These rules summarise it and do not replace it; the `require-ship-skill.sh` hook denies `git commit`, `git push` and `gh pr create` until the skill has been loaded.
+- Commit, push and open PRs through the `pr` skill, in the mode the request named. These rules summarise it and do not replace it; the `require-pr-skill.sh` hook denies `git commit`, `git push` and `gh pr create` until the skill has been loaded.
 - Push a branch and open a draft PR without asking; both can be withdrawn. Ask before marking a PR ready, running `gh pr merge` and any force push; one go-ahead that names them covers everything it names.
-- Mark a PR ready only when the go-ahead or the brief named it, and only after the pushed head passes the gate on a clean detached checkout.
+- Mark a PR ready only when the go-ahead or the brief named it, and only after `verify` passes on the pushed head and no check has failed.
 - Never force-push without first stating exactly which commits will be discarded.
 - Never rewrite history that is already on a shared branch without asking.
 - Do not generate a CHANGELOG or migration guide unless asked.

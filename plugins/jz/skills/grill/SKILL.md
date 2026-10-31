@@ -109,7 +109,7 @@ A term is resolved when the user has picked it. In kickoff mode it goes into
 ### Step 5: Kickoff mode, write as decisions land
 
 Before the first write, be on a task branch in its own worktree, as the
-`ship` skill's Step 1 describes. Never write these files on the default
+`pr` skill's Worktree section describes. Never write these files on the default
 branch.
 
 | Decision lands | Write |
@@ -159,7 +159,7 @@ and the `coordinate` skill copies it into the brief and checks every line
 against the worker's `verify` block.
 
 Files are created lazily, when there is something to put in them, and
-updated in place after that. Committing them is the `ship` skill's job, on
+updated in place after that. Committing them is the `pr` skill's job, on
 the user's word, after the frontier is empty.
 
 ### Step 6: Recompute the frontier and repeat
@@ -208,6 +208,6 @@ In kickoff mode, the reply ends with:
 | Starting a phase whose roadmap row has a `not scoped` field | The field is a question. Ask it, or leave the row for later |
 | An acceptance criterion written as a sentence alone | The command is part of the criterion. Ask for it as lettered options from the repo's scripts, tests or recipe steps, or drop the line |
 | An acceptance command that drives the system typed into the roadmap | Cite a Drive step of the nearest `VERIFICATION.md` and add the step in the phase; the recipe is the one place drive commands live |
-| Writing kickoff files on the default branch | Branch first, as `ship` Step 1 describes |
-| Committing the files inside this skill | Offer `ship` when the frontier is empty |
+| Writing kickoff files on the default branch | Branch first, as the `pr` skill's Worktree section describes |
+| Committing the files inside this skill | Offer `pr` when the frontier is empty |
 | Emoji or symbols in the round format | Plain numbered questions and lettered options |

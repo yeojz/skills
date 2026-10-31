@@ -6,14 +6,19 @@ Codex both read. Add the marketplace on any machine and the agents behave the
 same. A second plugin, `jzc`, holds the pieces that exist only for Claude
 Code: mods written against its function hooks API.
 
-Every skill is invoked as `/jz:<name>`, for example `/jz:verify` or
-`/jz:ship`. The rules, the personas and the hooks load with the plugin.
+A skill loads when you type its command, `/jz:verify` or `/jz:ship`, or when
+the brief that starts a session names it. A plain request such as "commit"
+does not load one on its own, which is why a hook denies a commit, push or
+PR create until `ship` is loaded. The rules, the personas and the hooks load
+with the plugin.
 
 ---
 
 ## Install
 
-Requirements: `bash`, `git` and `python3` on the machine that runs the hooks.
+Requirements: `bash`, `git` and `python3` on the machine that runs the hooks,
+and an authenticated `gh` for the skills that push, open or review pull
+requests.
 
 ### Claude Code
 
@@ -88,6 +93,54 @@ The first command puts the whole old layout back at the same path, the second
 removes the links and the settings entries, and the third returns to the
 current revision. If the links were created from a different clone, run the
 same three commands there.
+
+---
+
+## Use it
+
+### A first session
+
+Open a session in a project. The house rules arrive at session start as a
+block headed "House rules from the jz plugin", with the project's own
+`CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` surfaced beside them. Then:
+
+1. Settle what to build. `/jz:grill` interviews the plan until nothing is
+   assumed. `/jz:audit` reads the repo without editing it and writes a plan
+   file under `docs/plans/`, which is never committed.
+2. Build it. `/jz:execute-plan` works a plan item by item. `/jz:tdd` takes a
+   feature test first and `/jz:debug` takes a bug cause first.
+3. Prove it. `/jz:verify` runs the repo's own scripts and ends in a
+   Verification block with a `behaviour` row. Without that block nothing is
+   done.
+4. Ship it. `/jz:ship`, with the mode in the request: "commit" stops at the
+   commit, "commit and push" at the push, "commit, push and open a draft PR"
+   at the draft, and "push, draft PR, gate on a clean checkout, mark ready"
+   runs through to ready. The body comes from `pr-desc`. A commit or push
+   typed before the skill is loaded is denied, with the call that unblocks it.
+5. Review it. `/jz:review` on a branch or a PR number; "check the PR comments"
+   sweeps the unresolved threads.
+6. After the merge, "PR 12 merged, clean up" runs ship's cleanup: the tip
+   checks, the branch and worktree removal, and the main checkout brought
+   level with the remote.
+
+A roadmap of phases runs through `/jz:coordinate` from a session in the
+target repository. It starts one worker session per phase and one reviewer
+per PR, reports one line per PR at merge-ready, and leaves the merge to you.
+
+### Set up a project
+
+The skills read these from the project. Each one is optional, and the skill
+says what it does without it.
+
+| In the project | Read by | Without it |
+|---|---|---|
+| `.claude/` in `.gitignore` | `ship` Step 1 | `ship` offers to add it before creating a worktree; the hook refuses to stage `.claude/` or `docs/plans/` either way |
+| `AGENTS.md` with a `## Standing orders` section | `coordinate`, pasted verbatim into every brief | the phase template's default block stands in, and adding the section is part of the first phase |
+| `AGENTS.md` with a `## Restricted words` list | `no-restricted-words.sh` | only the house list applies |
+| `AGENTS.md` with an `## Enforcement` table | `correct` | the first `correct` run creates it |
+| `VERIFICATION.md` at the root, or one per package | `verify`, for the `behaviour` row | the row reads what the test runs support, `unit-only` at most, unless another pasted run drove the feature |
+| `CONTEXT.md`, `docs/adr/`, `docs/design.md`, `docs/roadmap.md` | written by `grill` in kickoff mode, read by `coordinate` | `coordinate` refuses a roadmap row that is not scoped and hands it to `grill` |
+| Scripts named `format`, `lint`, `typecheck`, `test` and `build` in `package.json`, or the same targets in a `Makefile` | `verify`, `ship` | the concern is reported as "no script"; nothing is invented in its place |
 
 ---
 

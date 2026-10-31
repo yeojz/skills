@@ -24,6 +24,7 @@
 - Read the installed version under `node_modules` when docs and behaviour disagree.
 
 - Exercise the actual path in a real browser before claiming a UI or behavioural fix works.
+- Verify against the real system running locally, with mocks or fixtures for its external dependencies. Never deploy to, log in to or write to a live or shared environment, a cloud account, a preview, staging or production, as part of verification unless the owner asked for that run.
 - Reproduce the user's steps, not an adjacent path you find easier to test.
 
 - Do not commit an unverified fix.

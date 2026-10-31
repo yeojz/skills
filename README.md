@@ -147,7 +147,7 @@ context runs out.
 
 | Skill | Use it for |
 |---|---|
-| `verify` | The completion gate. Runs the repo's own scripts, pastes real output before any done claim, and names the behaviour level those runs support: live-verified, unit-only, type-check-only or not run |
+| `verify` | The completion gate. Runs the repo's own scripts and the drive recipe of the nearest `VERIFICATION.md`, pastes real output before any done claim, and names the behaviour level those runs support: live-verified, unit-only, type-check-only or not run |
 
 #### Ship and review
 

@@ -231,9 +231,23 @@ row that does not depend on this one.
 Merging is the owner's action on GitHub. Never run `gh pr merge` and never
 arm auto-merge unless the owner asked for it.
 
+The monitor's wake events are CI failures, conflicts and review comments; a
+merge is not one of them. So in Claude Code, when the first row reaches
+`merge-ready`, schedule one recurring check for the whole frontier with
+`CronCreate`, about every 25 minutes on a minute away from the hour and the
+half hour, with a prompt that says: for every `units.tsv` row in
+`merge-ready`, run `gh pr view <number> --json state,mergedAt,headRefOid`,
+and for each one that reads `MERGED`, run Step 9. One job covers every row.
+Delete it with `CronDelete` once no row is `merge-ready`, and create it again
+after a handoff or once it has expired, since a job lives in the session and
+ends after seven days. A turn the job starts cannot start a session and does
+not need to: this step already started the next row, and Step 9 relays or
+runs the cleanup. Under another agent there is no scheduler, and the owner's
+"merged" message is the trigger.
+
 ### Step 9: Clean up after the merge
 
-When the monitor or the owner reports a merge, prove it before touching
+When the merge check, the monitor or the owner reports a merge, prove it before touching
 anything, then run the `ship` skill's post-merge cleanup in the worker's
 worktree context, or relay it to the worker when its session is still open:
 
@@ -312,7 +326,8 @@ row that disagrees with `gh pr view` is corrected in the file first.
 | A plain `git rebase "origin/$base"` on a stacked child after the parent squash-merged | The parent's commits replay as the child's and conflict. `git rebase --onto "origin/$base" <parent tip>`, then a range-diff with no `<` line |
 | Deciding a public API or data model fork alone | ADR-tier: lettered options to the owner, park the row, drain the others |
 | Deciding nothing without the owner | Below the ADR tier, decide, log in `decisions.tsv`, report. Over-blocking is the failure this loop removes |
-| Polling the PR for its state | Bind it and turn the monitor on once; let the wake report |
+| Polling the PR for its state | Bind it and turn the monitor on once for CI and review; one scheduled merge check covers the frontier, never a loop of `gh pr view` |
+| Waiting for the owner to say "merged" | The scheduled check runs Step 9 on its own; the owner's message is a backup, not the trigger |
 | Running `gh pr merge` or arming auto-merge | Merge is the owner's click. Report merge-ready and move on |
 | Answering "where are we" from memory | `units.tsv` is the answer. Correct the file against `gh pr view` first |
 | Running past the context limit mid-drain | Check usage after each drain; past 55 percent, `handoff` with the ledgers named |

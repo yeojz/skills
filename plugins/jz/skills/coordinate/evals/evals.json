@@ -64,6 +64,19 @@
         "The helper name is decided by the agent with a reason tied to CONTEXT.md and relayed to the worker",
         "A decisions.tsv row of kind fork records the name decision and the parked question"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Reviewer verdict on PR 42: merge as is. Gate green on a9c1f3e detached, review in review-pr42.md. Phase 13 is the next independent row.",
+      "expected_output": "The agent sends the owner one line with the verdict and its evidence, moves the units.tsv row to merge-ready, starts the phase 13 worker at once without waiting for the merge, and in Claude Code schedules one recurring merge check for the frontier with CronCreate when none exists, whose prompt runs gh pr view on every merge-ready row and Step 9 on each MERGED one. It never runs gh pr merge and never arms auto-merge.",
+      "files": [],
+      "expectations": [
+        "One line to the owner carries the verdict, the review file, the gated head and its exit code",
+        "The units.tsv row for PR 42 moves to merge-ready",
+        "The phase 13 worker is started before PR 42 is merged, as a fresh session in its own worktree",
+        "A single CronCreate job covers the merge frontier, with a prompt that checks every merge-ready row with gh pr view and runs the cleanup for each MERGED one, and no gh pr view loop runs in the session",
+        "No gh pr merge and no auto-merge"
+      ]
     }
   ]
 }

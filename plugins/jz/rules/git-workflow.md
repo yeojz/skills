@@ -30,6 +30,7 @@
 - Never pass `--no-verify`.
 - Fix what the hook reports instead of bypassing it.
 
+- Commit, push and open PRs through the `ship` skill, in the mode the request named. These rules summarise it and do not replace it; the `require-ship-skill.sh` hook denies `git commit`, `git push` and `gh pr create` until the skill has been loaded.
 - Push a branch and open a draft PR without asking; both can be withdrawn. Ask before marking a PR ready, running `gh pr merge` and any force push; one go-ahead that names them covers everything it names.
 - Mark a PR ready only when the go-ahead or the brief named it, and only after the pushed head passes the gate on a clean detached checkout.
 - Never force-push without first stating exactly which commits will be discarded.

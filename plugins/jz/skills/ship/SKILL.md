@@ -645,6 +645,23 @@ deletion when `ls-remote` showed no branch. The "merged" go-ahead covers
 that push: a branch whose tip is the merged head is disposable once its PR
 has landed.
 
+The main checkout is usually on the default branch, and the merge has left it
+behind the remote. Bring it level when it is on `$base` and clean. This is the
+one merge of the default branch the `rebase-not-merge.sh` hook allows, since
+the branch merging it is the default itself:
+
+```bash
+base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+git -C "$main_checkout" fetch origin "$base"
+[ "$(git -C "$main_checkout" symbolic-ref -q --short HEAD)" = "$base" ] \
+  && [ -z "$(git -C "$main_checkout" status --porcelain)" ] \
+  && git -C "$main_checkout" merge --ff-only "origin/$base"
+git -C "$main_checkout" log --oneline -1
+```
+
+A main checkout on another branch, or with changes in it, stays as it is,
+and the report says so.
+
 Write the hand-over note where the brief says notes go. Without a brief, write
 a short note under `docs/plans/`, never committed. The note carries the PR
 number and merge commit, what landed in one or two lines, and what is left for
@@ -676,7 +693,8 @@ State plainly:
 - After a rebase: the ancestor check, the old and new head, the range-diff, and
   that no commit was discarded
 - After a cleanup: the `MERGED` state, the three tip checks against the merged
-  head, the `Deleted branch` and `[deleted]` lines, and the worktree list
+  head, the `Deleted branch` and `[deleted]` lines, the worktree list, and the
+  main checkout's head after the fast-forward, or why it was left as it was
 
 ## Common Mistakes
 
@@ -722,5 +740,6 @@ State plainly:
 | Deleting the remote branch with a plain `--delete` | Lease it on the merged head, so a late commit rejects the delete with `stale info`. |
 | `git worktree remove` from inside the worktree | Run it from the main checkout with `git -C`. |
 | An empty `git branch --list` offered as proof of deletion | Paste the `Deleted branch` line and the worktree list after. |
+| Leaving the main checkout behind the remote after the cleanup | Fast-forward it when it is on the default branch and clean, and paste its new head. |
 | The agent as commit author, or a session link in the body | Repo owner is the author. Never put a session link or model name in the message. |
 | Adding a `Co-Authored-By` trailer yourself | Attribution belongs to the harness. Write the subject and body only. |

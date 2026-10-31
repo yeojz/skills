@@ -16,7 +16,8 @@ and decision lands in two ledgers in the group's notes folder, `units.tsv`
 and `decisions.tsv`, so "where are we" is answered from a file.
 
 Three things hold throughout: the reviewer is never the implementer, "done
-means" names a gate and a behaviour level rather than a feeling, and every
+means" names a gate, a behaviour level and the acceptance criteria with
+their commands rather than a feeling, and every
 decision the coordinator takes without the owner is in `decisions.tsv` by the
 morning. Merge stays the owner's click on GitHub.
 
@@ -86,17 +87,27 @@ decision, with a pointer to the evidence (a PR URL, a `file:line`, a log).
 
 ### Step 3: Pick the next row and check it is scoped
 
-A roadmap row carries depends on, owns, builds, you see, done means and
-review gate. Print the candidate rows:
+A roadmap row carries depends on, owns, builds, you see, done means,
+acceptance and review gate. Print the candidate rows:
 
 ```bash
 grep -n -i 'not scoped' docs/roadmap.md
+grep -n -i -A4 '^acceptance:' docs/roadmap.md
 ```
+
+The second grep prints each row's acceptance list, so a row without one and
+a line without a command are seen before the brief is filled.
 
 Refuse to start a row that has a `not scoped` field or a missing one. The
 field is a question, so ask it as a lettered question or hand it to `grill`,
 and start the next row that is fully scoped instead. Never fill the field
 yourself.
+
+The acceptance field is a list, one criterion per line as a sentence plus
+the command that proves it. A row with no list, or with a criterion that
+names no command, is not scoped in the same way: the missing command is the
+question, it goes to `grill` or to the owner as lettered options, and the
+row waits. Never write a criterion or its command yourself.
 
 A row whose dependency is an unmerged PR is not blocked: base the worker's
 branch on that PR's branch and record the parent tip it starts from, because
@@ -130,6 +141,7 @@ question the worker will stall on.
 | Scope and owns | The row's owns and builds fields, as absolute paths |
 | Not asked for now | The neighbouring rows, so the worker stops at the boundary |
 | Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the value the `behaviour` row of the `verify` report must reach (`live-verified`, `unit-only` or `type-check-only`), and any conformance or fixture run; a repository with a `VERIFICATION.md` reaches `live-verified` through its Drive section |
+| Acceptance | The row's acceptance list, copied line for line under Done means beside the behaviour level, each criterion with its command. A criterion whose command is a Drive step of the nearest `VERIFICATION.md` makes adding that step part of the phase, so the recipe goes under Owns. A row with no list went back to `grill` in Step 3 and has no brief |
 | Model tier | The tier `rules/models.md` gives a scoped unit with named files and a done condition; one tier up when the row is subtle or security-sensitive. Name the tier in the brief |
 | Ship | The `ship` skill, with the go-ahead for push, draft PR, gate on a clean detached checkout and ready granted in the brief, so the worker asks for none of them |
 | Standing orders | The `AGENTS.md` block from Step 1, verbatim |
@@ -159,8 +171,10 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 | Gate counts | A pasted run on a clean detached checkout, as `ship` Step 11 produces, with exit codes |
 | Ready | `isDraft` false, only when the brief named ready as the signal |
 | Behaviour level | The `behaviour` row of the pasted `verify` block reads the value Done means named, or higher, with the command that drove it; a lower value is a report of not met, not a claim of done |
+| Acceptance | Every criterion in the brief has its own row in the pasted `verify` block, before the `behaviour` row, with the command the brief named, its exit code and `pass`; a row that reads `fail` or `not run` is a report of not met, and a criterion with no row is a missing item |
 
-A report with a missing item goes back to the worker as one line naming it.
+A report with a missing item goes back to the worker as one line naming it,
+the criterion by its sentence when it is one.
 Then write the `units.tsv` row with PR number and head, and go to Step 6.
 
 In the desktop app, bind the PR and turn the monitor on once per PR instead
@@ -182,7 +196,9 @@ through Codex where its plugin is present, with the same brief.
 The brief fixes what the review must do, so the reviewer cannot trade it
 away: gates on a clean detached checkout, a correctness probe of base against
 candidate, measurement reproduction with interleaved samples when the PR
-claims a number, design and maintainability at the same weight as
+claims a number, a run of every acceptance criterion's command on the
+detached checkout checked against the worker's row for it, design and
+maintainability at the same weight as
 correctness, a targeted guard-deletion sample over the new rejecting
 branches with every unsampled guard listed with its reason, findings P1 to
 P3 each with a `file:line`, one COMMENT review posted on the
@@ -315,6 +331,8 @@ row that disagrees with `gh pr view` is corrected in the file first.
 |---|---|
 | Typing a phase brief from memory | Read `template-phase.md` and fill every field. A blank field is where the worker stalls |
 | Starting a row with a `not scoped` field | The field is a question. Ask it or hand it to `grill`; start the next scoped row |
+| Starting a row with no acceptance list, or with a criterion that names no command | The row is not scoped. The command is the question, for `grill` or the owner; never write a criterion yourself |
+| Moving a row to `ready` with a criterion missing from the `verify` block, or reading `not run` | One line back to the worker naming the criterion. Every criterion has a row with its command, exit code and `pass` before the row is `ready` |
 | Reviewing in the worker session, or in this one | The reviewer is a fresh session on the review tier and never the implementer |
 | Forking the coordinator's context into a worker | Fresh context plus the brief. The ledgers and notes carry what it needs |
 | Naming no model tier in a brief | Pick the tier by the job from `rules/models.md` and write it in the brief; never below the review tier for a reviewer |

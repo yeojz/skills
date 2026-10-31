@@ -11,6 +11,7 @@
         "Creates or reads units.tsv and decisions.tsv in the notes folder and writes a row per started phase",
         "A row with a not scoped or missing field is not started; the missing field is asked as a lettered question or handed to grill",
         "Each brief follows template-phase.md with every section filled, including Read first, Decisions already made, Not asked for now, Done means with the repo's real gate commands, Forbidden and Report",
+        "Each brief's Done means carries the row's acceptance list line for line beside the behaviour level, each criterion with its command, and a row with no acceptance list or with a criterion that names no command is treated as not scoped and handed to grill rather than briefed",
         "Each brief names the model tier for a scoped unit and the Standing orders block is copied from AGENTS.md word for word",
         "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file"
       ]
@@ -22,6 +23,8 @@
       "files": [],
       "expectations": [
         "Runs gh pr view and compares headRefOid with the reported sha before the units.tsv row moves to ready",
+        "Checks that every acceptance criterion in the brief has its own row in the worker's verify block before the behaviour row, with the brief's command, an exit code and pass; a criterion with no row or one reading not run goes back to the worker as one line naming the criterion, and the row does not move to ready",
+        "The review brief carries the acceptance criteria and requires each command run on the detached checkout and checked against the worker's row, with a failed or missing criterion as a P1 naming it",
         "The reviewer is a separate fresh session on the review tier, not the worker session and not the coordinator itself",
         "The review brief follows template-review.md and names the detached gate, the correctness probe, the equal-weight design and maintainability lenses, guard-deletion sampling and the P1 to P3 table with file:line",
         "The brief says to post one COMMENT review and never approve or request changes",

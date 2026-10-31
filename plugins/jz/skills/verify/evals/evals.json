@@ -3,8 +3,8 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "I think the token refresh work is done. Is it?",
-      "expected_output": "Reads package.json to discover the repo's real scripts, runs typecheck, lint, test and build in that order, pastes each command's exit code and output tail, and ends with the Verification report block. Only then states the work is complete.",
+      "prompt": "I think the token refresh work is done. Is it? The phase brief lists two acceptance criteria under Done means, each with its command.",
+      "expected_output": "Reads package.json to discover the repo's real scripts, runs typecheck, lint, test and build in that order, then each acceptance criterion's command exactly as the brief names it, pastes each command's exit code and output tail, and ends with the Verification report block: one row per criterion before the behaviour row, with the brief's command, exit code and pass or fail, and not run for a criterion whose command did not run. Only then states the work is complete.",
       "files": [],
       "expectations": [
         "Reads package.json before running any command",
@@ -15,6 +15,8 @@
         "Marks any concern with no matching script as 'not covered' rather than substituting an invented command",
         "Ends the Verification block with a behaviour row whose value is one of live-verified, unit-only, type-check-only or not run, filled from what ran, with the command that supports it",
         "Does not write live-verified unless a pasted run drove the token refresh on a running system; a green test suite yields unit-only at most",
+        "The block has one row per acceptance criterion from the brief, placed before the behaviour row, whose Command is the command the brief names run as written and whose Result is pass or fail from that run",
+        "A criterion whose command did not run keeps its row and reads not run rather than being left out, and the behaviour row is not raised because an acceptance row passed",
         "Does not use the words done, fixed or passing before the Verification block appears"
       ]
     },

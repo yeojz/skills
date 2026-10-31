@@ -124,6 +124,7 @@ them is incomplete, not clean.
 | Design | the shape of the change: a public surface wider than the change needed, a decision an ADR or `docs/design.md` settled the other way, a seam placed where the next change in this area will have to move it. The Layering and Over-engineering rows feed this line. Must report |
 | Maintainability | what the next reader pays: a comment that explains what instead of why, a test coupled to implementation detail, a module nobody can name the owner of. The Duplication, Dead code and Naming rows feed this line. Must report |
 | Guard deletion | the new `if` branches that reject: throw, return early, exit, answer 4xx or 5xx. Sample the ones that enforce a security boundary, prevent data loss or implement the rejection the change was asked for: neutralise the condition, run the package tests, restore. A sampled guard whose deletion stays green is a High; a guard left unsampled is listed with its reason. Must report |
+| Acceptance | when a phase brief or a roadmap row gives the change an Acceptance list: run each criterion's command as the list names it, on the reviewed revision, in the detached worktree for a PR, and set the exit code against the row the author's `verify` block carries for it. A criterion whose command fails here, has no row in that block, or whose row reads `not run`, is a High naming the criterion by its sentence. Reports when the change has a list |
 | Duplication | logic reimplemented when a function already exists in this workspace. Grep for the behaviour before accepting a new helper |
 | Pass-through | a new parameter, option or context added at one layer and dropped at the next call site |
 | Assertions | non-null assertions `!`, `as unknown as`, `any`, `@ts-ignore` introduced by the change |
@@ -284,11 +285,13 @@ whether or not they produced a finding:
 - Design: R3, or clean, checked <what: the boundaries, the new surface>
 - Maintainability: clean, checked <what: duplicates grepped, names against <sibling>>
 - Guard deletion: <n> rejecting guards in the diff, <k> sampled at <sha> with `<test command>`, <s> survived (R1), <m> not sampled: <guard, reason> each; or no new rejecting guard in the diff
+- Acceptance: <n> criteria from `<brief or roadmap row>`, run at <sha>, <p> pass, <f> fail or missing (R4); the line is left out when the change has no Acceptance list
 ```
 
 Severity: Critical is exploitable, data-losing or already broken. High is a
-real defect, a boundary violation that will cause one, or a surviving guard
-deletion. Medium is a smell, a missing negative test, drifted docs. Low is
+real defect, a boundary violation that will cause one, a surviving guard
+deletion, or an acceptance criterion that fails on the reviewed revision or
+has no row in the author's `verify` block. Medium is a smell, a missing negative test, drifted docs. Low is
 naming, consistency, tidying. Design and maintainability findings take their
 severity from their consequence, like any other; they are never demoted for
 being design.
@@ -550,6 +553,7 @@ to it as the verdict's evidence.
 | Rerunning a failure in code the diff never touched | Read the base first. Behind the base and green there is a stale base: rebase and push. Red on the base too is an upstream failure that no rebase fixes. Neither earns a rerun. |
 | Prescribing a rebase because the same check is red on the default branch | That is an upstream failure, not a stale base. A rebase onto a red base stays red; report it as pre-existing with the base run's URL. |
 | Sampling guards in whatever tree happens to be checked out | For a PR, or when HEAD is not the reviewed head, sample in a worktree detached at the PR head, installed from the lock file. |
+| Taking the author's acceptance rows on trust | Run each criterion's command as the list names it on the reviewed revision. A fail, a missing row or a row reading `not run` is a High naming the criterion. |
 | Polling the PR's checks or status in a loop | In the desktop app, bind the PR and turn the monitor on once; let the wake run the sweep. |
 | Sending each adversarial reviewer its own wording of the brief | One brief, written once, sent verbatim to every reviewer; otherwise the agreement map compares different questions. |
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |

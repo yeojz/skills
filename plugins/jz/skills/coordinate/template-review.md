@@ -37,6 +37,16 @@ git worktree remove --force "$gate_dir"
 
 A red gate is a P1 and ends the review there; report it with the output tail.
 
+## Acceptance criteria
+
+The phase brief lists each criterion under Done means with the command that proves it, and the worker's verify block carries one row per criterion. In the same detached worktree, run every criterion's command as written and record its exit code, a Drive step through the recipe's Launch and Cleanup. Then check each against the worker's row:
+
+| Criterion | Command | Exit here | Worker's row | Finding |
+|---|---|---|---|---|
+| <sentence from the brief> | `<command>` | 0 | pass, exit 0 | none |
+
+A criterion whose command fails here, whose worker row is missing or reads `not run`, or whose command here differs from the one the brief names, is a P1 that names the criterion by its sentence. <the criteria, copied from the brief | "the brief lists no acceptance criteria">
+
 ## Correctness probe, base against candidate
 
 Pick the behaviour the phase brief says you see when it works. Exercise it on the base branch and on the candidate with the same inputs, and paste both results. A difference the PR did not claim is a finding; a claim the probe cannot reproduce is a P1.
@@ -64,7 +74,7 @@ Every finding has a priority and a `file:line` that exists on the reviewed head.
 
 | Priority | Means |
 |---|---|
-| P1 | Blocks merge: wrong behaviour, a red gate, a claim the probe disproves, a one-way door taken without an ADR, a surviving guard deletion, a boundary violation that will cause a defect |
+| P1 | Blocks merge: wrong behaviour, a red gate, a claim the probe disproves, an acceptance criterion that fails here or has no row in the worker's block, a one-way door taken without an ADR, a surviving guard deletion, a boundary violation that will cause a defect |
 | P2 | Fix before merge unless the coordinator says otherwise: a duplicate of existing code, a missing negative test, a doc the change made wrong |
 | P3 | Fix now or in the next row: naming, consistency, tidying |
 
@@ -91,6 +101,7 @@ Message the coordinator with:
 - Verdict: merge as is, after fixes, or rework. After fixes means every P1 and P2 has a named fix; rework means the approach is wrong for a reason an ADR or the phase brief settles
 - Head SHA reviewed, and the detached gate: command, exit code, counts line
 - The probe result on base and on candidate
+- The acceptance table: one line per criterion with the exit code here and the worker's row, or that the brief lists none
 - One line each for Design, Maintainability and Guard deletion, clean or not, with what was checked; the guard deletion line gives the counts: rejecting guards in the diff, sampled at which sha with which test command, survived, and not sampled with a reason each
 - The findings table
 - The review file path, and the URL of the posted review or that it is held

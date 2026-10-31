@@ -65,6 +65,18 @@
         "The assumptions stated in earlier round preambles are listed for the user to object to",
         "Implementation starts only after the user confirms the shared understanding"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "4A. Add the roadmap row for the session cookie phase. Done means pnpm test is green. It must refuse a tampered cookie with 401, and a cookie past its TTL must be refused too.",
+      "expected_output": "In kickoff mode the agent writes the row with an Acceptance list, one criterion per line as a sentence followed by the command that proves it. It reads the test files or the nearest VERIFICATION.md, or dispatches a subagent to, for the command behind each criterion; where none exists yet it asks for the command as lettered options drawn from the repo's scripts, test names or recipe steps rather than writing the sentence alone. A criterion the user declines to give a command for is dropped and named as dropped. A criterion whose command drives the running system cites a Drive step of the nearest VERIFICATION.md and the row says the phase adds that step. The row is not named as fully scoped until every criterion carries its command.",
+      "files": [],
+      "expectations": [
+        "The roadmap row carries an Acceptance field with one criterion per line, each a sentence followed by the command that proves it",
+        "No criterion is written as a sentence without a command; a missing command is asked for as lettered options from the repo's scripts, tests or recipe steps, or the criterion is dropped and the drop is stated",
+        "The command for a criterion that drives the running system is a Drive step of the nearest VERIFICATION.md, with adding the step named as part of the phase, not a command typed into the roadmap",
+        "The row is reported as fully scoped only once every criterion has its command; until then it is a question for the next round"
+      ]
     }
   ]
 }

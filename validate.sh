@@ -23,6 +23,30 @@ sys.exit(1 if pattern.search(open(sys.argv[1], encoding='utf-8').read()) else 0)
 EMOJI
 }
 
+# A skill or template that removes a throwaway worktree and then names its
+# directory again tells the reader to run a step in a checkout that is gone.
+# Prints each such use and exits 1; a later assignment to the variable starts
+# a new lifetime.
+worktree_lifetime_ok() {
+  python3 - "$1" <<'WORKTREE'
+import re, sys
+path = sys.argv[1]
+removed = {}
+ok = True
+for number, line in enumerate(open(path, encoding='utf-8').read().splitlines(), 1):
+    for name in re.findall(r'git worktree remove\s+(?:--force\s+)?"\$(\w+)"', line):
+        removed[name] = number
+        continue
+    for name, at in list(removed.items()):
+        if re.match(r'\s*' + name + r'=', line):
+            del removed[name]
+        elif at != number and re.search(r'\$\{?' + name + r'\b', line):
+            print('  FAIL %s:%d: $%s is used after its worktree was removed at line %d' % (path, number, name, at))
+            ok = False
+sys.exit(0 if ok else 1)
+WORKTREE
+}
+
 printf '\nManifests\n'
 # Every directory under plugins/ is a plugin the Claude Code marketplace lists
 # with a source that exists. A plugin with a portable plugin.json at its root
@@ -156,6 +180,8 @@ EVALS
 
   emoji_free "$dir/SKILL.md" || bad "$name: SKILL.md contains emoji"
 
+  worktree_lifetime_ok "$dir/SKILL.md" || bad "$name: SKILL.md uses a worktree after removing it"
+
   # Every skill has to be discoverable from the README's Skills table.
   grep -q "^|.*\`$name\`" README.md || bad "$name: not listed in the README Skills table"
 
@@ -193,6 +219,7 @@ for f in "$PLUGIN"/skills/*/template.md "$PLUGIN"/skills/*/template-*.md; do
   label="$(basename "$(dirname "$f")")/$(basename "$f")"
   head -1 "$f" | grep -q '^---$' && bad "$label: templates must not have frontmatter"
   emoji_free "$f" || bad "$label: contains emoji"
+  worktree_lifetime_ok "$f" || bad "$label: uses a worktree after removing it"
   note "$label"
 done
 

@@ -25,6 +25,7 @@
         "Runs gh pr view and compares headRefOid with the reported sha before the units.tsv row moves to ready",
         "Checks that every acceptance criterion in the brief has its own row in the worker's verify block before the behaviour row, with the brief's command, an exit code and pass; a criterion with no row or one reading not run goes back to the worker as one line naming the criterion, and the row does not move to ready",
         "The review brief carries the acceptance criteria and requires each command run on the detached checkout and checked against the worker's row, with a failed or missing criterion as a P1 naming it",
+        "The review brief keeps the detached worktree from the gate through the acceptance commands and the guard sample and removes it only in its Cleanup section, so no step runs in a checkout an earlier step removed",
         "The reviewer is a separate fresh session on the review tier, not the worker session and not the coordinator itself",
         "The review brief follows template-review.md and names the detached gate, the correctness probe, the equal-weight design and maintainability lenses, guard-deletion sampling and the P1 to P3 table with file:line",
         "The brief says to post one COMMENT review and never approve or request changes",

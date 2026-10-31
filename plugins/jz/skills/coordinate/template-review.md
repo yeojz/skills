@@ -23,7 +23,7 @@ You did not write this change and must not edit it. Findings go to the PR and th
 
 ## Gate on a clean detached checkout
 
-Do not trust the worker's run. Check the head out detached into a throwaway worktree, install from the lock file, and run the gate named in the phase brief there:
+Do not trust the worker's run. Check the head out detached into a throwaway worktree, install from the lock file, and run the gate named in the phase brief there. The worktree is the candidate for the whole review: the acceptance commands, the probe and the guard sample below run in it, so it stays until the Cleanup section removes it.
 
 ```bash
 git fetch origin <branch>
@@ -32,14 +32,19 @@ head="$(git rev-parse origin/<branch>)"
 gate_dir="$(mktemp -d)"
 git worktree add --detach "$gate_dir" "$head"
 ( cd "$gate_dir" && <real gate command> ) > review-gate.log 2>&1; echo "exit=$?"
-git worktree remove --force "$gate_dir"
 ```
 
-A red gate is a P1 and ends the review there; report it with the output tail.
+A red gate is a P1 and ends the review there; report it with the output tail, then run the Cleanup section before reporting.
 
 ## Acceptance criteria
 
-The phase brief lists each criterion under Done means with the command that proves it, and the worker's verify block carries one row per criterion. In the same detached worktree, run every criterion's command as written and record its exit code, a Drive step through the recipe's Launch and Cleanup. Then check each against the worker's row:
+The phase brief lists each criterion under Done means with the command that proves it, and the worker's verify block carries one row per criterion. In `$gate_dir`, the detached checkout the gate ran in, run every criterion's command as written and record its exit code, a Drive step through the recipe's Launch and Cleanup:
+
+```bash
+( cd "$gate_dir" && <command from the brief> ) > review-accept-<n>.log 2>&1; echo "exit=$?"
+```
+
+Then check each against the worker's row:
 
 | Criterion | Command | Exit here | Worker's row | Finding |
 |---|---|---|---|---|
@@ -87,6 +92,15 @@ Format, in the review file and in the posted review:
 ```
 
 Followed by one section per finding: the cited lines quoted, why it matters here, and the fix with the command that proves it.
+
+## Cleanup
+
+Nothing below needs the candidate checkout. Remove it now, after the last guard has been restored, whatever the verdict:
+
+```bash
+git worktree remove --force "$gate_dir"
+git worktree prune
+```
 
 ## Post
 

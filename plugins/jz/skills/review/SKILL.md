@@ -220,11 +220,17 @@ git fetch origin "refs/pull/<n>/head"
 sample_dir="$(mktemp -d)"
 git worktree add --detach "$sample_dir" "$head"
 ( cd "$sample_dir" && pnpm install --frozen-lockfile && pnpm --filter <pkg> test:ci )
-git worktree remove --force "$sample_dir"
 ```
 
 The sampling loop runs inside `$sample_dir`, one guard at a time, with the
-same neutralise, test, restore steps as above.
+same neutralise, test, restore steps as above, and the Acceptance lens runs
+its commands there too. The worktree stays until the last guard is restored
+and the last acceptance command has its exit code; only then:
+
+```bash
+git worktree remove --force "$sample_dir"
+git worktree prune
+```
 
 ### Step 5: Ground every finding in a line
 
@@ -554,6 +560,7 @@ to it as the verdict's evidence.
 | Prescribing a rebase because the same check is red on the default branch | That is an upstream failure, not a stale base. A rebase onto a red base stays red; report it as pre-existing with the base run's URL. |
 | Sampling guards in whatever tree happens to be checked out | For a PR, or when HEAD is not the reviewed head, sample in a worktree detached at the PR head, installed from the lock file. |
 | Taking the author's acceptance rows on trust | Run each criterion's command as the list names it on the reviewed revision. A fail, a missing row or a row reading `not run` is a High naming the criterion. |
+| Removing the detached worktree before the last step that needs it | The gate, the acceptance commands and the guard sample share one checkout. Remove it after the last restore and the last exit code; `validate.sh` fails a skill or template that names the directory after its `git worktree remove`. |
 | Polling the PR's checks or status in a loop | In the desktop app, bind the PR and turn the monitor on once; let the wake run the sweep. |
 | Sending each adversarial reviewer its own wording of the brief | One brief, written once, sent verbatim to every reviewer; otherwise the agreement map compares different questions. |
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |

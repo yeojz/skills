@@ -1,0 +1,17 @@
+{
+  "name": "jzc",
+  "description": "Claude Code-only mods on the function hooks API: a skills-used pane and the /jzc-skills-used command that reopens it.",
+  "author": {
+    "name": "Gerald Yeo",
+    "url": "https://github.com/yeojz"
+  },
+  "homepage": "https://github.com/yeojz/skills",
+  "repository": "https://github.com/yeojz/skills",
+  "license": "MIT",
+  "keywords": [
+    "mods",
+    "pane",
+    "skills"
+  ],
+  "types": "./types/index.d.ts"
+}

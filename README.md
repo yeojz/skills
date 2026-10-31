@@ -3,7 +3,8 @@
 Portable coding-agent setup: skills, always-on rules, review personas and
 hooks, packaged as one plugin, `jz`, in a marketplace that Claude Code and
 Codex both read. Add the marketplace on any machine and the agents behave the
-same.
+same. A second plugin, `jzc`, holds the pieces that exist only for Claude
+Code: mods written against its function hooks API.
 
 Every skill is invoked as `/jz:<name>`, for example `/jz:verify` or
 `/jz:ship`. The rules, the personas and the hooks load with the plugin.
@@ -33,10 +34,17 @@ claude plugin marketplace add yeojz/skills
 claude plugin install jz@yeojz-skills
 ```
 
+For the Claude Code-only mods, also:
+
+```bash
+claude plugin install jzc@yeojz-skills
+```
+
 Start a new session so the rules and hooks load. Claude Code leaves
 auto-update off for third-party marketplaces, so to pick up new commits run
-`claude plugin marketplace update yeojz-skills` and then `claude plugin update jz@yeojz-skills`,
-or turn auto-update on for the marketplace under `/plugin`.
+`claude plugin marketplace update yeojz-skills` and then `claude plugin update jz@yeojz-skills`
+(and `jzc@yeojz-skills`), or turn auto-update on for the marketplace under
+`/plugin`.
 
 ### Codex
 
@@ -53,7 +61,8 @@ snapshot after new commits. On Codex CLI 0.164.0 the skills load as
 `jz:<name>`. Codex runs a plugin's hooks only after you trust them once, from
 `/hooks` in an interactive session; until then the rules do not arrive at
 session start, and `make-agents-md.sh` below writes them into the
-repository's `AGENTS.md` instead.
+repository's `AGENTS.md` instead. The Codex marketplace lists `jz` only:
+`jzc` is built on Claude Code's own plugin API, which Codex does not run.
 
 ### Upgrading from the symlink installer
 
@@ -87,12 +96,16 @@ same three commands there.
 ```
 .claude-plugin/marketplace.json   the marketplace, for Claude Code
 .agents/plugins/marketplace.json  the same marketplace, for Codex
-plugins/jz/                       the plugin
+plugins/jz/                       the agent-agnostic plugin
   skills/      loaded on demand when a request matches the description;
                a skill that fills in a template carries it as template.md
   rules/       always on, injected at session start by a hook
   agents/      four read-only review personas the audit skill fans out to
   hooks/       the hook scripts and the hooks.json that wires them up
+plugins/jzc/                      the Claude Code-only plugin
+  hooks/       one hooks module, register.tsx, that loads each mod
+  hooks/mods/  one TypeScript file per mod, with its test beside it
+  types/       the state contract every mod's values are declared in
 ```
 
 ### Skills
@@ -213,11 +226,35 @@ allows it, and an ask decision is read from the output.
 make test
 ```
 
-`make validate` runs it, along with checks over the four manifests, every
-skill, rule, agent and template, `bash -n` and `shellcheck` over every script,
-`claude plugin validate` when the Claude Code CLI is installed, and a check
-that every skill is listed in this README. Run it before committing a change
-here.
+### Mods
+
+The `jzc` plugin is Claude Code only. Where the `jz` hooks are shell scripts
+on the classic hook events, a mod is a TypeScript hooks module on Claude
+Code's function hooks API, which can draw a pane beside the chat, register a
+slash command and keep state across a reload. Codex has no such API, so the
+Codex marketplace does not list `jzc`.
+
+| Mod | Command | Effect |
+|---|---|---|
+| `skills-used` | `/jzc-skills-used` | A pane listing the skills invoked in this session, with the last time, a count and the plugin or source each came from; the command reopens the pane and replies with the list |
+
+The engine prefixes a plugin's skills and agents with its name but not a
+command a mod registers, so each command carries `jzc-` itself.
+
+Each mod has a test beside it that drives the plugin through the engine's
+own test kit on every surface:
+
+```bash
+claude plugin test plugins/jzc
+```
+
+`make validate` runs the hook suite and the mod tests, along with checks over
+the marketplace and plugin manifests, every skill, rule, agent and template,
+`bash -n` and `shellcheck` over every script, `claude plugin validate` over
+the marketplace and both plugins when the Claude Code CLI is installed, `tsc`
+over the mod sources when a TypeScript and the engine-laid API types are
+present, and a check that every skill is listed in this README. Run it before
+committing a change here.
 
 ---
 

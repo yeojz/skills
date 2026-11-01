@@ -11,7 +11,7 @@ and the step when there is one.>
 
 ## Requirements
 
-- R<n> <name>: <what changed for it>. Proven by E<n>.<m>.
+- R<n> <name>: <what changed for it>. Proven by C<n>.<m>.
 
 ## Decisions
 
@@ -23,9 +23,9 @@ and the step when there is one.>
 
 ## Follow-ups
 
-- <left out, or an eval still failing>: <where or when it lands>
+- <left out, or a criterion still failing>: <where or when it lands>
 
 ## Verification
 
 - `<command>` on `<short sha>`: exit <code>, <result line from the output>
-- E<n>.<m> inspection: <what was read>, <met or not met>
+- C<n>.<m> inspection: <what was read>, <met or not met>

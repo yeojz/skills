@@ -106,11 +106,11 @@ block headed "House rules from the jz plugin", with the project's own
 
 1. Settle what to build. `/jz:grill` interviews the plan until nothing is
    assumed and, in spec mode, writes a spec of requirements and steps.
-   `/jz:eval` then writes an eval for each requirement, seen failing before
+   `/jz:criteria` then writes acceptance criteria for each requirement, seen failing before
    anything is built. `/jz:audit` reads the repo without editing it and
    writes a plan file under `docs/plans/`, which is never committed.
-2. Build it. `/jz:execute` builds a spec step or a plan item, running its
-   evals before, during and after, writing tests first.
+2. Build it. `/jz:implement` builds a spec step or a plan item, running its
+   criteria before, during and after, writing tests first.
    `/jz:debug` takes a bug cause first.
 3. Prove it. `/jz:verify` runs the repo's own scripts and ends in a
    Verification block with a `behaviour` row. Without that block nothing is
@@ -142,7 +142,7 @@ says what it does without it.
 | `AGENTS.md` with a `## Restricted words` list | `no-restricted-words.sh` | only the house list applies |
 | `AGENTS.md` with an `## Enforcement` table | `correct` | the first `correct` run creates it |
 | `VERIFICATION.md` at the root, or one per package | `verify`, for the `behaviour` row | the row reads what the test runs support, `unit-only` at most, unless another pasted run drove the feature |
-| `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, evals added by `eval`, read by `execute` and `coordinate` | `execute` and `coordinate` refuse a spec whose evals are not signed off and offer `eval` |
+| `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, criteria added by `criteria`, read by `implement` and `coordinate` | `implement` and `coordinate` refuse a spec whose criteria are not signed off and offer `criteria` |
 | Scripts named `format`, `lint`, `typecheck`, `test` and `build` in `package.json`, or the same targets in a `Makefile` | `verify` | the concern is reported as "no script"; nothing is invented in its place |
 
 ---
@@ -168,10 +168,10 @@ plugins/jzc/                      the Claude Code-only plugin
 
 A change usually runs through the skills in this order. `grill` settles
 what to build and leaves a spec of requirements and steps, or `audit` leaves
-a plan. `eval` writes how each requirement will be proven, before anything
+a plan. `criteria` writes how each requirement will be proven, before anything
 is built. `coordinate` drives a spec's steps through the rest of the loop,
-one fresh session per step and one per review. `execute` builds step by
-step against the evals, reaching for
+one fresh session per step and one per review. `implement` builds step by
+step against the criteria, reaching for
 `debug`, `coverage`, `docs-sync` or `deps-guard` as the item demands.
 `verify` gates every done claim. `pr` commits, pushes, opens the draft PR
 with its body, and cleans up after the merge, and `review` handles the
@@ -185,7 +185,7 @@ context runs out.
 | Skill | Use it for |
 |---|---|
 | `grill` | Interview a plan until nothing is assumed; in spec mode write the spec (requirements, decisions, vertical-slice steps), the glossary, ADRs and standing orders as decisions land |
-| `eval` | Write an eval per requirement (scenario, pass criterion, and a test, command, drive or inspection check), run each once to see it fail, and get the owner's sign-off |
+| `criteria` | Write acceptance criteria per requirement (scenario, what counts as passing, and a test, command, drive or inspection check), run each once to see it fail, and get the owner's sign-off |
 | `coordinate` | Drive a roadmap to merge-ready: fill the phase and review briefs from their templates, with the row's acceptance criteria copied into the brief and checked against the worker's verify block, one fresh worker session per phase and one fresh reviewer per PR, keep the units and decisions ledgers, report one line per PR |
 | `audit` | Read-only repo assessment that writes a prioritised plan file |
 
@@ -193,7 +193,7 @@ context runs out.
 
 | Skill | Use it for |
 |---|---|
-| `execute` | Build a spec step or plan item: see its evals fail, write tests first, build the least change, record each eval's status at a sha, checkpoint per item |
+| `implement` | Build a spec step or plan item: see its criteria fail, write tests first, build the least change, record each criterion's status, checkpoint per item |
 | `debug` | Reproduce, instrument, trace to the root cause, one fix at a time |
 | `coverage` | Raise coverage to threshold and prove it with the report |
 | `deps-guard` | Advisories, action pinning, supply-chain settings, vetting a new dependency |

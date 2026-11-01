@@ -12,7 +12,7 @@ tree is settled. Facts come from subagents, decisions come from the owner as
 lettered options, and nothing is acted on until the owner confirms a shared
 understanding. In spec mode it also writes the glossary, the ADRs and a spec
 of requirements and steps as each decision lands. How each requirement will
-be proven is the `eval` skill's job, next.
+be proven is the `criteria` skill's job, next.
 
 Adapted from the `grilling` and `domain-modeling` skills in
 `mattpocock/skills`, MIT, Copyright (c) 2026 Matt Pocock.
@@ -101,7 +101,7 @@ The spec comes from `template-spec.md`. Its rules:
   fits in one fresh session. Prefactoring comes first. Each step lists the
   requirements it serves, the steps that block it, what it owns, the one
   result you'll see, its ADRs, and whether the owner reviews it before merge.
-- **Leave the Evals section empty.** `eval` fills it, next.
+- **Leave the Criteria section empty.** `criteria` fills it, next.
 
 ### Step 5: Recompute and repeat
 
@@ -124,7 +124,7 @@ Spec mode ends with:
 - the ADR-tier list: kinds of decision a later session must bring back as
   options rather than decide alone (public API shape, data model, a new
   dependency, a specification reading, and anything that would earn an ADR)
-- "Next: run `eval` on `docs/specs/<slug>.md`"
+- "Next: run `criteria` on `docs/specs/<slug>.md`"
 
 Committing the files is the `pr` skill's job, on the owner's word.
 
@@ -138,6 +138,6 @@ Committing the files is the `pr` skill's job, on the owner's word.
 | Batching the glossary or spec to the end | Write the turn it's settled |
 | An ADR for every decision | All three tests, or it's a Decisions line only |
 | A requirement nobody could observe | Ask what would be different, or drop it |
-| Writing evals or acceptance commands in the spec | That's the `eval` skill's job |
+| Writing criteria or acceptance commands in the spec | That's the `criteria` skill's job |
 | A step that only builds one layer | Slice vertically, so the step can be checked on its own |
 | Acting before the owner confirms | Say the frontier is empty, list the assumptions, wait |

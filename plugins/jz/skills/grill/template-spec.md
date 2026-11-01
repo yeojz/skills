@@ -1,7 +1,7 @@
 # <Scope name>
 
 Status: draft
-<!-- `eval` changes this to "evals signed off <date>"; `execute` reads it before starting. -->
+<!-- `criteria` changes this to "criteria signed off <date>"; `implement` reads it before starting. -->
 
 Glossary: `CONTEXT.md`. ADRs: `docs/adr/`.
 
@@ -22,9 +22,9 @@ Glossary: `CONTEXT.md`. ADRs: `docs/adr/`.
 
 - <Decision> (round <n>, <letter>). ADR-<NNNN> when it has one.
 
-## Evals
+## Criteria
 
-<Written by the `eval` skill. Leave empty in `grill`.>
+<Written by the `criteria` skill. Leave empty in `grill`.>
 
 ## Steps
 

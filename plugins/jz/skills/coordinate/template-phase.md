@@ -17,7 +17,7 @@ Notes folder: <absolute path>; write the hand-over note there as `unit-<id>.md`
 1. `AGENTS.md`, the Standing orders section in particular
 2. `CONTEXT.md`, the glossary; use its terms and no others
 3. `docs/adr/<NNNN>-<slug>.md` for each ADR that touches this row: <list them>
-4. `docs/specs/<slug>.md`: the Requirements and Evals this step serves, and the step itself
+4. `docs/specs/<slug>.md`: the Requirements and Criteria this step serves, and the step itself
 5. `<notes folder>/unit-<previous id>.md`, the previous unit's hand-over note, or "none" for the first unit
 
 ## Decisions already made

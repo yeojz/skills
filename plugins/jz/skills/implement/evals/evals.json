@@ -1,5 +1,5 @@
 {
-  "skill_name": "execute",
+  "skill_name": "implement",
   "evals": [
     {
       "id": 1,
@@ -24,25 +24,25 @@
     },
     {
       "id": 2,
-      "prompt": "Execute step 1 of docs/specs/dry-run.md in /tmp/eval-execute-2-ws. The spec's evals are signed off; E1.1 is a test check that is not written yet and E2.1 is a command check.",
-      "expected_output": "Lists the evals of the requirements step 1 serves, runs E2.1 and records it failing, writes the E1.1 test and watches it fail on its assertion before building, builds the least change, reruns both evals, and writes pass on the working tree into the spec's Evals table before the checkpoint, with a sha only after the commit.",
+      "prompt": "Execute step 1 of docs/specs/dry-run.md in /tmp/eval-execute-2-ws. The spec's criteria are signed off; C1.1 is a test check that is not written yet and C2.1 is a command check.",
+      "expected_output": "Lists the criteria of the requirements step 1 serves, runs C2.1 and records it failing, writes the C1.1 test and watches it fail on its assertion before building, builds the least change, reruns both criteria, and writes pass on the working tree into the spec's Criteria table before the checkpoint, with a sha only after the commit.",
       "files": [],
       "expectations": [
-        "Checks that the spec's status line reads evals signed off before starting",
-        "Runs the step's evals and records them failing or not met before changing any source file",
-        "Writes the E1.1 test first and shows it failing on its assertion, not on an import or type error",
-        "Reruns the step's evals after the build and writes pass on the working tree or fail into the spec's Evals table, and a sha only once committed",
+        "Checks that the spec's status line reads criteria signed off before starting",
+        "Runs the step's criteria and records them failing or not met before changing any source file",
+        "Writes the C1.1 test first and shows it failing on its assertion, not on an import or type error",
+        "Reruns the step's criteria after the build and writes pass on the working tree or fail into the spec's Criteria table, and a sha only once committed",
         "Stops at a checkpoint after the step instead of committing and continuing"
       ]
     },
     {
       "id": 3,
-      "prompt": "Build step 3 of docs/specs/session.md. It serves R5, which has no rows in the Evals table yet.",
-      "expected_output": "Stops step 3 and hands R5 to the eval skill instead of building it.",
+      "prompt": "Build step 3 of docs/specs/session.md. It serves R5, which has no rows in the Criteria table yet.",
+      "expected_output": "Stops step 3 and hands R5 to the criteria skill instead of building it.",
       "files": [],
       "expectations": [
-        "Notices R5 has no eval before changing any source file",
-        "Does not build step 3; hands R5 to the eval skill and says so"
+        "Notices R5 has no criterion before changing any source file",
+        "Does not build step 3; hands R5 to the criteria skill and says so"
       ]
     },
     {

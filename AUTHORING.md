@@ -52,7 +52,7 @@ description: Use when <situation>. Triggers on requests like "<phrase>", "<phras
 ```
 
 Name the skill for the action it performs, verb first where that reads as an
-instruction (`verify`, `execute`), and keep it short.
+instruction (`verify`, `implement`), and keep it short.
 
 The `description` is the only thing the model sees before deciding to load the
 skill, so it must name concrete trigger phrases drawn from real usage: the
@@ -258,7 +258,7 @@ check that fails, then a test, with prose last.
 | Model tier matches the job | nothing; `models.md` describes it |
 | Done means a behaviour level, not only a green script | nothing; the `behaviour` row in `verify` Step 8 names the level the runs support, and `coordinate` Step 5 checks it against the level Done means named |
 | A throwaway worktree is removed only after the last step that runs in it | `validate.sh`: a skill or template that names the directory variable after its `git worktree remove` fails |
-| Every requirement has an eval whose check proves it, seen failing before the build, and every eval has a row in the verify block | nothing; `eval` Step 3 asks for the check or sends the requirement back to `grill`, `eval` Step 4 runs each check before sign-off, `execute` stops a step whose requirement has no eval, `coordinate` Step 3 treats a row without a list as not scoped and Step 5 sends a missing row back, `verify` Step 8 reads `not run` for a criterion without a run, and the review brief re-runs each command |
+| Every requirement has an acceptance criterion whose check proves it, seen failing before the build, and every criterion has a row in the verify block | nothing; `criteria` Step 3 asks for the check or sends the requirement back to `grill`, `criteria` Step 4 runs each check before sign-off, `implement` stops a step whose requirement has no criterion, `coordinate` Step 3 treats a row without a list as not scoped and Step 5 sends a missing row back, `verify` Step 8 reads `not run` for a criterion without a run, and the review brief re-runs each command |
 | Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes.sh` for the remote writes; nothing for the rest, `parallelism.md` states it |
 | Prose rules 7 and 8, no emoji or model name in commit or PR text | `no-restricted-words.sh`, PreToolUse; `validate.sh` for emoji in this repo's files |
 | Prose rules 1 to 6 and 9 to 14 | nothing; `prose.md` numbers them so a steer cites one, and `reflect` turns a repeated steer into the next check |
@@ -278,8 +278,8 @@ A repository that can be driven end to end keeps the recipe in a
 monorepo: Launch, Doctor, Drive, Evidence, Cleanup, and a map from each
 acceptance to the drive step that proves it. `verify` reads the nearest one
 upward from the changed paths and cites its Drive section on the `behaviour`
-row. An eval whose check drives the system cites one of its Drive steps, and
-the step that adds the eval adds the Drive step, so the recipe stays the one place the drive commands live. It is a
+row. A criterion whose check drives the system cites one of its Drive steps,
+and the step that adds the criterion adds the Drive step, so the recipe stays the one place the drive commands live. It is a
 plain file a person or Codex runs the same way, never a skill
 under `.claude/`, which the `no-claude-artifacts.sh` hook keeps out of git. A
 recipe drives the system locally, against mocks or fixtures for anything

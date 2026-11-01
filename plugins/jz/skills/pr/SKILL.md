@@ -97,10 +97,10 @@ Fill `template.md` from this directory. The title is a Conventional Commit
 subject, because the PR squash-merges into it.
 
 - **With a spec** (a `docs/specs/*.md` the branch serves): one line per
-  requirement the PR touches, saying what changed and which evals prove it.
-  Name any ADR the PR adds under Decisions. An eval still failing or not run
+  requirement the PR touches, saying what changed and which criteria prove it.
+  Name any ADR the PR adds under Decisions. A criterion still failing or not run
   goes under Follow-ups with the step that will close it. Do not paste the
-  Evals table.
+  Criteria table.
 - **Sections**: Summary, Trade-offs, Follow-ups and Verification, plus
   Requirements and Decisions when there is a spec.
 - **Verification**: one bullet per command that ran on this head, with its
@@ -201,7 +201,7 @@ lines that prove it.
 | Pushing after "commit", or opening a PR after "commit and push" | The request is the scope. Stop and report. |
 | Asking before a push or draft PR the request named | Both can be withdrawn. Run them. |
 | Writing the body from the conversation | Read the three-dot diff and commit subjects. |
-| Pasting the spec's Evals table into the body | One line per requirement: what changed, which evals prove it. |
+| Pasting the spec's Criteria table into the body | One line per requirement: what changed, which criteria prove it. |
 | A Verification bullet with no exit code, or from an earlier head | Cite the run on this head, with its output. |
 | Rebasing while `origin/<branch>` has commits local lacks | Ancestor check first; `DIVERGED` is a stop. |
 | Deleting a branch on the word "merged" | `MERGED`, and both tips equal `headRefOid`. |

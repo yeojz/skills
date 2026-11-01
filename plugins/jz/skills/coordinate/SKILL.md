@@ -40,12 +40,12 @@ Read every file that exists. The roadmap is the Steps section of a spec in
 `docs/specs/`; an older `docs/roadmap.md` is read the same way. Throughout
 this skill, a row is a spec step, its depends-on is the step's Blocked by,
 its owns and you-see are the step's fields, its builds is the step's title,
-its done means is the repo's gate plus the behaviour level its drive evals
-reach, and its acceptance list is the evals of the requirements the step
-serves, each eval's check being the criterion's command (an inspection
-eval's written criterion counts as its command). A spec whose status line doesn't read `evals signed
-off` is not ready: offer the `eval` skill. A repo with no spec has nothing
-to coordinate: offer `grill` in spec mode, then `eval`.
+its done means is the repo's gate plus the behaviour level its drive criteria
+reach, and its acceptance list is the criteria of the requirements the step
+serves, each criterion's check being its command (for an inspection
+criterion, its written standard counts as the command). A spec whose status line doesn't read `criteria signed
+off` is not ready: offer the `criteria` skill. A repo with no spec has nothing
+to coordinate: offer `grill` in spec mode, then `criteria`.
 
 The standing orders are the lines every worker and reviewer must follow. They
 live under one `## Standing orders` heading in the repo's `AGENTS.md` and are
@@ -99,11 +99,11 @@ acceptance and review gate. Print the candidate rows:
 
 ```bash
 grep -n -E '^### Step|^- (Serves|Blocked by):' docs/specs/<slug>.md
-sed -n '/^## Evals/,/^## Steps/p' docs/specs/<slug>.md
+sed -n '/^## Criteria/,/^## Steps/p' docs/specs/<slug>.md
 ```
 
 The first prints each step with the requirements it serves; the second the
-Evals table, so a requirement with no eval is seen before the brief is
+Criteria table, so a requirement with no criterion is seen before the brief is
 filled.
 
 Refuse to start a row that has a `not scoped` field or a missing one. The
@@ -114,7 +114,7 @@ yourself.
 The acceptance field is a list, one criterion per line as a sentence plus
 the command that proves it. A row with no list, or with a criterion that
 names no command, is not scoped in the same way: the missing check is the
-question, it goes to `eval`, and the row waits. Never write a criterion or its command yourself.
+question, it goes to `criteria`, and the row waits. Never write a criterion or its command yourself.
 
 A row whose dependency is an unmerged PR is not blocked: base the worker's
 branch on that PR's branch and record the parent tip it starts from, because
@@ -338,7 +338,7 @@ row that disagrees with `gh pr view` is corrected in the file first.
 |---|---|
 | Typing a phase brief from memory | Read `template-phase.md` and fill every field. A blank field is where the worker stalls |
 | Starting a row with a `not scoped` field | The field is a question. Ask it or hand it to `grill`; start the next scoped row |
-| Starting a row with no acceptance list, or with a criterion that names no command | The row is not scoped. The missing check goes to `eval`; never write a criterion yourself |
+| Starting a row with no acceptance list, or with a criterion that names no command | The row is not scoped. The missing check goes to `criteria`; never write a criterion yourself |
 | Moving a row to `ready` with a criterion missing from the `verify` block, or reading `not run` | One line back to the worker naming the criterion. Every criterion has a row with its command, exit code and `pass` before the row is `ready` |
 | Reviewing in the worker session, or in this one | The reviewer is a fresh session on the review tier and never the implementer |
 | Forking the coordinator's context into a worker | Fresh context plus the brief. The ledgers and notes carry what it needs |

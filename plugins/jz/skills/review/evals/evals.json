@@ -127,6 +127,17 @@
         "Writes the critique to a new docs/plans/YYYY-MM-DD-HHMM-<slug>-critique.md file",
         "Ends with lettered options and a stated recommendation"
       ]
+    },
+    {
+      "id": 7,
+      "prompt": "CI is red on PR 41. The failing test is test/parser.test.ts, which the PR didn't touch, but it imports src/parser.ts, which the PR changed. The branch is behind main and main is green.",
+      "expected_output": "Classifies the failure as a defect because the failing test imports changed code, makes it a finding, and does not rebase or rerun.",
+      "files": [],
+      "expectations": [
+        "Checks whether the failing test imports anything the diff changed before classifying",
+        "Classifies it as a defect, not a stale base, because it imports src/parser.ts",
+        "Does not rebase and does not rerun the check"
+      ]
     }
   ]
 }

@@ -80,6 +80,28 @@
         "The behaviour row cites the recipe's Drive command with its exit code and reads live-verified only after that run passed",
         "Agent does NOT look for a verification skill under .claude/"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Is step 1 of docs/specs/slug.md done? Every script passes. C1.1 and C2.1 are passing tests, and C3.1 is an inspection: the README shows how to call slugify. The README has no usage example yet.",
+      "expected_output": "Runs the scripts and C1.1 and C2.1, inspects the README for C3.1 and records it as not met, and reports the step as not met naming C3.1, without the words done or passing.",
+      "files": [],
+      "expectations": [
+        "Records C3.1 as not met after reading README.md",
+        "Says the step is not met or blocked and names C3.1, even though every command passed",
+        "Does not use the words done, fixed, passing or complete for the step"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Verify step 2 of docs/specs/session.md. It serves R4, and R4's only criterion C4.1 has no check written yet. All scripts pass.",
+      "expected_output": "Gives C4.1 a row reading (no check) and not run, reports the step as not met naming C4.1, and does not invent a check for it.",
+      "files": [],
+      "expectations": [
+        "C4.1 has a row with (no check) as its command and not run as its result",
+        "Does not write or run a check of its own for C4.1",
+        "Reports the step as not met naming C4.1, without the words done or passing"
+      ]
     }
   ]
 }

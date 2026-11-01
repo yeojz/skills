@@ -61,20 +61,24 @@ outside the repo. Its Drive section is what a `live-verified` behaviour row
 cites.
 
 ```bash
-root="$(git rev-parse --show-toplevel)"; p="<changed path>"; p="${p#"$root"/}"
+root="$(git rev-parse --show-toplevel 2>/dev/null)"; p="<changed path>"
 recipe="no recipe"
-case "$p" in /*|..|../*) ;; *)
-  dir="$root/$(dirname "$p")"
+if [ -n "$root" ]; then
+  root="$(cd -P "$root" && pwd)"
+  case "$p" in /*) dir="$(dirname "$p")" ;; *) dir="$root/$(dirname "$p")" ;; esac
   while [ ! -d "$dir" ]; do dir="$(dirname "$dir")"; done
-  while [ -n "$root" ] && case "$dir" in "$root"|"$root"/*) true ;; *) false ;; esac; do
+  dir="$(cd -P "$dir" && pwd)"
+  while case "$dir" in "$root"|"$root"/*) true ;; *) false ;; esac; do
     [ -f "$dir/VERIFICATION.md" ] && { recipe="$dir/VERIFICATION.md"; break; }
     [ "$dir" = "$root" ] && break; dir="$(dirname "$dir")"
-  done ;;
-esac
+  done
+fi
 echo "$recipe"
 ```
 
-A path outside the repo, or no git repo at all, is "no recipe".
+The nearest existing directory is resolved with `cd -P` before the
+containment check, so a `..` segment or a symlink that leads outside the
+repo, or no git repo at all, is "no recipe".
 
 ### Step 3: Run cheapest first
 
@@ -193,9 +197,12 @@ Commands read from: <package.json | Makefile>
 | `type-check-only` | Only typecheck, lint or format covers the change |
 | `not run` | Nothing above ran, or the run stopped first |
 
-- Any `fail` means the reply says blocked and pastes the failing output.
-- Done, fixed, passing, complete and green appear only with this block and
-  no `fail` row.
+- Any `fail`, `not met` or `not run` row, or a behaviour row below the level
+  the spec or brief asks for, means the reply says blocked or not met and
+  names each one.
+- Done, fixed, passing, complete and green appear only with this block,
+  every criterion reading `pass` or `met`, no `fail` row, and the behaviour
+  level at or above the target.
 - Never deploy to, log in to or write to a live or shared environment to
   verify; that is the owner's step.
 

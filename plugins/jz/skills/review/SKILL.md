@@ -190,11 +190,13 @@ gh pr checks <n>; gh run view <run-id> --log-failed
 git merge-base --is-ancestor "origin/$base" HEAD || echo "behind the base"
 ```
 
+Check the first row first: it wins over the two after it.
+
 | Signal | Class | Do |
 |---|---|---|
-| Failure outside the diff, branch behind the base, base green | Stale base | Rebase through the `pr` skill's Rebase section; never rerun |
-| Failure outside the diff, base red too | Upstream | Report it with the base run's URL; no rerun, no rebase |
-| Failure in or reached by the diff | Defect | A finding, fixed, then `verify` |
+| The failing test or file is in the diff, or imports anything the diff changed | Defect | A finding, fixed, then `verify` |
+| Failure not reached by the diff, branch behind the base, base green | Stale base | Rebase through the `pr` skill's Rebase section; never rerun |
+| Failure not reached by the diff, base red too | Upstream | Report it with the base run's URL; no rerun, no rebase |
 | Timeout, reset, 429 or 5xx, passes locally | Suspected flake | One rerun per check per head (`gh run rerun <run-id> --failed`), then classify again |
 | The same failure twice | Defect | No third run |
 

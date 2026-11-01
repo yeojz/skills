@@ -1,6 +1,6 @@
 ---
 name: test-engineer
-description: Use when a repo, package or diff needs a read-only test-quality lens - uncovered branches, assertions that prove nothing, missing negative tests, fixture leakage, skipped tests and unmet coverage thresholds. Fanned out in parallel by the `audit` skill alongside the architecture, security and documentation lenses.
+description: Use when a repo, package or diff needs a read-only test-quality lens - uncovered branches, assertions that prove nothing, missing negative tests, fixture leakage, skipped tests and unmet coverage thresholds. Fanned out in parallel by the `review` skill's audit mode alongside the architecture, security and documentation lenses.
 tools: Read, Grep, Glob, Bash
 ---
 

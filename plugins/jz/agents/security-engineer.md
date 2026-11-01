@@ -1,6 +1,6 @@
 ---
 name: security-engineer
-description: Use when a repo or a diff needs a read-only security lens that returns grounded findings for someone else to fix, typically fanned out in parallel with the other personas by the `audit` skill.
+description: Use when a repo or a diff needs a read-only security lens that returns grounded findings for someone else to fix, typically fanned out in parallel with the other personas by the `review` skill's audit mode.
 tools: Read, Grep, Glob, Bash
 ---
 

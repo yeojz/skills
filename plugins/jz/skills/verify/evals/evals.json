@@ -3,20 +3,16 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "I think the token refresh work is done. Is it? The phase brief lists two acceptance criteria under Done means, each with its command.",
-      "expected_output": "Reads package.json to discover the repo's real scripts, runs typecheck, lint, test and build in that order, then each acceptance criterion's command exactly as the brief names it, pastes each command's exit code and output tail, and ends with the Verification report block: one row per criterion before the behaviour row, with the brief's command, exit code and pass or fail, and not run for a criterion whose command did not run. Only then states the work is complete.",
+      "prompt": "I think step 2 of docs/specs/token-refresh.md is done. Is it? It serves R1 and R2, which have criteria C1.1 (a test) and C2.1 (an inspection of the README).",
+      "expected_output": "Runs the repo's own scripts cheapest first, then each criterion of R1 and R2 as written, and reports one row per concern and per criterion plus the behaviour level.",
       "files": [],
       "expectations": [
-        "Reads package.json before running any command",
-        "Does not run a command that is absent from the scripts block",
+        "Reads package.json before running any command and runs no command absent from it",
         "Runs typecheck before test and build",
         "Pastes the actual output tail and the exit code for each command run",
-        "Emits a Verification block with one row per concern, each showing command, exit code and result",
-        "Marks any concern with no matching script as 'not covered' rather than substituting an invented command",
-        "Ends the Verification block with a behaviour row whose value is one of live-verified, unit-only, type-check-only or not run, filled from what ran, with the command that supports it",
-        "Does not write live-verified unless a pasted run drove the token refresh on a running system; a green test suite yields unit-only at most",
-        "The block has one row per acceptance criterion from the brief, placed before the behaviour row, whose Command is the command the brief names run as written and whose Result is pass or fail from that run",
-        "A criterion whose command did not run keeps its row and reads not run rather than being left out, and the behaviour row is not raised because an acceptance row passed",
+        "Emits a Verification block with one row per concern; a concern with no script reads not covered",
+        "Has one row each for C1.1 and C2.1 before the behaviour row; C1.1 runs the criterion's own command, C2.1 records what was inspected and reads met or not met",
+        "Ends with a behaviour row of live-verified, unit-only, type-check-only or not run, and does not write live-verified from a green test suite",
         "Does not use the words done, fixed or passing before the Verification block appears"
       ]
     },
@@ -38,52 +34,39 @@
     },
     {
       "id": 3,
-      "prompt": "Why is core still at 93.4%? You said coverage was at 100%.",
-      "expected_output": "Treats the previous claim as unproven, re-runs coverage narrowed to the core package with both the workspace filter and the vitest project, and pastes the per-file coverage table rather than a headline number. Names the specific uncovered files and lines.",
+      "prompt": "`pnpm test:ci --project packages` is reporting 0% coverage, which looks wrong. Can you double check? There are definitely tests.",
+      "expected_output": "Treats the zero as a wrong invocation rather than as missing tests. Re-derives the correct combination of workspace filter and vitest project from pnpm-workspace.yaml, the package.json scripts and the vitest config, identifies that the workspace filter is missing, re-runs as pnpm --filter <pkg> test:ci --project packages, and pastes the resulting per-file table. Writes no new tests.",
       "files": [],
       "expectations": [
-        "Reads the workspace root package.json and the core package.json to find the real coverage script",
-        "Runs the coverage command with both a --filter for the package and a --project for the vitest project",
-        "Pastes the per-file coverage table, not a single summary percentage",
-        "Names the specific files and line ranges that are uncovered",
-        "States that the scope was narrowed to one package in the Verification block",
-        "Does not lower a coverage threshold or exclude a file to make the number rise",
-        "Does not repeat the 100% claim without the pasted table supporting it"
+        "States explicitly that a zero-coverage report usually means a wrong filter or project, not an absence of tests",
+        "Does not begin writing tests in response to the zero",
+        "Reads pnpm-workspace.yaml, the root and package package.json scripts, and the vitest config to re-derive the invocation",
+        "Identifies the missing workspace filter and runs pnpm --filter <pkg> test:ci --project <project>",
+        "Confirms test files exist rather than assuming they do not",
+        "Pastes the output of the corrected run including the per-file table",
+        "Bounds invocation attempts at three and reports the commands tried and what each ruled out if still zero",
+        "Does not claim a coverage percentage that is not in the pasted output"
       ]
     },
     {
       "id": 4,
-      "prompt": "Rebase this branch against main.",
-      "expected_output": "Performs the rebase, then proves the resulting state with git status, git log --oneline, the commit range against origin/main and a diff stat, and checks for a stalled rebase directory and leftover conflict markers. Then runs the repo's test commands on the rebased tree and only calls the rebase complete once those pass.",
+      "prompt": "Please bring test coverage up to the predefined thresholds, one file at a time. config-loader.ts is the last one at 96% and I want 100% statement and branch coverage.",
+      "expected_output": "Derives the invocation, runs coverage for that package with the filter and project, reads the uncovered lines for config-loader.ts, and covers what can be reached with real tests. For the line that is genuinely unreachable, reports the file, the line and why no test can reach it, offers lettered options with a recommendation, and does not force the number to 100 by deleting the branch, lowering the threshold or silently adding an ignore.",
       "files": [],
       "expectations": [
-        "Runs git status and git log --oneline after the rebase and pastes the output",
-        "Runs git log --oneline origin/main..HEAD and git diff origin/main...HEAD --stat to prove the branch sits on top of the upstream",
-        "Checks for .git/rebase-merge or .git/rebase-apply and for leftover conflict markers",
-        "Runs the repo's typecheck and test commands on the rebased tree and pastes their exit codes and output",
-        "States explicitly that the rebase is not complete until the tests pass on the rebased tree",
-        "Does not report the rebase as complete on the basis of a clean git status alone",
-        "Emits the Verification block before making the completion claim"
+        "Runs coverage with both the workspace filter and the vitest project derived from the config",
+        "Works on config-loader.ts alone and pastes its row and uncovered line numbers from the per-file table",
+        "Writes real tests for the branches that are reachable through the public API",
+        "Names the specific file and line that is unreachable and explains why no test can reach it",
+        "Presents lettered options for the unreachable line with a recommendation rather than acting unilaterally",
+        "Does not delete the branch, lower the threshold, or exclude the source file to reach 100%",
+        "If an ignore comment is agreed, uses the v8 provider syntax and notes the @preserve annotation, not istanbul syntax",
+        "Re-runs coverage and pastes the per-file table with config-loader.ts visible",
+        "Does not claim 100% while the unreachable line is still uncovered in the pasted table"
       ]
     },
     {
       "id": 5,
-      "prompt": "Running pnpm test:deno still errors out. Are you sure it is fixed?",
-      "expected_output": "Retracts the unproven claim, re-runs pnpm test:deno exactly as the user typed it, pastes the exit code and output tail, and root-causes the Deno-specific failure. Does not exclude the Deno run or route around it, and stops after three attempts with a blocker report if unresolved.",
-      "files": [],
-      "expectations": [
-        "Re-runs the exact command pnpm test:deno rather than a substitute or a Node-only run",
-        "Pastes the real failing output and the exit code",
-        "Acknowledges that the earlier fixed claim was not supported by evidence",
-        "Root-causes the Deno-specific failure instead of skipping, excluding or removing the script from the sequence",
-        "Does not treat a passing Node test run as evidence that the Deno run works",
-        "Counts fix attempts and stops at three, reporting the blocker with the failing output if unresolved",
-        "Includes test:deno as its own row in the Verification block",
-        "Reports the behaviour row as not run while the sequence is stopped at the failing test:deno command, rather than carrying over a level from an earlier claim"
-      ]
-    },
-    {
-      "id": 6,
       "prompt": "Verify my change to packages/worker/src/login.ts in /tmp/eval-verify-6-ws before I commit. The repo has a VERIFICATION.md at the root and another at packages/worker/VERIFICATION.md, and the parent directory /tmp has one too. My change also deletes packages/worker/src/retired/old.ts, the last file in that directory, so the directory is gone from the checkout.",
       "expected_output": "Agent discovers the pnpm scripts and runs them cheapest first, then resolves packages/worker/src/login.ts against the repository root and walks up: it finds packages/worker/VERIFICATION.md first and uses only that one, never also the root recipe, and never the one in /tmp outside the repository. It runs that recipe's Launch, Doctor, Drive and Cleanup sections as written, pasting each command's exit code and result line. The report block's behaviour row cites the Drive command and reads live-verified only because that run passed; had the drive failed or not run, the row would read unit-only or type-check-only from what did run. The deleted packages/worker/src/retired/old.ts resolves the same way although its directory no longer exists, and finds packages/worker/VERIFICATION.md. With the package recipe removed and only the root one left, the walk reaches the root and uses it; with none inside the repository, the row says no recipe and the agent does not run the /tmp file. The agent does not invent a curl or a browser session of its own in place of the recipe, and it does not look under .claude/ for one.",
       "files": [],
@@ -92,11 +75,32 @@
         "Agent resolves the changed path against the repository root and walks up from its directory",
         "Agent uses packages/worker/VERIFICATION.md alone when both it and the root recipe exist",
         "Agent falls back to the root VERIFICATION.md only when no nearer recipe exists",
-        "Agent never selects a VERIFICATION.md outside the repository, even when the changed path is absolute and a parent directory holds one",
-        "Agent resolves a deleted file whose directory is gone without entering the directory, and still finds the nearest recipe above it",
+        "Agent finds the nearest recipe for a deleted file whose directory is gone by walking up from its nearest existing ancestor",
         "Agent runs the selected recipe's Launch, Doctor, Drive and Cleanup sections rather than inventing a live run",
         "The behaviour row cites the recipe's Drive command with its exit code and reads live-verified only after that run passed",
         "Agent does NOT look for a verification skill under .claude/"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Is step 1 of docs/specs/slug.md done? Every script passes. C1.1 and C2.1 are passing tests, and C3.1 is an inspection: the README shows how to call slugify. The README has no usage example yet.",
+      "expected_output": "Runs the scripts and C1.1 and C2.1, inspects the README for C3.1 and records it as not met, and reports the step as not met naming C3.1, without the words done or passing.",
+      "files": [],
+      "expectations": [
+        "Records C3.1 as not met after reading README.md",
+        "Says the step is not met or blocked and names C3.1, even though every command passed",
+        "Does not use the words done, fixed, passing or complete for the step"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Verify step 2 of docs/specs/session.md. It serves R4, and R4's only criterion C4.1 has no check written yet. All scripts pass.",
+      "expected_output": "Gives C4.1 a row reading (no check) and not run, reports the step as not met naming C4.1, and does not invent a check for it.",
+      "files": [],
+      "expectations": [
+        "C4.1 has a row with (no check) as its command and not run as its result",
+        "Does not write or run a check of its own for C4.1",
+        "Reports the step as not met naming C4.1, without the words done or passing"
       ]
     }
   ]

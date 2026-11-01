@@ -19,7 +19,7 @@
         "Reports every surviving guard deletion as a High finding citing the guard's file:line and the test that should have failed",
         "Lists each rejecting guard left unsampled with its reason, and records a guard the compiler covers as not sampled rather than killed",
         "Reports on the Guard deletion line how many rejecting guards the diff added, how many were sampled with which test command, how many survived, and the unsampled ones with reasons, or that the diff added no rejecting guard",
-        "Runs each acceptance criterion's command as the brief names it on the reviewed revision rather than trusting the author's rows, reports a criterion that fails or has no row in the author's verify block as a High naming the criterion by its sentence, and prints an Acceptance line with the counts run, pass and fail or missing",
+        "Runs each acceptance criterion's command as the brief names it on the reviewed revision rather than trusting the author's rows, reports a criterion that fails or has no row in the author's verify block as a High naming the criterion by its sentence, and prints a Criteria line with the counts run, pass and fail or missing",
         "Does not demote a design or maintainability finding below the severity its consequence earns",
         "Prints a severity-ranked findings table with stable R-prefixed ids and a detail section per finding",
         "Severity values are limited to Critical, High, Medium and Low",
@@ -49,7 +49,7 @@
     {
       "id": 3,
       "prompt": "Please look at the review comments on https://github.com/example/example/pull/1234 and check whether they are addressed. Double check if the new PR comment is valid. CI is red on the PR too.",
-      "expected_output": "Every review thread is enumerated with gh api including resolved and outdated state, each unresolved and non-outdated comment is judged for correctness before any change is made, the incorrect comment is pushed back on with evidence rather than implemented, replies are posted on the threads, every failing check is read and classified as stale base, defect, suspected flake or gap before any rerun, and the closing report gives the remaining unresolved and non-outdated count next to the state of each check.",
+      "expected_output": "Every review thread is enumerated with gh api including resolved and outdated state, each unresolved and non-outdated comment is judged for correctness before any change is made, the incorrect comment is pushed back on with evidence rather than implemented, replies are posted on the threads, every failing check is read and classified as stale base, upstream, defect or suspected flake before any rerun, and the closing report gives the remaining unresolved and non-outdated count next to the state of each check.",
       "files": [],
       "expectations": [
         "Fetches review threads with `gh api` rather than fetching or scraping the pull request web page",
@@ -75,38 +75,6 @@
     },
     {
       "id": 4,
-      "prompt": "Please do a second check. Two comments are still unresolved and not marked outdated. Are they addressed?",
-      "expected_output": "The skill re-runs the scope commands and re-fetches the threads from scratch rather than reusing the earlier result, classifies each earlier finding or comment as fixed, not fixed, or no longer applicable with a line reference, reviews the new hunks as a fresh change, and verifies before claiming resolution.",
-      "files": [],
-      "expectations": [
-        "Re-runs the diff and re-fetches review threads from scratch instead of re-printing the previous report",
-        "Re-runs the GraphQL reviewThreads query rather than reusing the earlier response",
-        "Classifies each previous finding or comment as fixed, not fixed, or no longer applicable",
-        "Cites the file:line that fixes each item claimed as fixed",
-        "Reviews the newly added hunks as a fresh change rather than only ticking off the old list",
-        "Calls the verify skill and pastes its report block before saying the items are resolved",
-        "Reports an explicit count of remaining unresolved and non-outdated threads",
-        "Does not claim all comments are addressed without that count"
-      ]
-    },
-    {
-      "id": 5,
-      "prompt": "Do a general review without using the skill, just a quick look at the changes between this branch and main.",
-      "expected_output": "A low-ceremony pass: no personas, no severity table, no ids, reported as short prose grouped by file, while still fetching, using the three-dot diff, reading past the hunks, and citing a line behind every point raised.",
-      "files": [],
-      "expectations": [
-        "Produces prose notes grouped by file rather than a severity-ranked table",
-        "Does not assign R-prefixed ids or severity labels",
-        "Does not fan out to persona subagents",
-        "Still runs `git fetch origin main` and uses `git diff origin/main...HEAD` with three dots",
-        "Still reads the changed files beyond the diff hunks",
-        "Still cites file:line behind every point raised",
-        "Writes no plan file and edits no code",
-        "Says plainly if nothing needs changing rather than inventing findings"
-      ]
-    },
-    {
-      "id": 6,
       "prompt": "Get a second opinion on this branch: run an adversarial review with another model and tell me where they agree.",
       "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, the review tier from the models rule and Codex through its plugin when present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into R ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
       "files": [],
@@ -120,6 +88,44 @@
         "Groups the findings under act on, consider, noted and dismissed, each with a Raised by line",
         "States the agreement count: how many merged findings every reviewer raised and how many only one did",
         "Edits no code, commits nothing, posts nothing on the PR and does not offer to start fixing the act-on bucket"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "As a principal software architect, do a review and audit of the existing codebase. DO NOT modify code. Just write out a plan if you detect any issues.",
+      "expected_output": "Review in audit mode runs read-only across the whole repo, fans out to parallel personas, and produces a single plan file under docs/plans/. No source file is edited, no branch is created, nothing is staged or committed.",
+      "files": [],
+      "expectations": [
+        "Uses no Edit tool call on any file",
+        "Uses no Write tool call except for the single plan file under docs/plans/",
+        "Runs no state-changing git command (no checkout -b, add, commit, stash, restore, push)",
+        "Defaults the scope to the whole repo without asking the user to narrow it",
+        "Launches multiple persona subagents in a single message so they run concurrently",
+        "Persona set covers principal engineer, security engineer, test engineer and technical writer lenses",
+        "Every reported finding cites a concrete file path and line number",
+        "Writes exactly one plan file at docs/plans/YYYY-MM-DD-HHMM-<slug>.md",
+        "Plan contains a scope section, a severity-ranked findings table, per-finding detail, and a remediation order",
+        "Does not stage or commit the plan file",
+        "Chat reply gives the plan path and a severity count rather than pasting the whole plan"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Please take a look at @docs/plans/2026-09-02-1130-token-rotation-plan.md and see if it has merits. Critique the approach, see if the concerns are valid. Any changes or issues we should address?",
+      "expected_output": "The skill enters plan critique mode: it reads the plan, checks every claim it makes about the codebase against the actual code, classifies each stated concern as valid, already mitigated, or not a real problem with evidence, names hidden risks, and writes a critique file without touching the plan being critiqued or any code.",
+      "files": [
+        "docs/plans/2026-09-02-1130-token-rotation-plan.md"
+      ],
+      "expectations": [
+        "Reads the referenced plan document in full before commenting",
+        "Does not edit the plan document being critiqued",
+        "Does not edit any source file and creates no branch",
+        "Verifies each claim the plan makes about the codebase against real files, citing file:line",
+        "Produces a verdict per stated concern: valid, already mitigated, or not a real problem",
+        "Flags any concern that is already handled in the code, citing the line that handles it",
+        "Names hidden risks the plan does not mention, such as migration, backwards compatibility, error paths or half-finished state",
+        "Writes the critique to a new docs/plans/YYYY-MM-DD-HHMM-<slug>-critique.md file",
+        "Ends with lettered options and a stated recommendation"
       ]
     }
   ]

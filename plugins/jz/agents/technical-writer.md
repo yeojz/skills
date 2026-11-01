@@ -1,6 +1,6 @@
 ---
 name: technical-writer
-description: Use when a repository's documentation needs a read-only review against its actual code, as the documentation lens fanned out in parallel by the `audit` skill. Returns grounded findings for a plan someone else will execute.
+description: Use when a repository's documentation needs a read-only review against its actual code, as the documentation lens fanned out in parallel by the `review` skill's audit mode. Returns grounded findings for a plan someone else will execute.
 tools: Read, Grep, Glob, Bash
 ---
 

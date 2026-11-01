@@ -26,7 +26,7 @@ morning. Merge stays the owner's click on GitHub.
 ### Step 1: Read the roadmap and the standing orders
 
 ```bash
-ls AGENTS.md CONTEXT.md docs/roadmap.md docs/design.md 2>/dev/null
+ls AGENTS.md CONTEXT.md docs/specs docs/roadmap.md 2>/dev/null
 ls docs/adr 2>/dev/null
 awk '/^## /{p = ($0 == "## Standing orders")} p' AGENTS.md
 ```
@@ -36,9 +36,16 @@ next level-two heading whatever its name, so a following `## Security notes`
 section never leaks into a brief. It prints nothing when the heading is
 missing.
 
-Read every file that exists. A repo with no `docs/roadmap.md` has nothing to
-coordinate: say so and offer `grill` in kickoff mode, which writes the
-roadmap, the glossary and the standing orders.
+Read every file that exists. The roadmap is the Steps section of a spec in
+`docs/specs/`; an older `docs/roadmap.md` is read the same way. Throughout
+this skill, a row is a spec step, its depends-on is the step's Blocked by,
+its owns and you-see are the step's fields, its builds is the step's title,
+its done means is the repo's gate plus the behaviour level its drive evals
+reach, and its acceptance list is the evals of the requirements the step
+serves, each eval's check being the criterion's command (an inspection
+eval's written criterion counts as its command). A spec whose status line doesn't read `evals signed
+off` is not ready: offer the `eval` skill. A repo with no spec has nothing
+to coordinate: offer `grill` in spec mode, then `eval`.
 
 The standing orders are the lines every worker and reviewer must follow. They
 live under one `## Standing orders` heading in the repo's `AGENTS.md` and are
@@ -91,12 +98,13 @@ A roadmap row carries depends on, owns, builds, you see, done means,
 acceptance and review gate. Print the candidate rows:
 
 ```bash
-grep -n -i 'not scoped' docs/roadmap.md
-grep -n -i -A4 '^acceptance:' docs/roadmap.md
+grep -n -E '^### Step|^- (Serves|Blocked by):' docs/specs/<slug>.md
+sed -n '/^## Evals/,/^## Steps/p' docs/specs/<slug>.md
 ```
 
-The second grep prints each row's acceptance list, so a row without one and
-a line without a command are seen before the brief is filled.
+The first prints each step with the requirements it serves; the second the
+Evals table, so a requirement with no eval is seen before the brief is
+filled.
 
 Refuse to start a row that has a `not scoped` field or a missing one. The
 field is a question, so ask it as a lettered question or hand it to `grill`,
@@ -105,9 +113,8 @@ yourself.
 
 The acceptance field is a list, one criterion per line as a sentence plus
 the command that proves it. A row with no list, or with a criterion that
-names no command, is not scoped in the same way: the missing command is the
-question, it goes to `grill` or to the owner as lettered options, and the
-row waits. Never write a criterion or its command yourself.
+names no command, is not scoped in the same way: the missing check is the
+question, it goes to `eval`, and the row waits. Never write a criterion or its command yourself.
 
 A row whose dependency is an unmerged PR is not blocked: base the worker's
 branch on that PR's branch and record the parent tip it starts from, because
@@ -137,7 +144,7 @@ question the worker will stall on.
 | Field | Filled from |
 |---|---|
 | Read order | `AGENTS.md`, `CONTEXT.md`, the ADRs, this roadmap row, the previous unit's hand-over note in the notes folder |
-| Decisions already made | The ADRs and `docs/design.md` lines that touch this row, plus any base-on-branch decision from Step 3 |
+| Decisions already made | The ADRs and the spec's Decisions lines that touch this row, plus any base-on-branch decision from Step 3 |
 | Scope and owns | The row's owns and builds fields, as absolute paths |
 | Not asked for now | The neighbouring rows, so the worker stops at the boundary |
 | Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the value the `behaviour` row of the `verify` report must reach (`live-verified`, `unit-only` or `type-check-only`), and any conformance or fixture run; a repository with a `VERIFICATION.md` reaches `live-verified` through its Drive section |
@@ -306,7 +313,7 @@ Sort it:
 
 | Tier | Members | Do |
 |---|---|---|
-| ADR-tier | Public API shape, data model, a new dependency, a specification interpretation, anything that would earn an ADR, and anything the kickoff listed as owner-decided | Present lettered options with a recommendation to the owner, move the row to `parked`, keep draining the other rows, and never decide it in the owner's absence |
+| ADR-tier | Public API shape, data model, a new dependency, a specification interpretation, anything that would earn an ADR, and anything grill's hand-back listed as owner-decided | Present lettered options with a recommendation to the owner, move the row to `parked`, keep draining the other rows, and never decide it in the owner's absence |
 | Everything else | Naming inside a package, test layout, an internal helper's shape, the order of two commits | Decide it, write a `decisions.tsv` row of kind `fork` with the choice and the reason, tell the worker, and name it in the next report so it can be reversed |
 
 When the owner answers, append a `decisions.tsv` row with the same `unit`
@@ -331,7 +338,7 @@ row that disagrees with `gh pr view` is corrected in the file first.
 |---|---|
 | Typing a phase brief from memory | Read `template-phase.md` and fill every field. A blank field is where the worker stalls |
 | Starting a row with a `not scoped` field | The field is a question. Ask it or hand it to `grill`; start the next scoped row |
-| Starting a row with no acceptance list, or with a criterion that names no command | The row is not scoped. The command is the question, for `grill` or the owner; never write a criterion yourself |
+| Starting a row with no acceptance list, or with a criterion that names no command | The row is not scoped. The missing check goes to `eval`; never write a criterion yourself |
 | Moving a row to `ready` with a criterion missing from the `verify` block, or reading `not run` | One line back to the worker naming the criterion. Every criterion has a row with its command, exit code and `pass` before the row is `ready` |
 | Reviewing in the worker session, or in this one | The reviewer is a fresh session on the review tier and never the implementer |
 | Forking the coordinator's context into a worker | Fresh context plus the brief. The ledgers and notes carry what it needs |

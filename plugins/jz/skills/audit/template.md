@@ -4,7 +4,7 @@
 Filename: docs/plans/YYYY-MM-DD-HHMM-<slug>.md
 Plans are working documents and are not committed. Never stage `docs/plans/`,
 `.plans/` or `.claude/`. Editing this file during a run is expected: the
-`execute-plan` skill writes status back into it item by item.
+`execute` skill writes status back into it item by item.
 -->
 
 Date: <YYYY-MM-DD HH:MM>
@@ -34,7 +34,7 @@ the basis of a finding.
 Ids are stable, sequential and prefixed `A`: `A1`, `A2`, `A3`. Once assigned
 they are never renumbered, because remediation entries and status records
 reference them by name. Rows are sorted Critical first. Every row starts at
-`not started`; `execute-plan` updates the status column.
+`not started`; `execute` updates the status column.
 
 | ID | Severity | Location | Finding | Suggested fix | Status |
 |---|---|---|---|---|---|

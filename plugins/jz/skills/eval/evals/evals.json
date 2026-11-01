@@ -1,0 +1,49 @@
+{
+  "skill_name": "eval",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Write the evals for docs/specs/dry-run.md in /tmp/eval-eval-1-ws. It has R1 (--dry-run prints the changes without writing) and R2 (exit code 0 on a dry run with changes).",
+      "expected_output": "Reads the spec and the repo's scripts, picks the CLI as the seam, writes at least one eval per requirement with a scenario, pass criterion and an exact check, runs what can run and records fail, not met or not written, then waits for sign-off.",
+      "files": [],
+      "expectations": [
+        "Reads package.json scripts or the Makefile before choosing checks",
+        "Every requirement has at least one E<r>.<n> row with a scenario, a pass criterion and a check",
+        "Each check names an exact command, a Drive step or a written inspection criterion; none is invented",
+        "Every runnable check is run once and recorded as fail or not met; a test not yet written is recorded as not written",
+        "Waits for the owner's sign-off before setting the spec status"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "eval this spec: docs/specs/readme-refresh.md in /tmp/eval-eval-2-ws. The repo is plain markdown with a Makefile that only has a 'lint' target running markdownlint.",
+      "expected_output": "Uses command checks (make lint, grep) and inspection checks with a written criterion; does not invent a test runner or test command.",
+      "files": [],
+      "expectations": [
+        "Uses command checks drawn from the Makefile or standard tools such as grep, and inspection checks with a written criterion",
+        "Does NOT name a test runner or test command the repo does not have",
+        "Each inspection eval states what to read and what counts as met"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Write evals for R4 in docs/specs/session.md: 'the session code should be more maintainable'.",
+      "expected_output": "Refuses to invent a criterion for an unobservable requirement and sends it back to grill with the question that would settle it.",
+      "files": [],
+      "expectations": [
+        "Does not write an eval for R4 as given",
+        "Names R4 as having no observable outcome and hands it back to grill with a concrete question"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Write the evals for docs/specs/retry.md. R1 says failed requests are retried three times. The code already retries three times today.",
+      "expected_output": "Runs the check, sees it already passes, and stops to tell the owner the requirement is already met or the eval cannot discriminate, rather than recording a pass as proof.",
+      "files": [],
+      "expectations": [
+        "Runs the check for R1 before sign-off",
+        "On finding it already passes, does not record it as a proof; says the requirement is already met or rewrites the eval so it can fail"
+      ]
+    }
+  ]
+}

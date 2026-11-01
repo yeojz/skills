@@ -18,17 +18,17 @@
     {
       "id": 2,
       "prompt": "kick off a new serverless OpenID Connect provider library in this empty repo, with docs. The old oidclib repo at ../oidclib is a reference but not the truth.",
-      "expected_output": "The agent creates a task branch in its own worktree before writing anything, reads the predecessor for facts only, runs the interview in rounds, writes CONTEXT.md the turn the first term is resolved, writes an ADR only for a decision that is hard to reverse, surprising and a real trade-off, records the other decisions in docs/design.md with their round and letter, adds a Standing orders section to AGENTS.md, and seeds docs/roadmap.md rows with depends on, owns, builds, you see, done means and review gate. It hands back the files written, the ADR-tier list and the first fully scoped row, and does not commit.",
+      "expected_output": "Spec mode. Branches into its own worktree, names facts taken from the predecessor repo without copying its decisions, writes CONTEXT.md as terms resolve, writes docs/specs/<slug>.md with Requirements, Decisions and Steps as decisions land, records most decisions as spec Decisions lines and only bar-passing ones as ADRs, adds Standing orders to AGENTS.md, and hands back naming eval as next.",
       "files": [],
       "expectations": [
         "A task branch exists in its own worktree before the first file is written; nothing is written on the default branch",
         "Facts taken from the predecessor repository are named as such and no decision is copied from it",
         "CONTEXT.md is written in the same turn the first term is resolved, not at the end",
-        "At least one decision is recorded in docs/design.md rather than as an ADR, and any ADR written satisfies all three tests",
+        "docs/specs/<slug>.md is written with Requirements, Decisions and Steps sections and an empty Evals section; no docs/design.md or docs/roadmap.md is written",
+        "Every step names the requirements it serves and the steps that block it",
+        "Most decisions are Decisions lines; any ADR written satisfies all three tests and is linked from its Decisions line",
         "AGENTS.md gains a Standing orders section",
-        "docs/roadmap.md rows carry depends on, owns, builds, you see, done means and review gate, with not scoped where the interview has not settled a field",
-        "The hand-back lists the ADR-tier list and names the first fully scoped roadmap row",
-        "No commit is made; pr is offered instead"
+        "The hand-back lists the ADR-tier list and names eval as the next skill; no commit is made"
       ]
     },
     {
@@ -45,13 +45,13 @@
     {
       "id": 4,
       "prompt": "The account should be able to have several users, and each user logs in with their account credentials.",
-      "expected_output": "The agent spots that account and user are being used for two different things and for the same thing within one sentence, names the conflict against the glossary or proposes canonical terms, invents a concrete scenario that probes the boundary, and in kickoff mode writes the resolved terms into CONTEXT.md with the avoided words listed.",
+      "expected_output": "The agent spots that account and user are being used for two different things and for the same thing within one sentence, names the conflict against the glossary or proposes canonical terms, invents a concrete scenario that probes the boundary, and in spec mode writes the resolved terms into CONTEXT.md with the avoided words listed.",
       "files": [],
       "expectations": [
         "The agent names the term conflict explicitly and asks which meaning is intended",
         "The agent proposes canonical terms and lists the alternatives as avoided",
         "A concrete scenario is used to probe the boundary between the two concepts",
-        "In kickoff mode CONTEXT.md is updated in the same turn the terms are resolved"
+        "In spec mode CONTEXT.md is updated in the same turn the terms are resolved"
       ]
     },
     {
@@ -68,14 +68,13 @@
     },
     {
       "id": 6,
-      "prompt": "4A. Add the roadmap row for the session cookie phase. Done means pnpm test is green. It must refuse a tampered cookie with 401, and a cookie past its TTL must be refused too.",
-      "expected_output": "In kickoff mode the agent writes the row with an Acceptance list, one criterion per line as a sentence followed by the command that proves it. It reads the test files or the nearest VERIFICATION.md, or dispatches a subagent to, for the command behind each criterion; where none exists yet it asks for the command as lettered options drawn from the repo's scripts, test names or recipe steps rather than writing the sentence alone. A criterion the user declines to give a command for is dropped and named as dropped. A criterion whose command drives the running system cites a Drive step of the nearest VERIFICATION.md and the row says the phase adds that step. The row is not named as fully scoped until every criterion carries its command.",
+      "prompt": "4A. Add the requirement for the session cookie: it should be secure and the code should be cleaner. Spec mode.",
+      "expected_output": "The agent refuses to write 'secure' or 'cleaner' as requirements because nobody could observe them, asks what would be different (for example a tampered cookie refused with 401) as lettered options, and writes no evals or test commands into the spec.",
       "files": [],
       "expectations": [
-        "The roadmap row carries an Acceptance field with one criterion per line, each a sentence followed by the command that proves it",
-        "No criterion is written as a sentence without a command; a missing command is asked for as lettered options from the repo's scripts, tests or recipe steps, or the criterion is dropped and the drop is stated",
-        "The command for a criterion that drives the running system is a Drive step of the nearest VERIFICATION.md, with adding the step named as part of the phase, not a command typed into the roadmap",
-        "The row is reported as fully scoped only once every criterion has its command; until then it is a question for the next round"
+        "Does not write 'secure' or 'cleaner' as a requirement as given",
+        "Asks what someone would observe, offering concrete observable outcomes as lettered options, or drops the requirement and says so",
+        "Does not add an Evals entry, acceptance command or test command to the spec; that is left to the eval skill"
       ]
     }
   ]

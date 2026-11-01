@@ -59,7 +59,7 @@
     {
       "id": 4,
       "prompt": "Do an assessment of the repo to make sure there are no code smells or risks. Write a plan file with the identified issues and suggested fixes. DO NOT EDIT ANY CODE AT THIS TIME.",
-      "expected_output": "A whole-repo audit producing a correctly located and correctly structured plan file whose findings carry stable ids that execute-plan can reference later.",
+      "expected_output": "A whole-repo audit producing a correctly located and correctly structured plan file whose findings carry stable ids that execute can reference later.",
       "files": [],
       "expectations": [
         "Runs `date` or an equivalent to get the real timestamp for the filename rather than guessing a date",

@@ -183,13 +183,13 @@ and never stage `docs/plans/` or `.plans/`.
 
 Read `template.md` from this skill's directory and fill it in. It is the
 single source for the plan's shape; do not restructure it, and do not add
-sections it does not have. `execute-plan` writes status back into the same
+sections it does not have. `execute` writes status back into the same
 file, so the columns and the status vocabulary must be the template's.
 
 Rules the template does not state for you:
 
 - IDs are stable, sequential, and prefixed `A`: `A1`, `A2`, `A3`. Never renumber
-  them after writing, because `execute-plan` references them by name.
+  them after writing, because `execute` references them by name.
 - Persona ids such as `PE1`, `SEC1`, `TE1` and `TW1` are working ids from the
   subagent returns. Assign each surviving finding an `A` id once, when writing
   the plan; the persona id does not appear in the plan.
@@ -208,7 +208,7 @@ Rules the template does not state for you:
 
 In the chat reply give the plan path, the count by severity, and the two or
 three findings that actually matter. Do not paste the whole plan. Do not offer
-to start fixing unless the user asks; if they do, that is the `execute-plan`
+to start fixing unless the user asks; if they do, that is the `execute`
 skill and it starts with a branch.
 
 ### Step 8: Plan critique mode
@@ -260,10 +260,10 @@ the recommendation.
 | Running one general-purpose pass instead of parallel personas | Fan out one subagent per lens in a single message. Fan-out is the default. Without subagents, run one persona file at a time and say so in the plan's scope. |
 | Merging the security and test lenses into one persona | One lens per persona. Merged lenses drop findings from both. |
 | Auditing paths the user told you to ignore | Exclude them from every persona prompt and record the exclusion in the plan's scope. |
-| Renumbering findings between drafts | IDs are stable once written. `execute-plan` references `A1`, `A2` by name. |
-| Writing the plan from memory of the structure instead of the template | Read `template.md` from this skill's directory and fill it in. The columns and status vocabulary must match, because `execute-plan` writes into them. |
+| Renumbering findings between drafts | IDs are stable once written. `execute` references `A1`, `A2` by name. |
+| Writing the plan from memory of the structure instead of the template | Read `template.md` from this skill's directory and fill it in. The columns and status vocabulary must match, because `execute` writes into them. |
 | A remediation item too big for one subagent | Split until each item is one concern in one area, independently verifiable. |
 | Inventing a verification command | Read `package.json` scripts and cite those. Workspace coverage usually needs `pnpm --filter <pkg> test:ci --project <project>`. |
 | Flagging a documented, deliberate decision as a defect | Read `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` first. |
-| Offering to fix everything at the end of the audit | Report and stop. Fixing is `execute-plan`, and it starts with a branch. |
+| Offering to fix everything at the end of the audit | Report and stop. Fixing is `execute`, and it starts with a branch. |
 | Treating a diff or a PR as an audit target | That is `review`. `audit` is target-scoped and always writes a plan file. |

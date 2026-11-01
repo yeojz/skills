@@ -82,7 +82,7 @@ Makefile target. The same names apply to both:
 | build | `build`, `build:ci` |
 | cross-runtime | `test:bun`, `test:deno`, `test:platform-*`, `test:dist-*` |
 | validate | `validate`, `check` (a single repo-wide gate, common in a Makefile) |
-| acceptance | the Acceptance list of the phase brief or the roadmap row, one concern per criterion, its command the one the list names; "no list" when neither carries one |
+| acceptance | the Acceptance list of the phase brief or the roadmap row, or the evals of the requirements a spec step serves, one concern per criterion, its command the one the list names; "no list" when none carries one |
 | behaviour | the nearest `VERIFICATION.md`, found as described below; "no recipe" when there is none |
 
 The `behaviour` concern has a different source: a repository that can be driven
@@ -137,7 +137,10 @@ criterion whose command drives the running system cites a Drive step of the
 nearest `VERIFICATION.md`; when the step is not in the recipe yet, adding it
 is part of the same change, in the Drive section with a line in the recipe's
 acceptance map, so the recipe stays the one place the drive commands live
-and the roadmap never carries a second copy. A criterion with no command, or
+and the roadmap never carries a second copy. An `inspection` eval from a spec has
+no command: its row names what was read or done and the written criterion,
+and its result is `met` or `not met` from that inspection, never `not run`
+once it was carried out. A criterion with no command, or
 whose Drive step is absent from the recipe, keeps its row in Step 8 with
 `(no command)` as its command and `not run` as its result, and is reported as
 not met; this skill does not write a command for it.

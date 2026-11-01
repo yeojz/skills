@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Please branch, fix the pnpm audit issue and open a PR.",
-      "expected_output": "Mode 1. Creates a branch before touching any file, detects pnpm from pnpm-lock.yaml, gathers findings from pnpm audit and from the GitHub Dependabot alerts API, presents a deduplicated triage table keyed on GHSA id with severity, dependency path, production or development scope and whether a fixed version exists. Applies the remedy ladder: upgrade first, scoped exact-version override only if no upgrade path exists, and does not reach for an ignore. Re-runs pnpm audit and pastes the real output as proof, calls the verify skill, then hands off to ship for the commit and draft PR.",
+      "expected_output": "Mode 1. Creates a branch before touching any file, detects pnpm from pnpm-lock.yaml, gathers findings from pnpm audit and from the GitHub Dependabot alerts API, presents a deduplicated triage table keyed on GHSA id with severity, dependency path, production or development scope and whether a fixed version exists. Applies the remedy ladder: upgrade first, scoped exact-version override only if no upgrade path exists, and does not reach for an ignore. Re-runs pnpm audit and pastes the real output as proof, calls the verify skill, then hands off to pr for the commit and draft PR.",
       "files": [],
       "expectations": [
         "Runs git rev-parse --abbrev-ref HEAD or equivalent and creates a branch before editing any file",
@@ -17,13 +17,13 @@
         "Does not add an audit ignore entry when a fixed version exists",
         "Re-runs pnpm audit after the fix and pastes the actual command output rather than asserting the audit is clean",
         "Calls the verify skill before reporting completion",
-        "Hands off to the ship skill for the commit, push and PR instead of running git commit or gh pr create directly"
+        "Hands off to the pr skill for the commit, push and PR instead of running git commit or gh pr create directly"
       ]
     },
     {
       "id": 2,
       "prompt": "For all GitHub Actions, can we pin them to the latest versions, and via hash rather than via version, for security reasons?",
-      "expected_output": "Mode 2. Branches first, inventories every uses: reference under .github/, resolves each action to its latest release tag and then to that release's full 40 character commit SHA via the GitHub API, dereferencing annotated tag objects to reach the commit. Rewrites each reference as owner/repo@<sha> with the version as a trailing comment. Reads GitHub's secure-use documentation for the pinning guidance rather than asserting it from memory. Flags any action running on a deprecated Node runtime, checking the currently supported runtimes against live docs. Validates the workflow files still parse and that no uses: line remains on a tag, then calls verify and hands off to ship.",
+      "expected_output": "Mode 2. Branches first, inventories every uses: reference under .github/, resolves each action to its latest release tag and then to that release's full 40 character commit SHA via the GitHub API, dereferencing annotated tag objects to reach the commit. Rewrites each reference as owner/repo@<sha> with the version as a trailing comment. Reads GitHub's secure-use documentation for the pinning guidance rather than asserting it from memory. Flags any action running on a deprecated Node runtime, checking the currently supported runtimes against live docs. Validates the workflow files still parse and that no uses: line remains on a tag, then calls verify and hands off to pr.",
       "files": [],
       "expectations": [
         "Creates a branch before editing any workflow file",
@@ -35,13 +35,13 @@
         "Fetches GitHub documentation for workflow syntax or secure use before or while editing, and cites the URL",
         "Checks each action's runs.using against currently supported runtimes from live documentation rather than asserting which Node major is deprecated from memory",
         "Verifies after editing that no uses: line still references a tag or branch",
-        "Calls the verify skill and then hands off to ship rather than committing directly"
+        "Calls the verify skill and then hands off to pr rather than committing directly"
       ]
     },
     {
       "id": 3,
       "prompt": "Please set minimumReleaseAge to 1 week for npm, and add a cooldown for Dependabot.",
-      "expected_output": "Mode 3. Branches first, then fetches the pnpm dependency-resolution settings page and the GitHub Dependabot options reference before writing anything, and cites both URLs. Confirms from the live docs that pnpm install-time settings belong in pnpm-workspace.yaml rather than .npmrc or package.json, and that minimumReleaseAge is expressed in minutes, converting one week to 10080 and showing the arithmetic. Adds cooldown nested under the relevant updates entry in .github/dependabot.yml, confirming the sub-key names and permitted day range against the reference. Validates the YAML parses, notes that GitHub reports dependabot.yml errors only after the file is pushed, calls verify and hands off to ship.",
+      "expected_output": "Mode 3. Branches first, then fetches the pnpm dependency-resolution settings page and the GitHub Dependabot options reference before writing anything, and cites both URLs. Confirms from the live docs that pnpm install-time settings belong in pnpm-workspace.yaml rather than .npmrc or package.json, and that minimumReleaseAge is expressed in minutes, converting one week to 10080 and showing the arithmetic. Adds cooldown nested under the relevant updates entry in .github/dependabot.yml, confirming the sub-key names and permitted day range against the reference. Validates the YAML parses, notes that GitHub reports dependabot.yml errors only after the file is pushed, calls verify and hands off to pr.",
       "files": [],
       "expectations": [
         "Creates a branch before editing pnpm-workspace.yaml or .github/dependabot.yml",
@@ -53,7 +53,7 @@
         "Confirms which cooldown sub-keys are supported for the ecosystem being configured instead of assuming all of them apply",
         "Reads the existing pnpm-workspace.yaml and dependabot.yml and preserves existing keys rather than overwriting the files",
         "Validates the resulting YAML parses and does not claim the Dependabot config is valid on a local parse alone",
-        "Calls the verify skill and then hands off to ship"
+        "Calls the verify skill and then hands off to pr"
       ]
     },
     {
@@ -76,7 +76,7 @@
     {
       "id": 5,
       "prompt": "Can we add CVE-2025-12345 to the pnpm auditConfig ignore temporarily?",
-      "expected_output": "Mode 1 ending at the ignore rung. Treats the user's wording as intent rather than schema: fetches the pnpm audit documentation to confirm the current key name and file before writing anything, and reports that auditConfig.ignoreCves is no longer recognised and that the ignore list keys on GHSA ids in pnpm-workspace.yaml. Resolves CVE-2025-12345 to its GHSA id and confirms the mapping. Checks the upgrade and scoped override rungs first and reports why each is unavailable. Then adds the ignore with a reason comment and an explicit expiry date in YYYY-MM-DD form, defaulting to 90 days out since the user only said temporarily, records the same three facts in the PR body under Trade-offs, re-runs the audit with pasted output, and hands off to ship.",
+      "expected_output": "Mode 1 ending at the ignore rung. Treats the user's wording as intent rather than schema: fetches the pnpm audit documentation to confirm the current key name and file before writing anything, and reports that auditConfig.ignoreCves is no longer recognised and that the ignore list keys on GHSA ids in pnpm-workspace.yaml. Resolves CVE-2025-12345 to its GHSA id and confirms the mapping. Checks the upgrade and scoped override rungs first and reports why each is unavailable. Then adds the ignore with a reason comment and an explicit expiry date in YYYY-MM-DD form, defaulting to 90 days out since the user only said temporarily, records the same three facts in the PR body under Trade-offs, re-runs the audit with pasted output, and hands off to pr.",
       "files": [],
       "expectations": [
         "Creates a branch before editing pnpm-workspace.yaml",
@@ -87,9 +87,9 @@
         "Writes the ignore entry with a reason comment explaining why the risk is accepted",
         "Writes an explicit expiry date in YYYY-MM-DD form rather than accepting temporarily as an expiry",
         "Defaults the expiry to roughly 90 days out because the user gave no date, and says so",
-        "Records the advisory id, reason and expiry in the PR body handed to ship, under Trade-offs",
+        "Records the advisory id, reason and expiry in the PR body handed to pr, under Trade-offs",
         "Re-runs pnpm audit and pastes the output showing the finding is now suppressed",
-        "Calls the verify skill and hands off to ship rather than committing directly"
+        "Calls the verify skill and hands off to pr rather than committing directly"
       ]
     }
   ]

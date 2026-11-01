@@ -11,7 +11,7 @@
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/require-ship-skill.sh\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/require-pr-skill.sh\"",
             "timeout": 10
           },
           {

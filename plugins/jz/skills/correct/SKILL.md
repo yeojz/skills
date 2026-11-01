@@ -114,7 +114,7 @@ and why the ones above it do not, and proceed.
 
 ### Step 4: Branch, then write the fix in its own commit
 
-Work in the task's worktree as the `ship` skill's Step 1 describes, never on
+Work in the task's worktree as the `pr` skill's Worktree section describes, never on
 the default branch. The fix is one commit that does nothing else: no
 unrelated tidying, no second class, no symptom fix for the occurrence that
 triggered the run. If the triggering occurrence still needs its own fix,
@@ -210,7 +210,7 @@ the fix.
 ### Step 7: Verify, commit and report
 
 Run the `verify` skill over the fixed tree and paste its report block. Then
-commit and hand the push and the PR to `ship`, in whatever mode the user
+commit and hand the push and the PR to `pr`, in whatever mode the user
 asked for.
 
 The report carries:
@@ -246,4 +246,4 @@ in this session.
 | Copying the fix from a `git status --short` listing | A new directory is one `?? dir/` entry and `cp -p` of it fails, so the red run fails for the wrong reason. Enumerate files with `git ls-files -z`, stop on a copy error, and diff the two status listings before reconstructing |
 | An enforcement row that names no runnable thing | Name the file and the script or workflow that runs it |
 | Weakening the check so the current tree passes | Root-cause the current red; the verification rule forbids the shortcut |
-| Writing the fix on the default branch | Branch first, as `ship` Step 1 describes |
+| Writing the fix on the default branch | Branch first, as the `pr` skill's Worktree section describes |

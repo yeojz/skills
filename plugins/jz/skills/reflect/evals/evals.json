@@ -41,7 +41,7 @@
     {
       "id": 4,
       "prompt": "1 and 3",
-      "expected_output": "The agent finds a checkout of the plugin repository rather than editing the installed plugin copy, branches there in its own worktree, applies exactly proposals 1 and 3 including the eval expectation that accompanies a skill change, counts the rule file's lines where a rule line was added, runs make validate and pastes the exit code, then hands the commit to ship and reports accepted, skipped, files and gate.",
+      "expected_output": "The agent finds a checkout of the plugin repository rather than editing the installed plugin copy, branches there in its own worktree, applies exactly proposals 1 and 3 including the eval expectation that accompanies a skill change, counts the rule file's lines where a rule line was added, runs make validate and pastes the exit code, then hands the commit to pr and reports accepted, skipped, files and gate.",
       "files": [],
       "expectations": [
         "Edits a git checkout of the plugin repository, not the plugin cache under the install path",
@@ -54,7 +54,7 @@
     {
       "id": 5,
       "prompt": "that is prose rule 2 again, you narrated the earlier runs in the PR body. Reflect on it.",
-      "expected_output": "The agent attributes the correction to prose rule 2 and to the skill that wrote the body, pr-desc. It proposes sharpening the rule line without renumbering, and a pr-desc Common Mistakes row or eval expectation that would have caught it. It does not propose deleting the rule, and it waits for approval.",
+      "expected_output": "The agent attributes the correction to prose rule 2 and to the skill that wrote the body, pr. It proposes sharpening the rule line without renumbering, and a pr Common Mistakes row or eval expectation that would have caught it. It does not propose deleting the rule, and it waits for approval.",
       "files": [],
       "expectations": [
         "The proposal cites prose rule 2 by number and does not renumber the file",

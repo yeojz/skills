@@ -60,8 +60,8 @@ test('the command replies with the distinct skills and reopens the pane', async 
 
   await $.skill.prompt({ skill: 'verify', text: 'x', source: 'plugin', pluginName: 'jz' })
   await $.skill.prompt({ skill: 'verify', text: 'x', source: 'plugin', pluginName: 'jz' })
-  await $.skill.prompt({ skill: 'ship', text: 'y', source: 'plugin', pluginName: 'jz' })
-  expect((await $.command.run(RUN)).text).toBe('Skills used: verify, ship')
+  await $.skill.prompt({ skill: 'pr', text: 'y', source: 'plugin', pluginName: 'jz' })
+  expect((await $.command.run(RUN)).text).toBe('Skills used: verify, pr')
   expect(opened).toBe(3)
 })
 

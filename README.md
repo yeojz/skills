@@ -6,10 +6,10 @@ Codex both read. Add the marketplace on any machine and the agents behave the
 same. A second plugin, `jzc`, holds the pieces that exist only for Claude
 Code: mods written against its function hooks API.
 
-A skill loads when you type its command, `/jz:verify` or `/jz:ship`, or when
+A skill loads when you type its command, `/jz:verify` or `/jz:pr`, or when
 the brief that starts a session names it. A plain request such as "commit"
 does not load one on its own, which is why a hook denies a commit, push or
-PR create until `ship` is loaded. The rules, the personas and the hooks load
+PR create until `pr` is loaded. The rules, the personas and the hooks load
 with the plugin.
 
 ---
@@ -112,14 +112,14 @@ block headed "House rules from the jz plugin", with the project's own
 3. Prove it. `/jz:verify` runs the repo's own scripts and ends in a
    Verification block with a `behaviour` row. Without that block nothing is
    done.
-4. Ship it. `/jz:ship`, with the mode in the request: "commit" stops at the
+4. Ship it. `/jz:pr`, with the mode in the request: "commit" stops at the
    commit, "commit and push" at the push, "commit, push and open a draft PR"
-   at the draft, and "push, draft PR, gate on a clean checkout, mark ready"
-   runs through to ready. The body comes from `pr-desc`. A commit or push
-   typed before the skill is loaded is denied, with the call that unblocks it.
+   at the draft, and "... and mark ready" runs through to ready. The body is
+   written from the diff. A commit or push typed before the skill is loaded
+   is denied, with the call that unblocks it.
 5. Review it. `/jz:review` on a branch or a PR number; "check the PR comments"
    sweeps the unresolved threads.
-6. After the merge, "PR 12 merged, clean up" runs ship's cleanup: the tip
+6. After the merge, "PR 12 merged, clean up" runs the `pr` cleanup: the tip
    checks, the branch and worktree removal, and the main checkout brought
    level with the remote.
 
@@ -134,13 +134,13 @@ says what it does without it.
 
 | In the project | Read by | Without it |
 |---|---|---|
-| `.claude/` in `.gitignore` | `ship` Step 1 | `ship` offers to add it before creating a worktree; the hook refuses to stage `.claude/` or `docs/plans/` either way |
+| `.claude/` in `.gitignore` | `pr` Worktree section | `pr` offers to add it to `.git/info/exclude` before creating a worktree; the hook refuses to stage `.claude/` or `docs/plans/` either way |
 | `AGENTS.md` with a `## Standing orders` section | `coordinate`, pasted verbatim into every brief | the phase template's default block stands in, and adding the section is part of the first phase |
 | `AGENTS.md` with a `## Restricted words` list | `no-restricted-words.sh` | only the house list applies |
 | `AGENTS.md` with an `## Enforcement` table | `correct` | the first `correct` run creates it |
 | `VERIFICATION.md` at the root, or one per package | `verify`, for the `behaviour` row | the row reads what the test runs support, `unit-only` at most, unless another pasted run drove the feature |
 | `CONTEXT.md`, `docs/adr/`, `docs/design.md`, `docs/roadmap.md` | written by `grill` in kickoff mode, read by `coordinate` | `coordinate` refuses a roadmap row that is not scoped and hands it to `grill` |
-| Scripts named `format`, `lint`, `typecheck`, `test` and `build` in `package.json`, or the same targets in a `Makefile` | `verify`, `ship` | the concern is reported as "no script"; nothing is invented in its place |
+| Scripts named `format`, `lint`, `typecheck`, `test` and `build` in `package.json`, or the same targets in a `Makefile` | `verify` | the concern is reported as "no script"; nothing is invented in its place |
 
 ---
 
@@ -167,10 +167,10 @@ A change usually runs through the skills in this order. `grill` or `audit`
 settles what to build and leaves a plan. `coordinate` drives a roadmap of
 phases through the rest of the loop, one fresh session per phase and one per
 review. `execute-plan` works the plan item by item, reaching for `tdd`,
-`debug`, `coverage`, `design-critique`, `docs-sync` or `deps-guard` as the
-item demands. `verify` gates every done claim. `ship`
-commits, pushes and opens the draft PR, `pr-desc` writes its body, `review`
-handles the comments, and `release` follows a merge. `correct` turns a
+`debug`, `coverage`, `docs-sync` or `deps-guard` as the item demands.
+`verify` gates every done claim. `pr` commits, pushes, opens the draft PR
+with its body, and cleans up after the merge, and `review` handles the
+comments. `correct` turns a
 correction that came back into a check the project runs, and `reflect` turns
 one into an edit to a skill or rule here. `handoff` carries the state when
 context runs out.
@@ -182,7 +182,6 @@ context runs out.
 | `grill` | Interview a plan until nothing is assumed; in kickoff mode write the glossary, ADRs, design doc, standing orders and roadmap rows as decisions land, each row with acceptance criteria that carry the command proving them |
 | `coordinate` | Drive a roadmap to merge-ready: fill the phase and review briefs from their templates, with the row's acceptance criteria copied into the brief and checked against the worker's verify block, one fresh worker session per phase and one fresh reviewer per PR, keep the units and decisions ledgers, report one line per PR |
 | `audit` | Read-only repo assessment that writes a prioritised plan file |
-| `naming` | Lettered naming options with trade-offs, then rename everywhere |
 
 #### Build
 
@@ -193,7 +192,6 @@ context runs out.
 | `debug` | Reproduce, instrument, trace to the root cause, one fix at a time |
 | `coverage` | Raise coverage to threshold and prove it with the report |
 | `deps-guard` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
-| `design-critique` | Judging, redesigning or fixing a UI visually; needs a browser automation tool |
 | `docs-sync` | Bring READMEs, guides and doc comments back in line with the code |
 
 #### Prove it
@@ -206,10 +204,8 @@ context runs out.
 
 | Skill | Use it for |
 |---|---|
-| `ship` | Branch, format, lint, verify, conventional commit; on one go-ahead push, draft PR, gate the pushed head on a clean detached checkout and mark ready; rebase when the default branch moves; clean up after the merge |
-| `pr-desc` | Write or refresh a PR title and body from the diff, with a Verification section listing the commands that actually ran |
+| `pr` | Verify, commit, push and open a draft PR with a body written from the diff, structured by requirement when there is a spec; ready only when asked; rebase when the default branch moves; clean up after the merge |
 | `review` | Diff-scoped or PR-scoped review with design, maintainability and guard-deletion lenses that always report, and each acceptance criterion's command run on the reviewed head; the unresolved-comment sweep with CI classified before any rerun; an adversarial mode that sends one brief to two model families and merges the findings |
-| `release` | Version PR, changeset, label gate, publish |
 
 #### Close the loop
 
@@ -260,7 +256,7 @@ also sets.
 | Hook | Event | Effect |
 |---|---|---|
 | `no-claude-artifacts.sh` | PreToolUse on Bash | Blocks any staging or commit that would include `.claude/`, `docs/plans/` or `.plans/` |
-| `require-ship-skill.sh` | PreToolUse on Bash | Denies `git commit`, `git push` and `gh pr create` until the session's transcript shows the `ship` skill loaded, by a Skill call whose result reported no error or a typed `/jz:ship`; a payload without a transcript path passes, so the gate holds on Claude Code only |
+| `require-pr-skill.sh` | PreToolUse on Bash | Denies `git commit`, `git push` and `gh pr create` until the session's transcript shows the `pr` skill loaded, by a Skill call whose result reported no error or a typed `/jz:pr`; a payload without a transcript path passes, so the gate holds on Claude Code only |
 | `confirm-remote-writes.sh` | PreToolUse on Bash | Asks before a `gh pr create` without `--draft`, `gh pr ready`, `gh pr merge` and any force push, including `--force-with-lease`, `-f` clusters and a `+refspec`; a branch push and a draft PR pass without a prompt |
 | `scan-secrets-before-push.sh` | PreToolUse on Bash | Scans the commits a `git push` would publish, with betterleaks or gitleaks when one is on PATH and a builtin set of token shapes otherwise, and asks before the push when something looks like a secret; nothing is installed |
 | `rebase-not-merge.sh` | PreToolUse on Bash | Blocks merging the default branch into a feature branch, or pulling it without `--rebase`; rebase instead. A checkout on the default branch may fast-forward itself |

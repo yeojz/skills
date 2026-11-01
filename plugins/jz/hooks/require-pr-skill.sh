@@ -2,17 +2,17 @@
 # PreToolUse hook (matcher: Bash).
 #
 # Denies git commit, git push and gh pr create until the session has loaded
-# the ship skill. The skill holds the procedure around those commands: the
-# gate before the commit, the body from pr-desc, the detached gate before
-# ready, the tip checks before a branch is deleted. Nothing routes a request
+# the pr skill. The skill holds the procedure around those commands: verify
+# before the commit, the body written from the diff, the ancestor check
+# before a rebase, the tip checks before a branch is deleted. Nothing routes a request
 # to it, since a skill description is a suggestion the model weighs, and in
 # every recent session where no one named the skill it stayed unloaded while
 # the house rules were in context. A hook runs whether or not anyone
 # remembers.
 #
 # The transcript the payload names is the evidence: a Skill tool call whose
-# skill is `ship` or `<plugin>:ship` and whose result did not report an
-# error, or a typed `/ship` command. A call that failed or has no result yet
+# skill is `pr` or `<plugin>:pr` and whose result did not report an
+# error, or a typed `/pr` command. A call that failed or has no result yet
 # unlocks nothing, since the procedure never reached the session. A typed
 # command reaches the transcript inside a `<command-name>` tag only when the
 # skill is installed; one that is not arrives as plain text and the skill body
@@ -44,8 +44,8 @@ sys.path.insert(0, sys.argv[1])
 from command_lines import commands_in, git_call  # noqa: E402
 
 GATED_GIT = {"commit", "push"}
-SHIP = re.compile(r"(^|:)ship$")
-TYPED = re.compile(r"<command-name>/(?:[^<>/]*:)?ship</command-name>")
+PR = re.compile(r"(^|:)pr$")
+TYPED = re.compile(r"<command-name>/(?:[^<>/]*:)?pr</command-name>")
 RAW_GATED = re.compile(r"\bgit\b.*\b(commit|push)\b|\bgh\b.*\bpr\s+create\b")
 
 
@@ -59,14 +59,14 @@ def gated_call(argv):
     return any(positional[i:i + 2] == ["pr", "create"] for i in range(len(positional) - 1))
 
 
-def skill_call_loads_ship(block):
+def skill_call_loads_pr(block):
     if not isinstance(block, dict) or block.get("type") != "tool_use" or block.get("name") != "Skill":
         return False
     skill = block.get("input") or {}
-    return bool(SHIP.search(str(skill.get("skill", ""))))
+    return bool(PR.search(str(skill.get("skill", ""))))
 
 
-def user_turn_types_ship(content):
+def user_turn_types_pr(content):
     if isinstance(content, str):
         texts = [content]
     elif isinstance(content, list):
@@ -76,7 +76,7 @@ def user_turn_types_ship(content):
     return any(TYPED.search(text) for text in texts)
 
 
-def ship_loaded(path):
+def pr_loaded(path):
     """True once the transcript shows the skill loaded.
 
     A Skill call counts only with its result: the tool_use block carries an id,
@@ -88,7 +88,7 @@ def ship_loaded(path):
     pending = set()
     with open(path, encoding="utf-8", errors="replace") as transcript:
         for line in transcript:
-            if "ship" not in line and "tool_result" not in line:
+            if '"Skill"' not in line and "tool_result" not in line and "command-name" not in line:
                 continue
             try:
                 entry = json.loads(line)
@@ -100,7 +100,7 @@ def ship_loaded(path):
             content = message.get("content") if isinstance(message, dict) else None
             if entry.get("type") == "assistant" and isinstance(content, list):
                 for block in content:
-                    if skill_call_loads_ship(block) and block.get("id"):
+                    if skill_call_loads_pr(block) and block.get("id"):
                         pending.add(block["id"])
             elif entry.get("type") == "user":
                 if isinstance(content, list):
@@ -113,7 +113,7 @@ def ship_loaded(path):
                             pending.discard(block["tool_use_id"])
                         else:
                             return True
-                if user_turn_types_ship(content):
+                if user_turn_types_pr(content):
                     return True
     return False
 
@@ -137,14 +137,14 @@ if not gated:
 if not isinstance(transcript, str) or not os.path.isfile(transcript):
     sys.exit(0)
 try:
-    if ship_loaded(transcript):
+    if pr_loaded(transcript):
         sys.exit(0)
 except OSError:
     sys.exit(0)
 
-print("Blocked: git commit, git push and gh pr create run through the ship skill, "
+print("Blocked: git commit, git push and gh pr create run through the pr skill, "
       "and this session has not loaded it.", file=sys.stderr)
-print("Load it first: call the Skill tool with skill \"jz:ship\", or type /jz:ship, "
+print("Load it first: call the Skill tool with skill \"jz:pr\", or type /jz:pr, "
       "then run the command again in the mode the request asked for.", file=sys.stderr)
 sys.exit(2)
 PY

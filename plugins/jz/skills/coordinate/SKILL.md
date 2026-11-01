@@ -143,7 +143,7 @@ question the worker will stall on.
 | Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the value the `behaviour` row of the `verify` report must reach (`live-verified`, `unit-only` or `type-check-only`), and any conformance or fixture run; a repository with a `VERIFICATION.md` reaches `live-verified` through its Drive section |
 | Acceptance | The row's acceptance list, copied line for line under Done means beside the behaviour level, each criterion with its command. A criterion whose command is a Drive step of the nearest `VERIFICATION.md` makes adding that step part of the phase, so the recipe goes under Owns. A row with no list went back to `grill` in Step 3 and has no brief |
 | Model tier | The tier `rules/models.md` gives a scoped unit with named files and a done condition; one tier up when the row is subtle or security-sensitive. Name the tier in the brief |
-| Ship | The `ship` skill, with the go-ahead for push, draft PR, gate on a clean detached checkout and ready granted in the brief, so the worker asks for none of them |
+| Ship | The `pr` skill, with the go-ahead for push, draft PR and ready granted in the brief, so the worker asks for none of them |
 | Standing orders | The `AGENTS.md` block from Step 1, verbatim |
 
 Save the filled brief as `phase-<id>.md` in the notes folder, so the
@@ -168,7 +168,7 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 | Claimed | Must match |
 |---|---|
 | Head SHA | `headRefOid` and `origin/<branch>` |
-| Gate counts | A pasted run on a clean detached checkout, as `ship` Step 11 produces, with exit codes |
+| Gate counts | A pasted `verify` run on the pushed head, with exit codes |
 | Ready | `isDraft` false, only when the brief named ready as the signal |
 | Behaviour level | The `behaviour` row of the pasted `verify` block reads the value Done means named, or higher, with the command that drove it; a lower value is a report of not met, not a claim of done |
 | Acceptance | Every criterion in the brief has its own row in the pasted `verify` block, before the `behaviour` row, with the command the brief named, its exit code and `pass`; a row that reads `fail` or `not run` is a report of not met, and a criterion with no row is a missing item |
@@ -221,8 +221,8 @@ runs:
 Never restart a stopped session to continue a fix, and never send a fix as a
 bare list of findings: the relay carries the standing orders verbatim, the
 review file path, the rule that each finding gets its own commit, that no
-test is weakened to clear a finding, that the PR stays draft until the gate
-is green on a clean detached checkout again, and the report shape from the
+test is weakened to clear a finding, that the PR stays draft until `verify`
+passes on the pushed head and no check has failed, and the report shape from the
 phase template. Write a `decisions.tsv` row of kind `relay` naming which
 route was taken and why.
 
@@ -264,7 +264,7 @@ runs the cleanup. Under another agent there is no scheduler, and the owner's
 ### Step 9: Clean up after the merge
 
 When the merge check, the monitor or the owner reports a merge, prove it before touching
-anything, then run the `ship` skill's post-merge cleanup in the worker's
+anything, then run the `pr` skill's post-merge cleanup in the worker's
 worktree context, or relay it to the worker when its session is still open:
 
 ```bash
@@ -279,8 +279,8 @@ its own session. Not with an ordinary `git rebase "origin/$base"`: the repo
 squash-merges, so the parent's commits are not ancestors of the default
 branch, and a plain rebase replays them as if they were the child's and
 conflicts on the first one. Rebase onto the default branch from the parent
-tip recorded in the row's `base` column, after the ancestor check `ship`
-Step 13 makes:
+tip recorded in the row's `base` column, after the ancestor check in the `pr`
+skill's Rebase section:
 
 ```bash
 base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
@@ -292,10 +292,10 @@ git rebase --onto "origin/$base" "$parent_tip"
 git range-diff "$parent_tip..$old" "origin/$base..HEAD"
 ```
 
-`DIVERGED` is a stop, as in `ship` Step 13. The range-diff pairs each child
+`DIVERGED` is a stop, as in the `pr` skill's Rebase section. The range-diff pairs each child
 commit that was on the remote with its rebased copy: it must show no `<` line
-and none of the parent's commits. Then continue with `ship` Step 13 from the
-gate on the rebased tree: `verify` Step 7, the gate, and the push with
+and none of the parent's commits. Then finish as that section does: `verify` on the
+rebased tree, and the push with
 `--force-with-lease="<branch>:$old"`. Set the row's `base` column to the
 default branch once the push has landed.
 
@@ -337,7 +337,7 @@ row that disagrees with `gh pr view` is corrected in the file first.
 | Forking the coordinator's context into a worker | Fresh context plus the brief. The ledgers and notes carry what it needs |
 | Naming no model tier in a brief | Pick the tier by the job from `rules/models.md` and write it in the brief; never below the review tier for a reviewer |
 | Standing orders paraphrased or left out of a relay | Paste the `AGENTS.md` block verbatim into every brief and every fix relay |
-| Moving a row to `ready` on the worker's word | Check head SHA, pasted detached gate with exit codes, and `isDraft` against `gh pr view` |
+| Moving a row to `ready` on the worker's word | Check head SHA, the pasted `verify` run with exit codes, and `isDraft` against `gh pr view` |
 | Restarting a stopped worker to run a fix | Relay only when the state lives there; otherwise a fresh session with the consolidated brief |
 | A fix relay that is a bare list of findings | Standing orders, review file, one commit per finding, no weakened tests, stay draft until gated |
 | Waiting on an unmerged PR before starting a dependent row | Base on its branch, record `<parent branch>@<tip>` in the brief and the `base` column, rebase from that tip after the merge |

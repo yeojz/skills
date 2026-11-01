@@ -28,7 +28,7 @@
         "AGENTS.md gains a Standing orders section",
         "docs/roadmap.md rows carry depends on, owns, builds, you see, done means and review gate, with not scoped where the interview has not settled a field",
         "The hand-back lists the ADR-tier list and names the first fully scoped roadmap row",
-        "No commit is made; ship is offered instead"
+        "No commit is made; pr is offered instead"
       ]
     },
     {

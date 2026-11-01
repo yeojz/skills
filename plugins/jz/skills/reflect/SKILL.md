@@ -93,7 +93,7 @@ happened, or whose scope it falls in when none was loaded:
 | Candidate is about | Home |
 |---|---|
 | wording, tone, headings, quotes, narrative of earlier runs | `rules/prose.md`, cited by number |
-| branching, commits, PR body, what gets staged, asking before a push | `rules/git-workflow.md` or the `ship` skill |
+| branching, commits, PR body, what gets staged, asking before a push | `rules/git-workflow.md` or the `pr` skill |
 | a done claim without output, a weakened test | `rules/verification.md` or the `verify` skill |
 | fan-out, waiting on the user, options without a recommendation | `rules/parallelism.md` |
 | the model a session or brief ran on | `rules/models.md` |
@@ -111,9 +111,9 @@ and says what level it lands at. The evidence is the user's words from the
 transcript, quoted, with the turn; a proposal with no quote is dropped.
 
 ```markdown
-### P1: ship asks before a branch push
+### P1: pr asks before a branch push
 
-File: `plugins/jz/skills/ship/SKILL.md`, Step 9
+File: `plugins/jz/skills/pr/SKILL.md`, Push section
 Evidence: turn 14, "push it, you do not need to ask, a branch push can be withdrawn"; turn 22, "again, just push"
 Level: skill step, plus an eval expectation
 
@@ -148,7 +148,7 @@ dropped for lack of a quote. Then stop.
 ## reflect: <phase or session>
 
 Proposals, accept by number:
-1. P1 ship asks before a branch push, `ship/SKILL.md` Step 9 plus eval 2
+1. P1 pr asks before a branch push, `pr/SKILL.md` Push section plus eval 2
 2. P2 prose rule 2 missed twice, `rules/prose.md`, sharpen the line
 3. P3 new parallelism line: an unmerged dependency is a branch to base on
 
@@ -175,14 +175,14 @@ git -C "$HOME/.claude/plugins/marketplaces/yeojz-skills" remote get-url origin
 When this session already runs in that repository, use it. Otherwise ask
 for the path of a checkout, or clone one with `gh repo clone <repo>` into a
 directory of its own; never edit under `~/.claude/plugins/`. Then branch in
-that repository as the `ship` skill's Step 1 describes, apply only the
+that repository as the `pr` skill's Worktree section describes, apply only the
 accepted proposals, and run its gate:
 
 ```bash
 make validate; echo "exit=$?"
 ```
 
-Hand the commit and the pull request to `ship` in the mode the user asked
+Hand the commit and the pull request to `pr` in the mode the user asked
 for. The commit covers the accepted proposals and nothing else.
 
 ### Step 6: Report
@@ -191,7 +191,7 @@ for. The commit covers the accepted proposals and nothing else.
 ## reflect: applied
 
 Accepted: P1, P3. Skipped: P2.
-Files: `plugins/jz/skills/ship/SKILL.md`, `plugins/jz/skills/ship/evals/evals.json`, `plugins/jz/rules/parallelism.md` (now 41 lines)
+Files: `plugins/jz/skills/pr/SKILL.md`, `plugins/jz/skills/pr/evals/evals.json`, `plugins/jz/rules/parallelism.md` (now 41 lines)
 Gate: `make validate`, exit 0, All checks passed
 For correct: tests with wall-clock bounds, seen twice
 Handoff line: reflect ran over phase 12; P1 and P3 applied on <branch>, P2 skipped by the owner

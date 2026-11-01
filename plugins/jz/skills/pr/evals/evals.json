@@ -1,0 +1,65 @@
+{
+  "skill_name": "pr",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Commit my changes in /tmp/eval-pr-1-ws. I'm on feat/parser-add-csv-reader and added a CSV reader with a test.",
+      "expected_output": "Stays on the existing feature branch, runs verify, stages the changed files by name, commits with a Conventional Commit subject and a why-body, and stops: no push, no PR.",
+      "files": [],
+      "expectations": [
+        "Runs the verify skill before committing",
+        "Stages files by naming their paths, never git add -A or git add .",
+        "Commit subject is a Conventional Commit under 72 characters",
+        "Does NOT push and does NOT open a PR, because the request said only commit"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Commit, push and open a PR for /tmp/eval-pr-2-ws. The change adds token refresh to the auth package. There is no spec for it.",
+      "expected_output": "Commits, pushes without asking, opens a draft PR whose title is a Conventional Commit subject and whose body has Summary and Verification (plus Trade-offs or Follow-ups only if real), written from the three-dot diff. Does not mark it ready.",
+      "files": [],
+      "expectations": [
+        "Pushes without asking a second time, because the request named the push",
+        "Reads the diff with the three-dot form origin/<base>...HEAD",
+        "Opens the PR with --draft",
+        "Body has no Requirements or Decisions section, because there is no spec",
+        "Each Verification bullet names a command and its exit code",
+        "Does NOT run gh pr ready"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Open the PR for step 2 of docs/specs/session-cookie.md in /tmp/eval-pr-3-ws. The branch is pushed. E1.1 and E2.1 pass; E2.2 still fails.",
+      "expected_output": "The body links the spec and step, has one line per requirement saying what changed and which evals prove it, lists E2.2 under Follow-ups with the step that closes it, and does not paste the Evals table.",
+      "files": [],
+      "expectations": [
+        "Summary links the spec and names step 2",
+        "Requirements section has one line each for R1 and R2, naming the evals that prove it",
+        "E2.2 appears under Follow-ups, not as a passing proof",
+        "The body does NOT contain a copy of the spec's Evals table"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "main has moved in /tmp/eval-pr-4-ws, rebase feat/ledger-add-export and push. A colleague pushed a fix to the branch an hour ago that I haven't pulled.",
+      "expected_output": "Fetches, runs the ancestor check, finds origin/<branch> has a commit local lacks, stops and shows it instead of rebasing and force-pushing.",
+      "files": [],
+      "expectations": [
+        "Runs git merge-base --is-ancestor against origin/<branch> before rebasing",
+        "Stops on DIVERGED and lists the commit that would be lost",
+        "Does NOT run git push --force or --force-with-lease"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "PR 31 merged in /tmp/eval-pr-5-ws, clean up. I pushed one more commit to the branch after it merged.",
+      "expected_output": "Checks the PR is MERGED, compares both branch tips with headRefOid, finds the extra commit, and deletes nothing.",
+      "files": [],
+      "expectations": [
+        "Reads state and headRefOid with gh pr view before touching anything",
+        "Compares the local and remote branch tips with headRefOid",
+        "Reports the commit beyond the merged head and does NOT delete the branch or the worktree"
+      ]
+    }
+  ]
+}

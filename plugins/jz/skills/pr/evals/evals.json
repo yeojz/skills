@@ -29,14 +29,14 @@
     },
     {
       "id": 3,
-      "prompt": "Open the PR for step 2 of docs/specs/session-cookie.md in /tmp/eval-pr-3-ws. The branch is pushed. E1.1 and E2.1 pass; E2.2 still fails.",
-      "expected_output": "The body links the spec and step, has one line per requirement saying what changed and which evals prove it, lists E2.2 under Follow-ups with the step that closes it, and does not paste the Evals table.",
+      "prompt": "Open the PR for step 2 of docs/specs/session-cookie.md in /tmp/eval-pr-3-ws. The branch is pushed. C1.1 and C2.1 pass; C2.2 still fails.",
+      "expected_output": "The body links the spec and step, has one line per requirement saying what changed and which criteria prove it, lists C2.2 under Follow-ups with the step that closes it, and does not paste the Criteria table.",
       "files": [],
       "expectations": [
         "Summary links the spec and names step 2",
-        "Requirements section has one line each for R1 and R2, naming the evals that prove it",
-        "E2.2 appears under Follow-ups, not as a passing proof",
-        "The body does NOT contain a copy of the spec's Evals table"
+        "Requirements section has one line each for R1 and R2, naming the criteria that prove it",
+        "C2.2 appears under Follow-ups, not as a passing proof",
+        "The body does NOT contain a copy of the spec's Criteria table"
       ]
     },
     {

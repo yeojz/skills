@@ -1,7 +1,7 @@
-# Phase <unit id>: <title from the roadmap row>
+# Phase <unit id>: <title from the spec step>
 
 <!--
-Filled by the coordinate skill from one docs/roadmap.md row. Every field is
+Filled by the coordinate skill from one step of a spec in docs/specs/. Every field is
 filled; a blank one is where the worker stalls. The Standing orders section
 is pasted verbatim from the repo's AGENTS.md, never paraphrased.
 Delete this comment before sending.
@@ -17,14 +17,14 @@ Notes folder: <absolute path>; write the hand-over note there as `unit-<id>.md`
 1. `AGENTS.md`, the Standing orders section in particular
 2. `CONTEXT.md`, the glossary; use its terms and no others
 3. `docs/adr/<NNNN>-<slug>.md` for each ADR that touches this row: <list them>
-4. `docs/roadmap.md`, the row for unit <id> only
+4. `docs/specs/<slug>.md`: the Requirements and Criteria this step serves, and the step itself
 5. `<notes folder>/unit-<previous id>.md`, the previous unit's hand-over note, or "none" for the first unit
 
 ## Decisions already made
 
 Do not reopen these. A question that would reopen one is an ADR-tier fork: send it to the coordinator with lettered options and keep working on what does not depend on it.
 
-- <decision>, from `docs/adr/<NNNN>-<slug>.md` or `docs/design.md` round <n> option <letter>
+- <decision>, from `docs/adr/<NNNN>-<slug>.md` or the spec's Decisions, round <n> option <letter>
 - <decision>
 - Based on `<parent branch>@<parent tip sha>` because PR <number> is not merged yet; once it merges, rebase with `git rebase --onto <default branch> <parent tip sha>`, never with a plain rebase, since the repo squash-merges
 

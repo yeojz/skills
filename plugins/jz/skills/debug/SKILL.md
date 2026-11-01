@@ -182,7 +182,7 @@ happens.
 ### Step 8: Write the failing test before the fix
 
 Write the smallest test that reproduces the bug, run it, and paste the failing
-output. Use the `tdd` skill for the shape of the test. A one-off script is
+output. Write the test as the `implement` skill describes for a test check. A one-off script is
 acceptable only when the repo has no test runner.
 
 ```bash

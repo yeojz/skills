@@ -1,5 +1,5 @@
 {
-  "skill_name": "execute-plan",
+  "skill_name": "implement",
   "evals": [
     {
       "id": 1,
@@ -24,45 +24,25 @@
     },
     {
       "id": 2,
-      "prompt": "Please execute the remediations in @docs/plans/2026-09-10-0915-lint-cleanup.md in priority order. Use subagents for the tasks where you can.",
-      "expected_output": "The skill parses four items that each touch a different package (packages/core, packages/cli, packages/utils, apps/docs), determines they are independent because they share no files and none feeds another, and fans them out to concurrent subagents. Each subagent runs verify on its own change. The skill then writes per-item status back into the plan and pauses for a commit checkpoint.",
-      "files": [
-        "docs/plans/2026-09-10-0915-lint-cleanup.md",
-        "packages/core/src/index.ts",
-        "packages/cli/src/index.ts",
-        "packages/utils/src/index.ts",
-        "apps/docs/src/index.ts",
-        "pnpm-workspace.yaml",
-        "package.json"
-      ],
+      "prompt": "Execute step 1 of docs/specs/dry-run.md in /tmp/eval-execute-2-ws. The spec's criteria are signed off; C1.1 is a test check that is not written yet and C2.1 is a command check.",
+      "expected_output": "Lists the criteria of the requirements step 1 serves, runs C2.1 and records it failing, writes the C1.1 test and watches it fail on its assertion before building, builds the least change, reruns both criteria, and writes pass on the working tree into the spec's Criteria table before the checkpoint, with a sha only after the commit.",
+      "files": [],
       "expectations": [
-        "Echoes the parsed item list before starting",
-        "States explicitly that the items are independent because they touch different files and none feeds another",
-        "Dispatches the independent items to subagents in a single concurrent batch rather than one at a time",
-        "Each dispatched item is instructed to run the verify skill on its own change",
-        "Does not fan out any pair of items that touch the same file",
-        "Writes per-item status back into docs/plans/2026-09-10-0915-lint-cleanup.md",
-        "Pauses for a commit checkpoint rather than committing everything unprompted"
+        "Checks that the spec's status line reads criteria signed off before starting",
+        "Runs the step's criteria and records them failing or not met before changing any source file",
+        "Writes the C1.1 test first and shows it failing on its assertion, not on an import or type error",
+        "Reruns the step's criteria after the build and writes pass on the working tree or fail into the spec's Criteria table, and a sha only once committed",
+        "Stops at a checkpoint after the step instead of committing and continuing"
       ]
     },
     {
       "id": 3,
-      "prompt": "Work through phase 2 of @docs/plans/2026-09-09-1400-storage-migration.md. Pause to allow a commit after each issue fix.",
-      "expected_output": "The skill implements only the phase 2 items. Phase 3 and phase 4 items, including the tempting remote-sync integration in phase 6 that shares a file with a phase 2 item, are left untouched and reported as not started. After each phase 2 item it runs verify, writes status into the plan, and stops for a commit checkpoint before continuing.",
-      "files": [
-        "docs/plans/2026-09-09-1400-storage-migration.md",
-        "src/storage/adapter.ts",
-        "src/storage/remote.ts",
-        "package.json"
-      ],
+      "prompt": "Build step 3 of docs/specs/session.md. It serves R5, which has no rows in the Criteria table yet.",
+      "expected_output": "Stops step 3 and hands R5 to the criteria skill instead of building it.",
+      "files": [],
       "expectations": [
-        "States that only phase 2 is in scope before starting",
-        "Implements no item belonging to phase 3, 4, 5 or 6",
-        "Does not create or modify src/storage/remote.ts, which belongs to phase 6",
-        "Notes any out-of-scope problem it spots as a follow-up instead of fixing it",
-        "Runs the verify skill after each phase 2 item",
-        "Stops and waits for the user after each item rather than committing and continuing on its own",
-        "Final report marks phase 3 through 6 items as not started rather than omitting them"
+        "Notices R5 has no criterion before changing any source file",
+        "Does not build step 3; hands R5 to the criteria skill and says so"
       ]
     },
     {
@@ -84,6 +64,18 @@
         "Continues with the remaining items after recording item 4 as blocked",
         "Final report does not say all tasks or all phases are complete",
         "Final report lists item 4 as blocked and names it as an explicit next step"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Write the test first for the retry helper, red green refactor. The repo uses pnpm and declares a 'test' script.",
+      "expected_output": "Runs the declared test script, writes one test named for one behaviour, shows it failing on its assertion, writes the least code to pass, runs the whole suite green, and does not invent npx vitest.",
+      "files": [],
+      "expectations": [
+        "Runs the repo's declared test script via pnpm rather than npx vitest or a bare binary",
+        "The test is named for one behaviour and asserts on the result, not on a mock's call count",
+        "Shows the test failing on its assertion before writing the implementation",
+        "Runs the whole suite after the implementation, not only the new file"
       ]
     }
   ]

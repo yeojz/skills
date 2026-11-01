@@ -121,10 +121,10 @@ them is incomplete, not clean.
 
 | Lens | Look for |
 |---|---|
-| Design | the shape of the change: a public surface wider than the change needed, a decision an ADR or `docs/design.md` settled the other way, a seam placed where the next change in this area will have to move it. The Layering and Over-engineering rows feed this line. Must report |
+| Design | the shape of the change: a public surface wider than the change needed, a decision an ADR or a spec's Decisions settled the other way, a seam placed where the next change in this area will have to move it. The Layering and Over-engineering rows feed this line. Must report |
 | Maintainability | what the next reader pays: a comment that explains what instead of why, a test coupled to implementation detail, a module nobody can name the owner of. The Duplication, Dead code and Naming rows feed this line. Must report |
 | Guard deletion | the new `if` branches that reject: throw, return early, exit, answer 4xx or 5xx. Sample the ones that enforce a security boundary, prevent data loss or implement the rejection the change was asked for: neutralise the condition, run the package tests, restore. A sampled guard whose deletion stays green is a High; a guard left unsampled is listed with its reason. Must report |
-| Acceptance | when a phase brief or a roadmap row gives the change an Acceptance list: run each criterion's command as the list names it, on the reviewed revision, in the detached worktree for a PR, and set the exit code against the row the author's `verify` block carries for it. A criterion whose command fails here, has no row in that block, or whose row reads `not run`, is a High naming the criterion by its sentence. Reports when the change has a list |
+| Acceptance | when a phase brief, a roadmap row or a spec step's criteria give the change an Acceptance list (judge an `inspection` criterion yourself against its written standard, recording `met` or `not met`): run each criterion's command as the list names it, on the reviewed revision, in the detached worktree for a PR, and set the exit code against the row the author's `verify` block carries for it. A criterion whose command fails here, has no row in that block, or whose row reads `not run`, is a High naming the criterion by its sentence. Reports when the change has a list |
 | Duplication | logic reimplemented when a function already exists in this workspace. Grep for the behaviour before accepting a new helper |
 | Pass-through | a new parameter, option or context added at one layer and dropped at the next call site |
 | Assertions | non-null assertions `!`, `as unknown as`, `any`, `@ts-ignore` introduced by the change |
@@ -306,7 +306,7 @@ Ids are `R1`, `R2`, `R3` and stay stable once printed. If the review finds
 nothing, say that plainly and name what was checked; do not manufacture a Low.
 
 Do not offer to start fixing. If the user asks for the findings to be worked,
-that is `execute-plan`, and only then.
+that is `implement`, and only then.
 
 ### Step 7: Mode 2, sweep the PR review comments
 
@@ -524,7 +524,7 @@ Agreement: <k> of <m> merged findings raised by every reviewer; A only <p>; B on
 Each section carries the Step 6 detail per finding plus a "Raised by" line.
 Nothing is applied: no edit, no commit, no reply on a thread and no posted
 review. When the user asks for the act-on list to be worked, that is
-`execute-plan`; when a coordinator asked for the review, the buckets go back
+`implement`; when a coordinator asked for the review, the buckets go back
 to it as the verdict's evidence.
 
 ## Common Mistakes
@@ -544,7 +544,7 @@ to it as the verdict's evidence.
 | Claiming a fix from a review is done without running anything | Call `verify` and paste its report block first. |
 | Running the full ceremony when asked for a general review | Mode 3: prose, no table, no personas. Keep the three-dot diff and the line citations. |
 | Re-printing the first report as the second check | Re-run the diff and classify each old finding as fixed, not fixed, or no longer applicable, with a line. |
-| Offering to fix everything at the end of a review | Report and stop. Fixing findings is `execute-plan`, and only if the user asks. |
+| Offering to fix everything at the end of a review | Report and stop. Fixing findings is `implement`, and only if the user asks. |
 | Padding a clean review with Low-severity filler | Say nothing needs changing and name what was checked. |
 | A report with no Design, Maintainability or Guard deletion line | The three lenses report every time, clean or not, with what was checked. Silence is an incomplete review, not a clean one. |
 | Demoting a design finding because "it works" | Design and maintainability weigh the same as correctness; severity comes from the consequence. |
@@ -565,4 +565,4 @@ to it as the verdict's evidence.
 | Sending each adversarial reviewer its own wording of the brief | One brief, written once, sent verbatim to every reviewer; otherwise the agreement map compares different questions. |
 | Letting the adversarial reviewers see each other's findings | Each reviewer is fresh and independent. Merging happens here, after both return. |
 | Bucketing an adversarial finding on the vote count | Verify it at the line first. Two reviewers agreeing on a wrong claim is still dismissed, with the refuting line quoted. |
-| Applying the act-on bucket from an adversarial review | Mode 4 applies nothing. Working the list is `execute-plan`, and only when asked. |
+| Applying the act-on bucket from an adversarial review | Mode 4 applies nothing. Working the list is `implement`, and only when asked. |

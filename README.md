@@ -140,7 +140,7 @@ says what it does without it.
 | `.claude/` in `.gitignore` | `pr` Worktree section | `pr` offers to add it to `.git/info/exclude` before creating a worktree; the hook refuses to stage `.claude/` or `docs/plans/` either way |
 | `AGENTS.md` with a `## Standing orders` section | `coordinate`, pasted verbatim into every brief | the phase template's default block stands in, and adding the section is part of the first phase |
 | `AGENTS.md` with a `## Restricted words` list | `no-restricted-words.sh` | only the house list applies |
-| `AGENTS.md` with an `## Enforcement` table | `correct` | the first `correct` run creates it |
+| `AGENTS.md` with an `## Enforcement` table | `improve` | the first project-side `improve` run creates it |
 | `VERIFICATION.md` at the root, or one per package | `verify`, for the `behaviour` row | the row reads what the test runs support, `unit-only` at most, unless another pasted run drove the feature |
 | `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, criteria added by `criteria`, read by `implement` and `coordinate` | `implement` and `coordinate` refuse a spec whose criteria are not signed off and offer `criteria` |
 | Scripts named `format`, `lint`, `typecheck`, `test` and `build` in `package.json`, or the same targets in a `Makefile` | `verify` | the concern is reported as "no script"; nothing is invented in its place |
@@ -175,9 +175,8 @@ step against the criteria, reaching for
 `debug`, `sync-docs` or `guard-deps` as the item demands.
 `verify` gates every done claim. `pr` commits, pushes, opens the draft PR
 with its body, and cleans up after the merge, and `review` handles the
-comments. `correct` turns a
-correction that came back into a check the project runs, and `reflect` turns
-one into an edit to a skill or rule here. `handoff` carries the state when
+comments. `improve` turns a correction that came back into an edit to a
+skill or rule here, or into a check the project runs. `handoff` carries the state when
 context runs out.
 
 #### Settle the work
@@ -218,8 +217,7 @@ phase rather than this one.
 
 | Skill | Use it for |
 |---|---|
-| `correct` | A correction that recurred in the project: group recent reverts, review threads and steers, fix the most frequent class at the highest level that holds, prove the check fails on the past mistake, add the enforcement row |
-| `reflect` | The corrections and workarounds in this session, proposed as edits to a skill or rule in this plugin behind an approval gate; the project-side ones go to `correct` |
+| `improve` | Corrections that came back, from the session transcript, review threads and reverts: proposed as edits to a skill or rule in this plugin behind an approval by number, or fixed in the project at the highest level that holds, with the check proven red on the past mistake and an enforcement row |
 
 #### Hand over
 

@@ -7,23 +7,16 @@ description: Use when a bug, failing test, build failure or unexpected behaviour
 
 ## Overview
 
-Finds the cause of a failure before changing any code, and proves the fix with
-a test that failed first. It reads the whole error, reproduces the failure with
-the repo's own commands, narrows the cause by instrumenting and tracing rather
-than guessing, changes one thing per hypothesis, and stops after three failed
-fixes to report what those failures revealed.
-
-The failure this exists to prevent is a patch applied where the error surfaced
-rather than where the bad value came from. That hides the defect until it
-returns somewhere else.
+Finds the cause of a failure before changing code, and proves the fix with a
+test that failed first. It reads the whole error, reproduces it with the
+repo's own command, narrows the cause by instrumenting and tracing rather
+than guessing, changes one thing per hypothesis, and stops after three
+failed fixes. A patch where the error surfaced, rather than where the bad
+value came from, only moves the bug.
 
 ## Workflow
 
-### Step 1: Read the whole error before touching anything
-
-Capture the complete output to a file and read all of it: the first error, the
-full stack trace, every file path, line number and error code. The bottom of a
-stack trace is where the failure surfaced; the cause is usually higher up.
+### Step 1: Read the whole error
 
 ```bash
 mkdir -p .debug-logs
@@ -31,255 +24,137 @@ pnpm test > .debug-logs/test.log 2>&1; echo "exit=$?"
 grep -n -E 'Error|FAIL|at .*:[0-9]+' .debug-logs/test.log | head -60
 ```
 
-Warnings printed before the error are part of the error. Note them.
+Read all of it: the first error, the full trace, every path, line and code,
+and the warnings before it. The bottom of a trace is where it surfaced; the
+cause is usually higher. Never stage `.debug-logs/`.
 
-`.debug-logs/` is scratch. Never stage it.
+### Step 2: Reproduce it, three times
 
-### Step 2: Reproduce it with the repo's own command
-
-Read `package.json` for the declared scripts and run the smallest one that
-still fails. Never invent a command.
-
-```bash
-jq -r '.scripts | to_entries[] | "\(.key)\t\(.value)"' package.json
-pnpm --filter <pkg> test:ci -- <path/to/file.test.ts>
-pnpm --filter <pkg> test:ci -- -t "<test name>"
-```
-
-Run it three times. A failure that appears every time is a bug. One that
-appears some of the time is a race or shared state, and it is also a bug.
+Run the smallest declared script that still fails (read `package.json`;
+never invent a command), three times:
 
 ```bash
 for run in 1 2 3; do
-  pnpm --filter <pkg> test:ci -- <path/to/file.test.ts> > ".debug-logs/run-$run.log" 2>&1
-  echo "run=$run exit=$?"
+  pnpm --filter <pkg> test -- <path/to/file.test.ts> > ".debug-logs/run-$run.log" 2>&1; echo "run=$run exit=$?"
 done
 ```
 
-If it cannot be reproduced, gather more data instead of guessing: the exact
-steps, the environment it failed in, the CI log, the input that was used.
-Report what was tried and what is still missing. Do not propose a fix for a
-failure that has not been seen.
+Every time is a bug; some of the time is a race or shared state, also a bug.
+If it won't reproduce, gather the steps, environment, CI log and input, and
+report what's missing. Never propose a fix for a failure not yet seen.
 
 ### Step 3: Check what changed
 
-Most failures follow a change. Find the change before reading the code.
-
 ```bash
 base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
-git status
 git log --oneline -15
 git diff "origin/$base...HEAD" --stat
-git diff "origin/$base...HEAD" -- package.json pnpm-lock.yaml
-git diff "origin/$base...HEAD" -- '*.config.*' '.github/workflows/*'
+git diff "origin/$base...HEAD" -- package.json pnpm-lock.yaml '*.config.*' '.github/workflows/*'
 ```
 
-| Changed | Where to look |
-|---|---|
-| A dependency version | The lock file diff, then that dependency's release notes |
-| A config file | The diff, then the tool's docs for the changed key |
-| Nothing in the repo | Node version, environment variables, OS, the CI runner image |
+A dependency bump means the lock diff, then its release notes; a config
+change means that key's docs; nothing in the repo means the Node version,
+environment, OS or runner image. For "works locally, fails in CI", compare
+`node --version`, `pnpm --version` and the environment with the CI log's
+setup steps.
 
-For "works locally, fails in CI", compare the two environments directly:
+### Step 4: Instrument each boundary, run once
 
-```bash
-node --version && pnpm --version
-env | sort > .debug-logs/env-local.txt
-```
+When the failure crosses layers (workflow, build script, application; or
+handler, service, database), log what enters and leaves each layer and run
+once, instead of reasoning about which is wrong. Print whether a secret is
+set, never its value: `echo "TOKEN: ${TOKEN:+set}${TOKEN:-unset}"`. The first layer where the
+value is missing or wrong is where to look. Log before the dangerous
+operation, not after it fails. Remove the instrumentation before the fix is
+committed.
 
-then read the setup steps of the CI log for the same values.
+### Step 5: Trace the bad value to its origin
 
-### Step 4: Instrument each boundary and run once
-
-When the failure crosses layers (CI workflow to build script to application,
-or request handler to service to database), do not reason about which layer is
-wrong. Log what enters and leaves each layer, run once, and read the result.
-
-```bash
-# Layer 1: the workflow
-echo "BASE_URL: ${BASE_URL:+set}${BASE_URL:-unset}"
-
-# Layer 2: the build script
-env | grep '^BASE_URL=' || echo "BASE_URL not in build environment"
-
-# Layer 3: the application
-node -e 'console.error("config:", process.env.BASE_URL)'
-```
-
-The first layer where the value is missing or wrong is the layer to
-investigate. Log before the dangerous operation, not after it fails; a log
-line placed after the failure never runs.
-
-Instrumentation is removed before the fix is committed.
-
-### Step 5: Trace the bad value back to where it originates
-
-An error deep in the call stack means a wrong value arrived from somewhere
-above. Walk the chain upward until the value is first wrong.
-
-1. Name the immediate cause: the line that threw, or the operation that
-   misbehaved.
-2. Ask what called it and with which arguments.
-3. Repeat until the arguments are first wrong. That is the origin, and the
-   only place a fix belongs.
-
-When the chain cannot be read from the stack trace, capture it at the
+Name the line that misbehaved, then what called it with which arguments, and
+repeat until the arguments are first wrong. That origin is the only place a
+fix belongs. When the trace doesn't show the chain, capture it at the
 dangerous operation:
 
 ```typescript
-console.error("before git init", {
-  directory,
-  cwd: process.cwd(),
-  stack: new Error().stack,
-});
+console.error("before git init", { directory, cwd: process.cwd(), stack: new Error().stack });
 ```
 
-Use `console.error` inside tests; a logger may be silenced there.
-
-```bash
-pnpm --filter <pkg> test:ci > .debug-logs/trace.log 2>&1; echo "exit=$?"
-grep -n -A 20 'before git init' .debug-logs/trace.log
-```
-
-A file or directory appearing during the suite with no owning test is shared
-state leaking between tests. `find-polluter.sh` sits beside this file. It runs
-the test files one at a time with the repo's own script and stops at the first
-one that leaves the path behind:
+Use `console.error` in tests; a logger may be silenced. A file appearing
+during the suite with no owning test is shared state leaking:
+`find-polluter.sh`, beside this file, runs the test files one at a time and
+stops at the first that leaves it behind.
 
 ```bash
 bash <skill-dir>/find-polluter.sh .git src '*.test.ts' 'pnpm test:ci --'
 ```
 
-### Step 6: Compare against a working example
+### Step 6: Compare with a working example
 
-Find code in the same repo that does the same thing and works. Read all of it,
-then list every difference from the broken code, however small. Do not skip a
-difference on the grounds that it cannot matter; the one that matters usually
-looks like that.
+Find code in the repo that does the same thing and works, read all of it,
+and list every difference, however small, plus what it depends on (config,
+environment, setup, ordering). The broken one lacks one of them.
 
-```bash
-grep -rn '<function or pattern>' src/ packages/ --include='*.ts' | head -40
-```
+### Step 7: One hypothesis, one change
 
-List what the working example depends on: config, environment, setup code,
-ordering. The broken code is missing one of them or has one wrong.
+Write it as: "X is the cause because Y; if so, changing Z alone makes the
+reproduction pass." Change only Z and re-run Step 2's command. If it fails,
+revert Z before the next hypothesis. With no hypothesis, go back to Step 4
+or 5; never change code to see what happens.
 
-### Step 7: State one hypothesis and change one thing
+### Step 8: A failing test first
 
-Write the hypothesis in the reply in this form: "X is the cause because Y; if
-so, changing Z alone will make the reproduction pass."
+Write the smallest test that reproduces the bug, as the `implement` skill
+describes for a test check, and paste it failing (non-zero exit) before
+touching the code. A test that already passes doesn't reproduce the bug. A
+one-off script is only for a repo with no test runner.
 
-Make only Z. Re-run the Step 2 command and paste the result.
+### Step 9: Fix the origin only
 
-- It passes: go to Step 8.
-- It does not pass: revert Z, count the attempt, form a new hypothesis. Never
-  leave a failed change in place while trying the next one.
+Change the origin from Step 5, nothing else: no refactor, no improvements in
+passing, instrumentation removed.
 
-If no hypothesis can be stated, say which part is not understood and return to
-Step 4 or Step 5 with more instrumentation. Do not change code to see what
-happens.
-
-### Step 8: Write the failing test before the fix
-
-Write the smallest test that reproduces the bug, run it, and paste the failing
-output. Write the test as the `implement` skill describes for a test check. A one-off script is
-acceptable only when the repo has no test runner.
-
-```bash
-pnpm --filter <pkg> test:ci -- <path/to/new.test.ts> > .debug-logs/red.log 2>&1; echo "exit=$?"
-tail -30 .debug-logs/red.log
-```
-
-The exit code must be non-zero here. A new test that passes before the fix
-does not reproduce the bug.
-
-### Step 9: Fix the root cause only
-
-Change the origin found in Step 5, not the place the error surfaced. One
-change, with no refactoring bundled in and no improvements made in passing.
-Remove the Step 4 and Step 5 instrumentation.
-
-Two fix shapes come up often enough to name.
-
-A guessed delay in a test. Replace `sleep` and fixed `setTimeout` waits with a
-poll on the condition the test cares about:
-
-| Rule | Why |
+| A guessed delay in a test | Do instead |
 |---|---|
-| Poll the condition; do not sleep for a guessed duration | Passes on a slow CI runner as well as on a fast laptop |
-| Always set a timeout and fail with a message naming the condition | A loop with no timeout hangs the suite instead of failing it |
-| Re-read the value inside the loop | A value captured before the loop never changes |
-| Poll every 10ms or so, not every 1ms | Tighter polling burns CPU and slows the rest of the run |
-| Keep a fixed delay only for timed behaviour, with a comment saying why | Debounce and throttle tests need real time to pass |
+| `sleep` or a fixed `setTimeout` | Poll the condition about every 10ms |
+| A loop with no limit | A timeout that fails naming the condition |
+| A value read once before the loop | Re-read it inside the loop |
+| Timed behaviour (debounce, throttle) | Keep the real delay, with a comment why |
 
-A bad value that reached a dangerous operation. After fixing the origin,
-reject the value at each layer it passed through, so the same bug cannot
-return by a different path:
+When a bad value reached something dangerous, after fixing the origin add a
+guard at each layer it passed through (entry point, business logic, an
+environment guard around the dangerous call), as a separate change so the
+fix stays reviewable on its own.
 
-| Layer | What it rejects |
-|---|---|
-| Entry point | Input that is empty, missing or the wrong shape |
-| Business logic | Input that is well formed but wrong for this operation |
-| Environment guard | The operation itself where it is dangerous, such as `git init` outside a temp dir under test |
-| Instrumentation | Nothing; it records the call site so the next investigation starts with evidence |
+### Step 10: Verify
 
-Add these guards as a separate change so the root-cause fix stays reviewable
-on its own.
+Run the `verify` skill: the new test passes, the full suite passes, and the
+Step 2 reproduction no longer fails, each with output pasted. Never weaken
+an assertion, skip a test, or add a fallback or swallowing `try`/`catch`.
 
-### Step 10: Verify with the repo's own gate
+### Step 11: Stop after three failed fixes
 
-Call the `verify` skill. It re-runs the new test, then the full typecheck,
-lint, test and build sequence, and pastes the output. The bug is fixed when the
-new test passes, the full suite passes, and the Step 2 reproduction no longer
-fails. None of those is reported without the pasted output.
+Count attempts out loud. After the third, stop editing: three fixes that
+each exposed new coupling mean the structure is wrong. Report the
+reproduction, each hypothesis and what ruled it out, and what each attempt
+revealed, then offer:
 
-Never weaken an assertion, skip a test, or add a fallback or a swallowing
-`try/catch` to reach green. Those hide the defect; they do not fix it.
+- A: refactor the coupling, as its own change (when each fix exposed more)
+- B: revert to the last good commit and restart (when it's recent and small)
+- C: treat it as environmental with a documented retry or timeout (only when
+  Steps 1 to 6 found nothing in the repo)
 
-### Step 11: Stop at three failed fixes and report
-
-Count attempts out loud: attempt 1 of 3, attempt 2 of 3, attempt 3 of 3. An
-attempt is one hypothesis, one change, one re-run.
-
-After the third failure, stop editing. Three failures where each fix uncovered
-new shared state or coupling somewhere else are not three wrong guesses; they
-are the signal that the structure is wrong, and a fourth patch will move the
-failure again rather than remove it.
-
-Report:
-
-- The reproduction command and its output.
-- Each hypothesis, the change made, and what ruled it out.
-- What each attempt revealed about coupling between components.
-
-Then present the choice as lettered options:
-
-- A: Refactor the coupling the attempts exposed, as its own change.
-- B: Revert to the last known good commit and start again from Step 1.
-- C: Treat the failure as environmental and add a documented retry or
-  timeout.
-
-Recommend A when each fix exposed new coupling, B when the last known good
-commit is recent and small, and C only when Steps 1 to 6 found nothing in the
-repo. Wait for the choice.
+Recommend one and wait.
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---|---|
-| Reading only the last line of the error | Capture the whole output to a file and read the full trace |
-| Proposing a fix before the failure has been reproduced | Run the repo's own command until it fails; if it will not, gather data |
-| Running the reproduction once and calling it deterministic | Run it three times; an intermittent failure is a race or shared state |
-| Skipping `git diff` because the code looks unrelated | Most failures follow a change; check the lock file and config too |
-| Reasoning about which layer is wrong instead of instrumenting | Log at each boundary, run once, read where the value first goes wrong |
-| Logging after the operation that fails | Log before it; the line after never runs |
-| Fixing where the error surfaced | Trace the value upward to its origin and fix there |
-| Adding a delay to make a flaky test pass | Poll the condition with a timeout and re-read inside the loop |
-| Changing several things at once | One hypothesis, one change, one re-run |
-| Leaving a failed change in place while trying the next | Revert it first, then form the next hypothesis |
-| Writing the test after the fix | Write it first and paste its failing output before editing the code |
-| Bundling a refactor into the fix | Fix the root cause only; propose the refactor as a separate change |
-| Weakening an assertion or skipping a test to reach green | Root-cause it; a silenced test is not a fix |
-| Adding a fallback or swallowing `try/catch` | The failure moves to runtime; fix the cause instead |
-| A fourth fix attempt after three failures | Stop, report what each attempt revealed, and offer lettered options |
-| Claiming fixed without pasted output | Call `verify` and let its report block carry the claim |
+| Reading only the last line | Capture the whole output and read the trace |
+| A fix before a reproduction | Reproduce with the repo's command, or gather data |
+| One run called deterministic | Three runs |
+| Guessing which layer is wrong | Instrument each boundary and run once |
+| Fixing where it surfaced | Trace to the origin |
+| A sleep to calm a flaky test | Poll with a timeout |
+| Several changes at once | One hypothesis, one change |
+| The test after the fix | Paste it failing first |
+| A fourth attempt | Stop and offer options |

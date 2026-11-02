@@ -23,7 +23,7 @@ One paragraph only: what the work is, why it was started, and where it stopped. 
 base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
 git status --short
 git branch --show-current
-git log --oneline "$base..HEAD"
+git log --oneline "origin/$base..HEAD"
 git status -sb
 gh pr view --json number,url,state,isDraft
 ```
@@ -52,7 +52,7 @@ In the order it should be done.
 
 ```bash
 base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
-git diff --stat "$base...HEAD"
+git diff --stat "origin/$base...HEAD"
 git status --short
 ```
 
@@ -67,6 +67,14 @@ pnpm typecheck
 pnpm test
 pnpm --filter <pkg> test:ci --project <project>
 ```
+
+## Decisions
+
+<From the latest row per unit and decision in decisions.tsv, quoted, plus decisions agreed in this session marked `unlogged`, each with where it should be recorded for good. With no decisions.tsv, say so here.>
+
+| Decision | Source | Where it belongs |
+|---|---|---|
+| <decision> | <decisions.tsv row when, or `unlogged`> | <an ADR, the spec's Decisions, AGENTS.md> |
 
 ## Open questions and decisions owed
 

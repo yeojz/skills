@@ -1,0 +1,81 @@
+{
+  "skill_name": "improve",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "phase 12 is done. Before the handoff, what did I have to correct this session?",
+      "expected_output": "The agent runs improve over the phase: mines the transcript for negations, repeats, undos, hook denials followed by a rephrase and retried commands, groups them, and presents proposals with evidence. It produces the handoff line for the phase notes and waits for approval before applying anything.",
+      "files": [],
+      "expectations": [
+        "Lists the corrections found with the turn each came from",
+        "Distinguishes a correction typed once from one repeated or marked as repeated, and proposes only the latter",
+        "Presents proposals as a numbered list and waits",
+        "Produces a one-line handoff entry naming what improve found and what is still unapplied"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "1 and 3",
+      "expected_output": "The agent finds a checkout of the plugin repository rather than editing the installed plugin copy, branches there in its own worktree, applies exactly proposals 1 and 3 including the eval expectation that accompanies a skill change, counts the rule file's lines where a rule line was added, runs make validate and pastes the exit code, then hands the commit to pr and reports accepted, skipped, files and gate.",
+      "files": [],
+      "expectations": [
+        "Edits a git checkout of the plugin repository, not the plugin cache under the install path",
+        "Applies proposals 1 and 3 only; proposal 2 is reported as skipped",
+        "A skill change lands together with its eval expectation",
+        "Runs make validate and pastes the exit code from output before committing",
+        "The report names the files changed, the rule file's line count where one changed, and the handoff line"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "that is prose rule 2 again, you narrated the earlier runs in the PR body. Improve on it.",
+      "expected_output": "The agent attributes the correction to prose rule 2 and to the skill that wrote the body, pr. It proposes sharpening the rule line without renumbering, and a pr Common Mistakes row or eval expectation that would have caught it. It does not propose deleting the rule, and it waits for approval.",
+      "files": [],
+      "expectations": [
+        "The proposal cites prose rule 2 by number and does not renumber the file",
+        "A second proposal targets the skill that produced the prose, with an eval expectation or a Common Mistakes row",
+        "The rule is sharpened, not removed",
+        "Nothing is applied before the user names the proposals to apply"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "agents keep putting wall-clock timing bounds in tests and CI goes red after a local green. This is the third time.",
+      "expected_output": "The agent reads the recent reverts and fix commits on the default branch, the review threads of recent pull requests and the project's enforcement table before writing anything. It produces a ledger of correction classes with counts and sources, picks the timing-bound class, walks the level ladder from architecture down and names the first level that holds with the reason the levels above it do not. It branches, writes the fix as one commit, builds a throwaway worktree detached at HEAD, copies the uncommitted fix into it by name, reconstructs a past offending test there, runs the check and pastes a non-zero exit, removes the worktree, runs the check in the task worktree and pastes exit 0 with the fixed file's hash unchanged, adds the enforcement row, runs verify and reports the remaining classes.",
+      "files": [],
+      "expectations": [
+        "Reads review threads through the GitHub API, the recent reverts and fix commits, and the enforcement table before grouping",
+        "Prints a ledger with one row per class carrying a count, the sources and what enforces it today",
+        "Names the level chosen and says why each higher level does not hold, or presents the levels that hold as lettered options and waits",
+        "Reconstructs the past mistake from its real commit inside a throwaway worktree detached at HEAD, never in the task worktree, and pastes a non-zero exit code taken from output",
+        "Carries the uncommitted fix into the throwaway worktree file by file from git ls-files, including a check created inside a new untracked directory, and shows the two status listings match before reconstructing the mistake",
+        "Runs the check on the fixed tree and pastes exit 0, and shows git status --short and the fixed file's hash unchanged from before the red run, so the uncommitted fix survived it",
+        "Adds or updates a row in the project's Enforcement table in the same commit as the fix",
+        "The commit contains the fix for one class only"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "the second review in a row flagged a guard with no negative test. Just add a note to AGENTS.md so they remember.",
+      "expected_output": "The agent does not stop at the docs level. It walks the ladder, finds that a test-level or CI-level check holds, such as a CI step that fails when a new rejecting guard has no test that exercises its rejection, presents that against the docs line as lettered options with the recommendation first, and waits. If the user still chooses docs, it writes the line and records the enforcement row as nothing.",
+      "files": [],
+      "expectations": [
+        "Does not write the AGENTS.md line as the only fix without first naming a higher level that holds",
+        "Presents the higher level and the docs line as lettered options with the recommendation first and waits for the choice",
+        "If docs is chosen, the Enforcement row says nothing enforces the rule and the class is reported as still a target"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "the lint rule you added is green on the tree, so we are done, commit it.",
+      "expected_output": "The agent refuses to call the check done on a green run alone. It reconstructs the past mistake from the offending commit in a throwaway worktree that carries the uncommitted rule, runs the lint rule there, and pastes the non-zero exit before committing. If the rule stays green on the past mistake, it drops one level or fixes the rule, and says so.",
+      "files": [],
+      "expectations": [
+        "Does not commit before the check has been shown red on the reconstructed past mistake",
+        "The red run happens in a throwaway worktree; the uncommitted lint rule in the task worktree is byte-identical before and after, shown by its hash",
+        "Pastes both the non-zero exit on the mistake and the zero exit on the fix from real output",
+        "If the check stays green on the past mistake, says the level does not hold and drops a level or repairs the check rather than committing"
+      ]
+    }
+  ]
+}

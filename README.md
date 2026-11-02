@@ -172,7 +172,7 @@ leaves a plan. `criteria` writes how each requirement will be proven, before any
 is built. `coordinate` drives a spec's steps through the rest of the loop,
 one fresh session per step and one per review. `implement` builds step by
 step against the criteria, reaching for
-`debug`, `docs-sync` or `deps-guard` as the item demands.
+`debug`, `sync-docs` or `guard-deps` as the item demands.
 `verify` gates every done claim. `pr` commits, pushes, opens the draft PR
 with its body, and cleans up after the merge, and `review` handles the
 comments. `correct` turns a
@@ -194,8 +194,8 @@ context runs out.
 |---|---|
 | `implement` | Build a spec step or plan item: see its criteria fail, write tests first, build the least change, record each criterion's status, checkpoint per item |
 | `debug` | Reproduce, instrument, trace to the root cause, one fix at a time |
-| `deps-guard` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
-| `docs-sync` | Bring READMEs, guides and doc comments back in line with the code |
+| `guard-deps` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
+| `sync-docs` | Bring READMEs, guides and doc comments back in line with the code |
 
 #### Prove it
 

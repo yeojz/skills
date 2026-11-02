@@ -3,17 +3,18 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Coordinate phases 12 to 14 of docs/roadmap.md. I will review on GitHub.",
-      "expected_output": "The agent reads AGENTS.md, CONTEXT.md, the ADRs and the roadmap rows, opens units.tsv and decisions.tsv in the group's notes folder, refuses any row with a not scoped field, fills template-phase.md for each scoped row that is independent of the others, names the implementation tier in each brief, pastes the Standing orders section of AGENTS.md verbatim, grants push, draft PR and ready in the brief, and starts one fresh worker session per row in its own worktree. It implements nothing itself.",
+      "prompt": "Coordinate steps 2 to 4 of docs/specs/session.md. I will review on GitHub.",
+      "expected_output": "Reads AGENTS.md, CONTEXT.md, the ADRs and the spec, checks its criteria are signed off, opens the ledgers, holds back any step whose requirements lack criteria, fills template-phase.md per ready step with its criteria and behaviour target, and starts one fresh worker per independent step.",
       "files": [],
       "expectations": [
-        "Reads AGENTS.md, CONTEXT.md, docs/adr and docs/roadmap.md before filling any brief",
-        "Creates or reads units.tsv and decisions.tsv in the notes folder and writes a row per started phase",
-        "A row with a not scoped or missing field is not started; the missing field is asked as a lettered question or handed to grill",
-        "Each brief follows template-phase.md with every section filled, including Read first, Decisions already made, Not asked for now, Done means with the repo's real gate commands, Forbidden and Report",
-        "Each brief's Done means carries the row's acceptance list line for line beside the behaviour level, each criterion with its command, and a row with no acceptance list or with a criterion that names no command is treated as not scoped and handed to grill rather than briefed",
-        "Each brief names the model tier for a scoped unit and the Standing orders block is copied from AGENTS.md word for word",
-        "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file"
+        "Reads AGENTS.md, CONTEXT.md, docs/adr and docs/specs/session.md before filling any brief, and checks the status line reads criteria signed off",
+        "Creates or reads units.tsv and decisions.tsv in the notes folder and writes a row per started step",
+        "A step serving a requirement with no criterion is not started and is handed to the criteria skill",
+        "Each brief follows template-phase.md with every section filled, including Read first, Decisions already made, Not asked for now and Done means",
+        "Each brief's Done means carries the step's criteria as written and a behaviour target of live-verified when any criterion is a drive check, unit-only when any is a test check, otherwise none",
+        "Each brief names the model tier and the Standing orders block is copied from AGENTS.md word for word",
+        "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file",
+        "Each brief's Owns lists the step's status line and the Status cells of its criteria rows in the spec, so the worker can record progress as implement requires without editing anything else in the spec"
       ]
     },
     {
@@ -23,9 +24,9 @@
       "files": [],
       "expectations": [
         "Runs gh pr view and compares headRefOid with the reported sha before the units.tsv row moves to ready",
-        "Checks that every acceptance criterion in the brief has its own row in the worker's verify block before the behaviour row, with the brief's command, an exit code and pass; a criterion with no row or one reading not run goes back to the worker as one line naming the criterion, and the row does not move to ready",
-        "The review brief carries the acceptance criteria and requires each command run on the detached checkout and checked against the worker's row, with a failed or missing criterion as a P1 naming it",
-        "The review brief keeps the detached worktree from the gate through the acceptance commands and the guard sample and removes it only in its Cleanup section, so no step runs in a checkout an earlier step removed",
+        "Checks that every criterion in the brief has its own row in the worker's verify block before the behaviour row, with the brief's command, an exit code and pass, or met for an inspection; a criterion with no row or one reading not run goes back to the worker as one line naming the criterion, and the row does not move to ready",
+        "The review brief carries the criteria and requires each command run on the detached checkout and checked against the worker's row, with a failed or missing criterion as a P1 naming it",
+        "The review brief keeps the detached worktree from the gate through the criteria checks and the guard sample and removes it only in its Cleanup section, so no step runs in a checkout an earlier step removed",
         "The reviewer is a separate fresh session on the review tier, not the worker session and not the coordinator itself",
         "The review brief follows template-review.md and names the detached gate, the correctness probe, the equal-weight design and maintainability lenses, guard-deletion sampling and the P1 to P3 table with file:line",
         "The brief says to post one COMMENT review and never approve or request changes",
@@ -48,38 +49,59 @@
     {
       "id": 4,
       "prompt": "where are we",
-      "expected_output": "The agent prints units.tsv as a table, one line per phase with its state, PR and head, corrects any row that disagrees with gh pr view in the file first, and lists the parked questions the owner still owes. Nothing comes from recollection.",
+      "expected_output": "The agent prints units.tsv as a table, one line per step with its state, PR and head, corrects any row that disagrees with gh pr view in the file first, and lists the parked questions the owner still owes. Nothing comes from recollection.",
       "files": [],
       "expectations": [
         "The answer is read from units.tsv and decisions.tsv, with the command shown",
-        "Each phase appears with its state, PR number and head SHA",
+        "Each step appears with its state, PR number and head SHA",
         "A row that disagrees with gh pr view is corrected in the file before the answer is given",
         "Parked ADR-tier questions are listed as lettered options still owed by the owner"
       ]
     },
     {
       "id": 5,
-      "prompt": "Worker on phase 13 asks: should the session token live in the signed cookie or in the store? Also, should the helper be called parseClaims or readClaims?",
+      "prompt": "Worker on step 3 asks: should the session token live in the signed cookie or in the store? Also, should the helper be called parseClaims or readClaims?",
       "expected_output": "The agent sorts the two forks. The token location is a data-model decision, so it goes to the owner as lettered options with a recommendation, the row is parked, and the other rows keep draining. The helper name is below the ADR tier, so the agent decides it against the glossary, writes a decisions.tsv row of kind fork with the reason, tells the worker, and names it in the next report.",
       "files": [],
       "expectations": [
         "The token location is presented to the owner as lettered options with a recommendation first and is not decided by the agent",
-        "The phase 13 row moves to parked while the other rows continue",
+        "The step 3 row moves to parked while the other rows continue",
         "The helper name is decided by the agent with a reason tied to CONTEXT.md and relayed to the worker",
         "A decisions.tsv row of kind fork records the name decision and the parked question"
       ]
     },
     {
       "id": 6,
-      "prompt": "Reviewer verdict on PR 42: merge as is. Gate green on a9c1f3e detached, review in review-pr42.md. Phase 13 is the next independent row.",
-      "expected_output": "The agent sends the owner one line with the verdict and its evidence, moves the units.tsv row to merge-ready, starts the phase 13 worker at once without waiting for the merge, and in Claude Code schedules one recurring merge check for the frontier with CronCreate when none exists, whose prompt runs gh pr view on every merge-ready row and Step 9 on each MERGED one. It never runs gh pr merge and never arms auto-merge.",
+      "prompt": "Reviewer verdict on PR 42: merge as is. Gate green on a9c1f3e detached, review in review-pr42.md. Step 3 is the next ready step.",
+      "expected_output": "The agent sends the owner one line with the verdict and its evidence, moves the units.tsv row to merge-ready, starts the step 3 worker at once without waiting for the merge, and in Claude Code schedules one recurring merge check for the frontier with CronCreate when none exists, whose prompt runs gh pr view on every merge-ready row and Step 9 on each MERGED one. It never runs gh pr merge and never arms auto-merge.",
       "files": [],
       "expectations": [
         "One line to the owner carries the verdict, the review file, the gated head and its exit code",
         "The units.tsv row for PR 42 moves to merge-ready",
-        "The phase 13 worker is started before PR 42 is merged, as a fresh session in its own worktree",
+        "The step 3 worker is started before PR 42 is merged, as a fresh session in its own worktree",
         "A single CronCreate job covers the merge frontier, with a prompt that checks every merge-ready row with gh pr view and runs the cleanup for each MERGED one, and no gh pr view loop runs in the session",
         "No gh pr merge and no auto-merge"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Coordinate docs/specs/billing.md. Its status line reads draft.",
+      "expected_output": "Refuses to start any worker because the criteria aren't signed off, and offers the criteria skill.",
+      "files": [],
+      "expectations": [
+        "Reads the spec's status line before filling any brief",
+        "Starts no worker and fills no brief",
+        "Offers the criteria skill to write and sign off the criteria"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Coordinate step 3 of docs/specs/handbook.md. It serves R5 (the README explains setup), whose only criterion C5.1 is an inspection of the README. The criteria are signed off.",
+      "expected_output": "Fills the brief with C5.1 and a behaviour target of none, since no criterion is a drive or test check, so the worker is judged on the criteria alone and not sent back for lacking a unit test.",
+      "files": [],
+      "expectations": [
+        "The brief's behaviour target reads none, with the criteria alone deciding, not unit-only or live-verified",
+        "When checking the worker's report, a met C5.1 with no behaviour test is accepted rather than sent back for a missing test"
       ]
     }
   ]

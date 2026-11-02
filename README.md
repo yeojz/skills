@@ -126,9 +126,9 @@ block headed "House rules from the jz plugin", with the project's own
    checks, the branch and worktree removal, and the main checkout brought
    level with the remote.
 
-A roadmap of phases runs through `/jz:coordinate` from a session in the
-target repository. It starts one worker session per phase and one reviewer
-per PR, reports one line per PR at merge-ready, and leaves the merge to you.
+A spec's steps run through `/jz:coordinate` from a session in the target
+repository. It starts one worker session per step and one reviewer per PR,
+reports one line per PR at merge-ready, and leaves the merge to you.
 
 ### Set up a project
 
@@ -186,7 +186,7 @@ context runs out.
 |---|---|
 | `grill` | Interview a plan until nothing is assumed; in spec mode write the spec (requirements, decisions, vertical-slice steps), the glossary, ADRs and standing orders as decisions land |
 | `criteria` | Write acceptance criteria per requirement (scenario, what counts as passing, and a test, command, drive or inspection check), run each once to see it fail, and get the owner's sign-off |
-| `coordinate` | Drive a roadmap to merge-ready: fill the phase and review briefs from their templates, with the row's acceptance criteria copied into the brief and checked against the worker's verify block, one fresh worker session per phase and one fresh reviewer per PR, keep the units and decisions ledgers, report one line per PR |
+| `coordinate` | Drive a spec's steps to merge-ready: one fresh worker per step from the phase template, with the step's criteria and behaviour target as Done means, checked against the worker's verify block; one fresh reviewer per PR; bounded fix rounds; the units and decisions ledgers; one line per PR |
 
 #### Build
 

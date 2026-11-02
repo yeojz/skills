@@ -52,7 +52,7 @@ no `package.json`, the Makefile's targets are the commands, run as
 | coverage | `test:cov`, `coverage`, or the test script with coverage on; only when a threshold applies |
 | build | `build`, `build:ci` |
 | cross-runtime | `test:bun`, `test:deno`, `test:platform-*`, `test:dist-*` |
-| criteria | the criteria of the requirements a spec step serves, or a brief's acceptance list; each check run as written |
+| criteria | the criteria of the requirements a spec step serves, or the brief's criteria; each check run as written |
 | behaviour | the nearest `VERIFICATION.md` |
 
 The nearest `VERIFICATION.md` is found like `AGENTS.md`: walk up from each

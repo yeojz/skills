@@ -1,171 +1,109 @@
 ---
 name: coordinate
-description: Use when a roadmap of phases has to be driven through worker and reviewer sessions to merge-ready, with the owner merging on GitHub. Triggers on requests like "coordinate the roadmap", "run phases 12 to 14", "drain the roadmap", "start the next phase", "I will review on GitHub", "where are we", "PR 42 is ready for review", "the reviewer said after fixes", "proceed with the next row", or when a session that starts other sessions picks up a docs/roadmap.md row.
+description: Use when a spec's steps have to be driven through worker and reviewer sessions to merge-ready, with the owner merging on GitHub. Triggers on requests like "coordinate the spec", "run steps 2 to 4", "drain the steps", "start the next step", "coordinate the roadmap", "I will review on GitHub", "where are we", "PR 42 is ready for review", "the reviewer said after fixes", "proceed with the next one", or when a session that starts other sessions picks up a step of a spec in docs/specs/.
 ---
 
 # coordinate
 
 ## Overview
 
-Runs the coordinator loop over a roadmap: one fresh worker session per phase
-in its own worktree, one fresh reviewer session per pull request, fix rounds
-relayed or restarted, and one line to the owner when a phase is merge-ready.
-Every brief is filled from `template-phase.md` or `template-review.md` in
-this skill's directory, never typed from memory, and every session, verdict
-and decision lands in two ledgers in the group's notes folder, `units.tsv`
-and `decisions.tsv`, so "where are we" is answered from a file.
-
-Three things hold throughout: the reviewer is never the implementer, "done
-means" names a gate, a behaviour level and the acceptance criteria with
-their commands rather than a feeling, and every
-decision the coordinator takes without the owner is in `decisions.tsv` by the
-morning. Merge stays the owner's click on GitHub.
+Drives a spec's steps to merge-ready: one fresh worker session per step in
+its own worktree, one fresh reviewer per pull request, bounded fix rounds,
+and one line to the owner when a PR is ready to merge. Every brief comes
+from this skill's templates, and every session, verdict and decision is
+written to two ledgers, so "where are we" is answered from a file. The
+reviewer is never the implementer, and merging stays the owner's click.
 
 ## Workflow
 
-### Step 1: Read the roadmap and the standing orders
+### Step 1: Read the spec and the standing orders
 
 ```bash
-ls AGENTS.md CONTEXT.md docs/specs docs/roadmap.md 2>/dev/null
-ls docs/adr 2>/dev/null
+ls AGENTS.md CONTEXT.md docs/specs docs/adr 2>/dev/null
 awk '/^## /{p = ($0 == "## Standing orders")} p' AGENTS.md
 ```
 
-The `awk` starts at the exact `## Standing orders` heading and stops at the
-next level-two heading whatever its name, so a following `## Security notes`
-section never leaks into a brief. It prints nothing when the heading is
-missing.
+Read every file that exists: the glossary and ADRs go into every brief. The
+`awk` prints exactly the `## Standing orders` section, or nothing. Those
+lines are pasted verbatim into every brief and relay. With none, the default
+block in `template-phase.md` stands in, and adding the section to
+`AGENTS.md` goes into the first step's scope.
 
-Read every file that exists. The roadmap is the Steps section of a spec in
-`docs/specs/`; an older `docs/roadmap.md` is read the same way. Throughout
-this skill, a row is a spec step, its depends-on is the step's Blocked by,
-its owns and you-see are the step's fields, its builds is the step's title,
-its done means is the repo's gate plus the behaviour level its drive criteria
-reach, and its acceptance list is the criteria of the requirements the step
-serves, each criterion's check being its command (for an inspection
-criterion, its written standard counts as the command). A spec whose status line doesn't read `criteria signed
-off` is not ready: offer the `criteria` skill. A repo with no spec has nothing
-to coordinate: offer `grill` in spec mode, then `criteria`.
-
-The standing orders are the lines every worker and reviewer must follow. They
-live under one `## Standing orders` heading in the repo's `AGENTS.md` and are
-pasted verbatim into every brief and every fix relay, so a worker in any
-agent reads the same words. When the heading is missing, the default block
-in `template-phase.md` stands in, and "add the Standing orders section to
-`AGENTS.md`" goes into the first unit's scope so the next brief can read it
-from the repo.
+The spec's status line must read `criteria signed off`; if it doesn't, stop
+and offer the `criteria` skill. With no spec, offer `grill` in spec mode,
+then `criteria`.
 
 ### Step 2: Open the ledgers
 
-The group's notes folder is the one the session's brief or the app names for
-this group of sessions. Without one, use `docs/plans/<date>-coordinate-<slug>/`,
-never committed.
+The notes folder is the one the brief or the app names for this group of
+sessions; otherwise `docs/plans/<date>-coordinate-<slug>/`, never committed.
 
 ```bash
-notes="<notes folder>"
-mkdir -p "$notes" || echo "cannot create $notes"
+notes="<notes folder>"; mkdir -p "$notes" || echo "cannot create $notes"
 [ -f "$notes/units.tsv" ] || printf 'id\ttitle\tsession\tbranch\tbase\tpr\thead\tverdict\tstate\n' > "$notes/units.tsv"
 [ -f "$notes/decisions.tsv" ] || printf 'when\tunit\tkind\tdecision\tevidence\tresult\n' > "$notes/decisions.tsv"
-cat "$notes/units.tsv"
 ```
 
-The folder is created first because the default one does not exist yet on
-a fresh group and every later step writes into it. If `mkdir` fails, stop
-before starting any session: nothing below has durable state without the
-ledgers.
-
-`units.tsv` has one row per phase and is rewritten in place as the phase
-moves. Its `base` column is the default branch, or `<parent branch>@<sha>`
-for a row stacked on an unmerged PR, where the sha is the parent tip the
-worker branched from; Step 9 rebases from that boundary. `decisions.tsv` is append-only, one row per fork, verdict, relay or
-decision, with a pointer to the evidence (a PR URL, a `file:line`, a log).
+If the folder can't be created, start nothing. `units.tsv` has one row per
+step, rewritten as it moves; `base` is the default branch or
+`<parent branch>@<sha>` for a stacked step. `decisions.tsv` is append-only:
+one row per fork, verdict or relay, with a pointer to its evidence.
 
 | State | Meaning |
 |---|---|
-| `scoped` | Row read, brief filled, no session yet |
-| `running` | Worker session started |
-| `ready` | Worker reported head SHA, gate counts and a ready PR |
-| `in-review` | Reviewer session started |
-| `fixing` | Verdict was after fixes or rework; a fix round is running |
+| `scoped` | Brief filled, no session yet |
+| `running` | Worker started |
+| `ready` | Worker's report checked against `gh pr view` |
+| `in-review` | Reviewer started |
+| `fixing` | Verdict after fixes or rework; a fix round is running |
 | `merge-ready` | Verdict merge as is; reported to the owner |
 | `merged` | `gh pr view` reads `MERGED`; cleanup done |
-| `parked` | Waiting on the owner for an ADR-tier fork |
-| `blocked` | Three fix rounds exhausted, or a gate nobody can run |
+| `parked` | Waiting: on the owner for an ADR-tier fork, or on `criteria` for a requirement with none |
+| `blocked` | Three fix rounds used, or a gate nobody can run |
 
-### Step 3: Pick the next row and check it is scoped
-
-A roadmap row carries depends on, owns, builds, you see, done means,
-acceptance and review gate. Print the candidate rows:
+### Step 3: Pick the next steps
 
 ```bash
-grep -n -E '^### Step|^- (Serves|Blocked by):' docs/specs/<slug>.md
+grep -n -E '^### Step|^- (Serves|Blocked by|Owns|Review gate):' docs/specs/<slug>.md
 sed -n '/^## Criteria/,/^## Steps/p' docs/specs/<slug>.md
 ```
 
-The first prints each step with the requirements it serves; the second the
-Criteria table, so a requirement with no criterion is seen before the brief is
-filled.
-
-Refuse to start a row that has a `not scoped` field or a missing one. The
-field is a question, so ask it as a lettered question or hand it to `grill`,
-and start the next row that is fully scoped instead. Never fill the field
-yourself.
-
-The acceptance field is a list, one criterion per line as a sentence plus
-the command that proves it. A row with no list, or with a criterion that
-names no command, is not scoped in the same way: the missing check is the
-question, it goes to `criteria`, and the row waits. Never write a criterion or its command yourself.
-
-A row whose dependency is an unmerged PR is not blocked: base the worker's
-branch on that PR's branch and record the parent tip it starts from, because
-the repo squash-merges and that tip is the only boundary that tells the
-child's commits from the parent's once the parent has landed:
+A step is ready when every requirement it serves has a criterion; one that
+doesn't goes to `criteria`, and its row is written as `parked`. Start every ready step whose Blocked
+by is merged and whose Owns overlaps no running step. A step blocked only by
+an unmerged PR starts on that PR's branch; record the parent tip it starts
+from in the brief and the `base` column, because after a squash merge that
+tip is the only boundary between the parent's commits and the child's:
 
 ```bash
-git fetch origin <parent branch>
-parent_tip="$(git rev-parse "origin/<parent branch>")"
+git fetch origin <parent branch>; git rev-parse "origin/<parent branch>"
 ```
 
-Write `<parent branch>@$parent_tip` in the brief under "Decisions already
-made" and in the row's `base` column, and note in the report shape that the
-PR must rebase once the dependency merges. Do not wait on a merge to start
-independent rows.
+### Step 4: Brief and start the worker
 
-Start every row that is independent of the running ones: different packages
-or files, no output feeding another. Two rows that own the same file run in
-order.
+Fill every field of `template-phase.md`; a blank field is where the worker
+stalls. The step's criteria go under Done means, copied as written. The
+behaviour target is the highest level the step's checks can reach:
+`live-verified` when any is a drive check, `unit-only` when any is a test
+check, otherwise none, and the criteria alone decide. The owner can set it
+otherwise. Name the model tier
+`rules/models.md` gives a scoped unit, one up for a subtle or
+security-sensitive step.
 
-### Step 4: Fill the phase brief
+Owns also lists the two parts of the spec that `implement` records
+progress in, and nothing else in it: this step's status line under its
+heading, and the Status cells of this step's rows in the Criteria table. If
+two steps' rows conflict in a rebase, each keeps its own status.
 
-Read `template-phase.md` from this skill's directory and fill every field.
-Do not restructure it and do not drop a section: a field left blank is the
-question the worker will stall on.
+Save it as `phase-<id>.md` in the notes folder, write the row as `scoped`,
+then start the worker fresh in its own worktree on that tier: in the desktop
+app, `start_session` with fresh context and a worktree; elsewhere, a new
+session with the brief pasted. Never fork this session into a worker and
+never implement the step here. Move the row to `running`.
 
-| Field | Filled from |
-|---|---|
-| Read order | `AGENTS.md`, `CONTEXT.md`, the ADRs, this roadmap row, the previous unit's hand-over note in the notes folder |
-| Decisions already made | The ADRs and the spec's Decisions lines that touch this row, plus any base-on-branch decision from Step 3 |
-| Scope and owns | The row's owns and builds fields, as absolute paths |
-| Not asked for now | The neighbouring rows, so the worker stops at the boundary |
-| Done means | The row's done means field: the repo's real gate commands read from `package.json` or the Makefile, the value the `behaviour` row of the `verify` report must reach (`live-verified`, `unit-only` or `type-check-only`), and any conformance or fixture run; a repository with a `VERIFICATION.md` reaches `live-verified` through its Drive section |
-| Acceptance | The row's acceptance list, copied line for line under Done means beside the behaviour level, each criterion with its command. A criterion whose command is a Drive step of the nearest `VERIFICATION.md` makes adding that step part of the phase, so the recipe goes under Owns. A row with no list went back to `grill` in Step 3 and has no brief |
-| Model tier | The tier `rules/models.md` gives a scoped unit with named files and a done condition; one tier up when the row is subtle or security-sensitive. Name the tier in the brief |
-| Ship | The `pr` skill, with the go-ahead for push, draft PR and ready granted in the brief, so the worker asks for none of them |
-| Standing orders | The `AGENTS.md` block from Step 1, verbatim |
+### Step 5: Check the worker's report
 
-Save the filled brief as `phase-<id>.md` in the notes folder, so the
-reviewer and any fix session read the same words. Write the `units.tsv` row
-with state `scoped`, then start the worker as a
-fresh session in its own worktree on the named tier: in the desktop app,
-`start_session` with fresh context and a worktree; under another agent, open
-a new session and paste the brief. Never fork the coordinator's context into
-a worker, and never implement the row in this session. Move the row to
-`running` with the session id.
-
-### Step 5: Drain worker reports
-
-A worker's report is a claim. Before moving its row to `ready`, check the
-three things it must name:
+A report is a claim. Check it before the row moves to `ready`:
 
 ```bash
 gh pr view <number> --json url,isDraft,headRefOid,state
@@ -174,186 +112,115 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 
 | Claimed | Must match |
 |---|---|
-| Head SHA | `headRefOid` and `origin/<branch>` |
-| Gate counts | A pasted `verify` run on the pushed head, with exit codes |
-| Ready | `isDraft` false, only when the brief named ready as the signal |
-| Behaviour level | The `behaviour` row of the pasted `verify` block reads the value Done means named, or higher, with the command that drove it; a lower value is a report of not met, not a claim of done |
-| Acceptance | Every criterion in the brief has its own row in the pasted `verify` block, before the `behaviour` row, with the command the brief named, its exit code and `pass`; a row that reads `fail` or `not run` is a report of not met, and a criterion with no row is a missing item |
+| Head sha | `headRefOid` and `origin/<branch>` |
+| Gate | A pasted `verify` block on that head, with exit codes |
+| Criteria | One row per criterion of the step, each `pass` or `met` |
+| Behaviour | At or above the target in the brief; any level when the target is none |
+| Ready | `isDraft` false, only when the brief named ready |
 
-A report with a missing item goes back to the worker as one line naming it,
-the criterion by its sentence when it is one.
-Then write the `units.tsv` row with PR number and head, and go to Step 6.
+Anything missing or short goes back to the worker in one line naming it.
+Record the PR and head. In the desktop app, bind the PR and turn its monitor
+on once. After each check, look at context use: past 55%, run `handoff`
+with the notes folder and ledgers named, before starting anything new.
 
-In the desktop app, bind the PR and turn the monitor on once per PR instead
-of polling: it wakes the coordinator on CI failures, conflicts and review
-comments.
+### Step 6: Brief and start the reviewer
 
-After each drain, check context usage. Past 55 percent, run `handoff` into a
-continuation session, with the notes folder and both ledgers named in the
-prompt, before starting anything new.
+Fill `template-review.md` for the PR and start a fresh session on the review
+tier: never the worker, never a fork of it, never this session. A contested
+design gets a second reviewer on another model family, through Codex where
+its plugin is present, with the same brief. The reviewer runs the gate and
+every criterion on a detached checkout, probes base against candidate, runs
+the `review` skill's change mode, posts one COMMENT review (never approve or
+request changes), writes `review-pr<number>.md`, and returns merge as is,
+after fixes, or rework. The step's Review gate sets the brief's Post field:
+"owner reviews before merge" posts the review on the PR for the owner;
+"none" keeps it in the review file until the owner asks. Move the row to `in-review`; log the verdict.
 
-### Step 6: Fill the review brief and start the reviewer
-
-Read `template-review.md` from this skill's directory and fill it for the
-PR. The reviewer is a fresh session on the review tier from `rules/models.md`
-and is never the worker session, never a fork of it, and never this session.
-A second opinion on a contested design runs on a different model family,
-through Codex where its plugin is present, with the same brief.
-
-The brief fixes what the review must do, so the reviewer cannot trade it
-away: gates on a clean detached checkout, a correctness probe of base against
-candidate, measurement reproduction with interleaved samples when the PR
-claims a number, a run of every acceptance criterion's command on the
-detached checkout checked against the worker's row for it, design and
-maintainability at the same weight as
-correctness, a targeted guard-deletion sample over the new rejecting
-branches with every unsampled guard listed with its reason, findings P1 to
-P3 each with a `file:line`, one COMMENT review posted on the
-PR, never an approval or a request for changes, a `review-pr<number>.md` in
-the notes folder, and a verdict of merge as is, after fixes, or rework.
-
-Move the row to `in-review` with the reviewer's session id and write a
-`decisions.tsv` row of kind `verdict` when the reviewer reports.
-
-### Step 7: Run fix rounds
-
-On merge as is, go to Step 8. On after fixes or rework, decide where the fix
-runs:
+### Step 7: Fix rounds
 
 | The fix needs | Run it in |
 |---|---|
-| State that lives only in the worker session: its worktree with uncommitted changes, a running process, a half-finished rebase | The existing worker, by a relay message |
-| Anything else | A fresh session with the original phase brief plus every later directive consolidated into it |
+| State only the worker has: uncommitted changes, a running process, a half-done rebase | The worker, by relay |
+| Anything else | A fresh session: the phase brief plus every later directive, consolidated |
 
-Never restart a stopped session to continue a fix, and never send a fix as a
-bare list of findings: the relay carries the standing orders verbatim, the
-review file path, the rule that each finding gets its own commit, that no
-test is weakened to clear a finding, that the PR stays draft until `verify`
-passes on the pushed head and no check has failed, and the report shape from the
-phase template. Write a `decisions.tsv` row of kind `relay` naming which
-route was taken and why.
+A relay carries the standing orders verbatim, the review file path, one
+commit per finding, no weakened tests, draft until `verify` passes on the
+pushed head and no check has failed, and the phase template's report shape.
+Never restart a stopped session. Log the route and why. The
+reviewer re-checks the new head and marks each finding fixed, not fixed or
+no longer applicable. After three rounds, the row is `blocked`: report the
+open findings and what each round tried.
 
-When the fix is reported, the reviewer re-checks through Step 6 on the new
-head; a second pass classifies each earlier finding as fixed with a line,
-not fixed with a line, or no longer applicable. Bound this at three rounds
-per PR. After the third, move the row to `blocked` and report to the owner
-with the open findings and what each round tried.
-
-### Step 8: Report merge-ready and start the next row
-
-One line to the owner per PR, carrying the verdict and its evidence:
+### Step 8: Report merge-ready, start the next
 
 ```text
-PR 42 merge-ready: verdict merge as is, review in review-pr42.md, gate green on a9c1f3e detached (make validate exit 0), 2 P2 fixed and re-checked.
+PR 42 merge-ready: merge as is, review in review-pr42.md, gate green on a9c1f3e detached (make validate exit 0), C1.1 and C2.1 pass, 2 P2 fixed and re-checked.
 ```
 
-Move the row to `merge-ready`. Then start the next independent row at once;
-the roadmap is the queue and the owner's merge is not a prerequisite for a
-row that does not depend on this one.
+Move the row to `merge-ready` and start the next ready step at once. Never
+run `gh pr merge` or arm auto-merge. A merge doesn't wake the monitor, so in
+Claude Code schedule one recurring `CronCreate` check, about every 25
+minutes off the hour and half hour: for each `merge-ready` row, run
+`gh pr view <number> --json state,headRefOid`, and Step 9 for each `MERGED`.
+Delete it with `CronDelete` when no row is `merge-ready`; recreate it after
+a handoff or when it expires after seven days. Elsewhere, the owner's
+"merged" is the trigger.
 
-Merging is the owner's action on GitHub. Never run `gh pr merge` and never
-arm auto-merge unless the owner asked for it.
+### Step 9: After the merge
 
-The monitor's wake events are CI failures, conflicts and review comments; a
-merge is not one of them. So in Claude Code, when the first row reaches
-`merge-ready`, schedule one recurring check for the whole frontier with
-`CronCreate`, about every 25 minutes on a minute away from the hour and the
-half hour, with a prompt that says: for every `units.tsv` row in
-`merge-ready`, run `gh pr view <number> --json state,mergedAt,headRefOid`,
-and for each one that reads `MERGED`, run Step 9. One job covers every row.
-Delete it with `CronDelete` once no row is `merge-ready`, and create it again
-after a handoff or once it has expired, since a job lives in the session and
-ends after seven days. A turn the job starts cannot start a session and does
-not need to: this step already started the next row, and Step 9 relays or
-runs the cleanup. Under another agent there is no scheduler, and the owner's
-"merged" message is the trigger.
+Prove `MERGED`, then run the `pr` skill's Cleanup in the worker's context,
+or relay it. Move the row to `merged` once the branch deletion and worktree
+removal are pasted.
 
-### Step 9: Clean up after the merge
-
-When the merge check, the monitor or the owner reports a merge, prove it before touching
-anything, then run the `pr` skill's post-merge cleanup in the worker's
-worktree context, or relay it to the worker when its session is still open:
-
-```bash
-gh pr view <number> --json state,mergedAt,headRefOid
-```
-
-Move the row to `merged` once the branch deletion and worktree removal have
-been pasted as output.
-
-A dependent row whose branch was based on this PR's branch rebases now, in
-its own session. Not with an ordinary `git rebase "origin/$base"`: the repo
-squash-merges, so the parent's commits are not ancestors of the default
-branch, and a plain rebase replays them as if they were the child's and
-conflicts on the first one. Rebase onto the default branch from the parent
-tip recorded in the row's `base` column, after the ancestor check in the `pr`
-skill's Rebase section:
+A step stacked on that PR rebases now, in its own session, from the parent
+tip in its `base` column, not with a plain rebase, which would replay the
+parent's squashed commits as its own:
 
 ```bash
 base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
-parent_tip="<sha from the base column>"
 git fetch origin "$base" "<branch>"
 old="$(git rev-parse "origin/<branch>")"
-git merge-base --is-ancestor "$old" HEAD && echo "remote tip is in local HEAD" || echo "DIVERGED"
-git rebase --onto "origin/$base" "$parent_tip"
-git range-diff "$parent_tip..$old" "origin/$base..HEAD"
+git merge-base --is-ancestor "$old" HEAD || echo DIVERGED
+git rebase --onto "origin/$base" "<parent tip>"
+git range-diff "<parent tip>..$old" "origin/$base..HEAD"
 ```
 
-`DIVERGED` is a stop, as in the `pr` skill's Rebase section. The range-diff pairs each child
-commit that was on the remote with its rebased copy: it must show no `<` line
-and none of the parent's commits. Then finish as that section does: `verify` on the
-rebased tree, and the push with
-`--force-with-lease="<branch>:$old"`. Set the row's `base` column to the
-default branch once the push has landed.
+`DIVERGED` is a stop. The range-diff must show no `<` line and none of the
+parent's commits. Then `verify`, push with
+`--force-with-lease="<branch>:$old"`, and set `base` to the default branch.
 
-### Step 10: Forks, in two tiers
-
-A worker or reviewer that hits a design question sends it to the coordinator.
-Sort it:
+### Step 10: Forks
 
 | Tier | Members | Do |
 |---|---|---|
-| ADR-tier | Public API shape, data model, a new dependency, a specification interpretation, anything that would earn an ADR, and anything grill's hand-back listed as owner-decided | Present lettered options with a recommendation to the owner, move the row to `parked`, keep draining the other rows, and never decide it in the owner's absence |
-| Everything else | Naming inside a package, test layout, an internal helper's shape, the order of two commits | Decide it, write a `decisions.tsv` row of kind `fork` with the choice and the reason, tell the worker, and name it in the next report so it can be reversed |
+| ADR-tier | Public API shape, data model, a new dependency, a specification reading, anything that would earn an ADR or that grill's hand-back listed as the owner's | Lettered options with a recommendation to the owner; park the row; keep draining the others; never decide it alone |
+| Everything else | Naming inside a package, test layout, an internal helper, commit order | Decide, log it as a `fork` with the reason, tell the worker, name it in the next report |
 
-When the owner answers, append a `decisions.tsv` row with the same `unit`
-and `decision` text as the fork row and the letter chosen in `result`, so a
-reader pairing rows by `unit` and `decision` sees the fork as settled, and
-relay it in the words they used.
+When the owner answers, append a row with the same `unit` and `decision` and
+the letter chosen in `result`, and relay it in their words.
 
-### Step 11: Answer "where are we" from the ledger
+### Step 11: "Where are we"
 
 ```bash
-column -t -s $'\t' "$notes/units.tsv"
-tail -20 "$notes/decisions.tsv"
+notes="<notes folder>"
+column -t -s $'\t' "$notes/units.tsv"; tail -20 "$notes/decisions.tsv"
 ```
 
-The answer is the table, one line per row with its state, plus the parked
-questions still owed by the owner. Nothing in it comes from recollection; a
-row that disagrees with `gh pr view` is corrected in the file first.
+Answer from the table, plus the parked questions the owner owes. Correct a
+row that disagrees with `gh pr view` in the file first.
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---|---|
-| Typing a phase brief from memory | Read `template-phase.md` and fill every field. A blank field is where the worker stalls |
-| Starting a row with a `not scoped` field | The field is a question. Ask it or hand it to `grill`; start the next scoped row |
-| Starting a row with no acceptance list, or with a criterion that names no command | The row is not scoped. The missing check goes to `criteria`; never write a criterion yourself |
-| Moving a row to `ready` with a criterion missing from the `verify` block, or reading `not run` | One line back to the worker naming the criterion. Every criterion has a row with its command, exit code and `pass` before the row is `ready` |
-| Reviewing in the worker session, or in this one | The reviewer is a fresh session on the review tier and never the implementer |
-| Forking the coordinator's context into a worker | Fresh context plus the brief. The ledgers and notes carry what it needs |
-| Naming no model tier in a brief | Pick the tier by the job from `rules/models.md` and write it in the brief; never below the review tier for a reviewer |
-| Standing orders paraphrased or left out of a relay | Paste the `AGENTS.md` block verbatim into every brief and every fix relay |
-| Moving a row to `ready` on the worker's word | Check head SHA, the pasted `verify` run with exit codes, and `isDraft` against `gh pr view` |
-| Restarting a stopped worker to run a fix | Relay only when the state lives there; otherwise a fresh session with the consolidated brief |
-| A fix relay that is a bare list of findings | Standing orders, review file, one commit per finding, no weakened tests, stay draft until gated |
-| Waiting on an unmerged PR before starting a dependent row | Base on its branch, record `<parent branch>@<tip>` in the brief and the `base` column, rebase from that tip after the merge |
-| A plain `git rebase "origin/$base"` on a stacked child after the parent squash-merged | The parent's commits replay as the child's and conflict. `git rebase --onto "origin/$base" <parent tip>`, then a range-diff with no `<` line |
-| Deciding a public API or data model fork alone | ADR-tier: lettered options to the owner, park the row, drain the others |
-| Deciding nothing without the owner | Below the ADR tier, decide, log in `decisions.tsv`, report. Over-blocking is the failure this loop removes |
-| Polling the PR for its state | Bind it and turn the monitor on once for CI and review; one scheduled merge check covers the frontier, never a loop of `gh pr view` |
-| Waiting for the owner to say "merged" | The scheduled check runs Step 9 on its own; the owner's message is a backup, not the trigger |
-| Running `gh pr merge` or arming auto-merge | Merge is the owner's click. Report merge-ready and move on |
-| Answering "where are we" from memory | `units.tsv` is the answer. Correct the file against `gh pr view` first |
-| Running past the context limit mid-drain | Check usage after each drain; past 55 percent, `handoff` with the ledgers named |
-| Fix rounds without a bound | Three per PR, then `blocked` and a report with what each round tried |
+| Typing a brief from memory | Fill the template; every field |
+| Starting a step whose requirement has no criterion | Send it to `criteria` |
+| Moving a row to `ready` on the worker's word | Check sha, criteria rows, behaviour and `isDraft` |
+| Reviewing in the worker session, or here | A fresh reviewer on the review tier |
+| Forking this session into a worker | Fresh context plus the brief |
+| Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |
+| Waiting on an unmerged PR | Base on its branch and record the parent tip |
+| A plain rebase of a stacked step after a squash merge | `rebase --onto` the parent tip, then range-diff |
+| Deciding an ADR-tier fork alone | Options to the owner; park; drain the rest |
+| Running `gh pr merge` | Merging is the owner's click |
+| Fix rounds without a bound | Three, then `blocked` |

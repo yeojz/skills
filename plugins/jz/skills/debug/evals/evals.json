@@ -29,7 +29,8 @@
         "Places instrumentation before the failing operation, not after it",
         "Compares Node version, package manager version and environment between local and CI instead of assuming parity",
         "Fixes only the layer that drops the value and removes the instrumentation afterwards",
-        "Does not add a fallback default for BASE_URL to make the build pass"
+        "Does not add a fallback default for BASE_URL to make the build pass",
+        "The presence check prints only literal set or unset text for a populated, an empty and an unset variable, and never the variable's value; it does not use a ${VAR:-...} expansion that would print the value"
       ]
     },
     {

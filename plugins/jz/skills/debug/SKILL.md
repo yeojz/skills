@@ -62,8 +62,13 @@ setup steps.
 
 When the failure crosses layers (workflow, build script, application; or
 handler, service, database), log what enters and leaves each layer and run
-once, instead of reasoning about which is wrong. Print whether a secret is
-set, never its value: `echo "TOKEN: ${TOKEN:+set}${TOKEN:-unset}"`. The first layer where the
+once, instead of reasoning about which is wrong. Print only whether a
+secret is set, never its value, and never with `${VAR:-...}`, which expands
+to the value when it is set:
+
+```bash
+if [ -n "${TOKEN:-}" ]; then echo "TOKEN: set"; else echo "TOKEN: unset or empty"; fi
+``` The first layer where the
 value is missing or wrong is where to look. Log before the dangerous
 operation, not after it fails. Remove the instrumentation before the fix is
 committed.

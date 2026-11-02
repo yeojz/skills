@@ -65,11 +65,22 @@
         "Reads .github/workflows/ for the node-version and package manager setup steps actually exercised in CI",
         "Detects the package manager from the lock file rather than from README or CONTRIBUTING prose",
         "Builds a comparison of each claim (Node version, package manager, install command, script names) across package.json, CI, README and CONTRIBUTING",
-        "Verifies every development and build command in CONTRIBUTING exists as a real script in package.json and invents none",
+        "Verifies every development and build command in CONTRIBUTING against its own source (a package.json script, a Makefile target, a declared bin, or a built-in command) and invents none",
         "Updates the Node version in CONTRIBUTING to match the verified source",
         "Reports every disagreement with the file and line number for each side, including any disagreement between engines and CI",
         "Checks the README for the same version and command claims rather than fixing CONTRIBUTING alone",
         "Does not average or guess a version when two sources disagree; reports the conflict"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Check CONTRIBUTING.md is accurate. It documents `make validate` and `pnpm install`. The repo has a Makefile with a validate target and a pnpm-lock.yaml, but no scripts block in the root package.json.",
+      "expected_output": "Checks `make validate` against the Makefile and `pnpm install` as a built-in, finds both valid, and keeps them; neither is reported as drift for lacking a scripts entry.",
+      "files": [],
+      "expectations": [
+        "Checks make validate against the Makefile's targets, for example with grep or make -n",
+        "Treats pnpm install as a built-in command rather than looking for it in scripts",
+        "Does not report either command as drift or remove it from CONTRIBUTING.md"
       ]
     }
   ]

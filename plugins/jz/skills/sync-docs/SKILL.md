@@ -110,8 +110,11 @@ grep -rniE 'node ?v?[0-9]{2}|pnpm@|npm install|yarn add' README.md CONTRIBUTING.
 ```
 
 Compare each claim (Node version, package manager, install command, script
-names) across `package.json`, `.nvmrc`, CI, README and CONTRIBUTING, and check
-every documented command is a real `scripts` key. `engines`,
+names) across `package.json`, `.nvmrc`, CI, README and CONTRIBUTING. Check
+each documented command against its own source: `<pm> run <name>` against
+`scripts`, `make <target>` against the Makefile, a CLI against `bin`, and a
+built-in such as `pnpm install` against the tool's docs. A command that
+resolves there is not drift. `engines`,
 `packageManager` and the lock file say what the repo requires; CI says
 what's exercised. The package manager comes from the lock file, never
 from README prose. Report each disagreement with both `file:line`s; never

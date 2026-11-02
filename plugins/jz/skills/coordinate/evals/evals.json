@@ -11,9 +11,10 @@
         "Creates or reads units.tsv and decisions.tsv in the notes folder and writes a row per started step",
         "A step serving a requirement with no criterion is not started and is handed to the criteria skill",
         "Each brief follows template-phase.md with every section filled, including Read first, Decisions already made, Not asked for now and Done means",
-        "Each brief's Done means carries the step's criteria as written and a behaviour target of live-verified when any criterion is a drive check, otherwise unit-only",
+        "Each brief's Done means carries the step's criteria as written and a behaviour target of live-verified when any criterion is a drive check, unit-only when any is a test check, otherwise none",
         "Each brief names the model tier and the Standing orders block is copied from AGENTS.md word for word",
-        "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file"
+        "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file",
+        "Each brief's Owns lists the step's status line and the Status cells of its criteria rows in the spec, so the worker can record progress as implement requires without editing anything else in the spec"
       ]
     },
     {
@@ -91,6 +92,16 @@
         "Reads the spec's status line before filling any brief",
         "Starts no worker and fills no brief",
         "Offers the criteria skill to write and sign off the criteria"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Coordinate step 3 of docs/specs/handbook.md. It serves R5 (the README explains setup), whose only criterion C5.1 is an inspection of the README. The criteria are signed off.",
+      "expected_output": "Fills the brief with C5.1 and a behaviour target of none, since no criterion is a drive or test check, so the worker is judged on the criteria alone and not sent back for lacking a unit test.",
+      "files": [],
+      "expectations": [
+        "The brief's behaviour target reads none, with the criteria alone deciding, not unit-only or live-verified",
+        "When checking the worker's report, a met C5.1 with no behaviour test is accepted rather than sent back for a missing test"
       ]
     }
   ]

@@ -36,7 +36,7 @@ You see when it works: <the step's You see field>
 
 Owns, and may edit nothing outside it:
 
-- The Status cells of this step's rows in the Criteria table of `docs/specs/<slug>.md`, and nothing else in the spec
+- In `docs/specs/<slug>.md`, only this step's status line under its heading and the Status cells of its rows in the Criteria table, where `implement` records progress
 - `<absolute path>`
 - `<absolute path>`
 
@@ -47,7 +47,7 @@ Owns, and may edit nothing outside it:
 
 ## Done means
 
-Behaviour target: <live-verified when any criterion below is a drive check, otherwise unit-only, unless the owner said otherwise. The verify report's behaviour row must reach it, filled from what ran>
+Behaviour target: <the highest level the checks below can reach: live-verified when any is a drive check, unit-only when any is a test check, otherwise "none: the criteria alone decide"; the owner can set it otherwise. The verify report's behaviour row must reach it, filled from what ran>
 
 Criteria, copied as written from the spec's Criteria section for every requirement this step serves. Before building, see each one fail, as the `implement` skill describes. Each gets its own row in the verify report, run as written, reading pass, fail, met, not met or not run; none is left out. A drive criterion whose Drive step isn't in `VERIFICATION.md` yet means this step adds it, and the recipe is listed under Owns:
 

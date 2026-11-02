@@ -83,14 +83,17 @@ git fetch origin <parent branch>; git rev-parse "origin/<parent branch>"
 
 Fill every field of `template-phase.md`; a blank field is where the worker
 stalls. The step's criteria go under Done means, copied as written. The
-behaviour target is `live-verified` when any of them is a drive check,
-otherwise `unit-only`, unless the owner said otherwise. Name the model tier
+behaviour target is the highest level the step's checks can reach:
+`live-verified` when any is a drive check, `unit-only` when any is a test
+check, otherwise none, and the criteria alone decide. The owner can set it
+otherwise. Name the model tier
 `rules/models.md` gives a scoped unit, one up for a subtle or
 security-sensitive step.
 
-Owns also lists the Status cells of this step's rows in the spec's
-Criteria table, the only part of the spec the worker edits; if two steps'
-rows conflict in a rebase, each keeps its own row's status.
+Owns also lists the two parts of the spec that `implement` records
+progress in, and nothing else in it: this step's status line under its
+heading, and the Status cells of this step's rows in the Criteria table. If
+two steps' rows conflict in a rebase, each keeps its own status.
 
 Save it as `phase-<id>.md` in the notes folder, write the row as `scoped`,
 then start the worker fresh in its own worktree on that tier: in the desktop
@@ -112,7 +115,7 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 | Head sha | `headRefOid` and `origin/<branch>` |
 | Gate | A pasted `verify` block on that head, with exit codes |
 | Criteria | One row per criterion of the step, each `pass` or `met` |
-| Behaviour | At or above the target in the brief |
+| Behaviour | At or above the target in the brief; any level when the target is none |
 | Ready | `isDraft` false, only when the brief named ready |
 
 Anything missing or short goes back to the worker in one line naming it.

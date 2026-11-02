@@ -1,5 +1,5 @@
 {
-  "skill_name": "deps-guard",
+  "skill_name": "guard-deps",
   "evals": [
     {
       "id": 1,

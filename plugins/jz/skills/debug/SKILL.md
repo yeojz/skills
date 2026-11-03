@@ -46,7 +46,7 @@ report what's missing. Never propose a fix for a failure not yet seen.
 ### Step 3: Check what changed
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git log --oneline -15
 git diff "origin/$base...HEAD" --stat
 git diff "origin/$base...HEAD" -- package.json pnpm-lock.yaml '*.config.*' '.github/workflows/*'

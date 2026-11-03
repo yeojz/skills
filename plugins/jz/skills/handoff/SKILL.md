@@ -26,7 +26,7 @@ and a real first command.
 ### Step 1: Gather state from git
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git branch --show-current; git status -sb; git status --short
 git log --oneline "origin/$base..HEAD"
 git diff --stat @{upstream} 2>/dev/null || git diff --stat "origin/$base...HEAD"
@@ -61,7 +61,7 @@ for each `unit` and `decision` is the state:
 ```bash
 notes="<notes folder>"
 column -t -s $'\t' "$notes/decisions.tsv"
-awk -F'\t' 'NR > 1 { last[$2 FS $4] = $0 } END { for (k in last) print last[k] }' "$notes/decisions.tsv" | sort
+awk -F'\t' -v unit=2 -v decision=4 'NR == FNR { if (FNR > 1) last[$unit FS $decision] = FNR; next } FNR == last[$unit FS $decision]' "$notes/decisions.tsv" "$notes/decisions.tsv" | sort
 ```
 
 | Latest row | Goes in as |

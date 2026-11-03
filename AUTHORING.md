@@ -91,6 +91,11 @@ Rules for the body:
   whole file is read every time the skill loads, so every line is paid for
   on every use.
 - Numbered steps with real commands in fenced `bash` blocks.
+- No `$ARGUMENTS` and no `$` followed by digits, such as awk's `$2` or `$0`:
+  Claude Code replaces them with the skill's arguments on load, counting
+  from `$0`. Use `${2}` in shell and a `-v` variable or a regex in awk;
+  `validate.sh` fails the file. A backslash escape is no fix, since Codex
+  reads the file as written.
 - A diagram only for a decision the steps do not make obvious. Linear flow is
   a numbered list.
 - One complete example in the language the repo uses, not one per language.
@@ -187,6 +192,7 @@ check that fails, then a test, with prose last.
 | Model tier matches the job | nothing; `models.md` describes it |
 | Done means a behaviour level, not only a green script | nothing; the `behaviour` row in `verify` Step 7 names the level the runs support, and `coordinate` Step 5 checks it against the behaviour target in the brief |
 | A throwaway worktree is removed only after the last step that runs in it | `validate.sh`: a skill or template that names the directory variable after its `git worktree remove` fails |
+| A skill or template carries no `$ARGUMENTS` or `$<digits>` placeholder that Claude Code would fill with the skill's arguments | `validate.sh`: a SKILL.md or template with one fails, naming the line |
 | Every requirement has an acceptance criterion whose check proves it, seen failing before the build, and every criterion has a row in the verify block | nothing; `criteria` Step 3 asks for the check or sends the requirement back to `grill`, `criteria` Step 4 runs each check before sign-off, `implement` stops a step whose requirement has no criterion, `coordinate` Step 3 holds back a step whose requirement has no criterion and Step 5 sends a missing row back, `verify` Step 7 reads `not run` for a criterion without a run, and the review brief re-runs each command |
 | Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes.sh` for the remote writes; nothing for the rest, `parallelism.md` states it |
 | Prose rules 7 and 8, no emoji or model name in commit or PR text | `no-restricted-words.sh`, PreToolUse; `validate.sh` for emoji in this repo's files |

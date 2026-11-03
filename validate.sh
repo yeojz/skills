@@ -45,6 +45,24 @@ sys.exit(0 if ok else 1)
 WORKTREE
 }
 
+# Claude Code fills a skill's text with its arguments before the model reads
+# it: $ARGUMENTS, and $<digits> not followed by a word character, counted from
+# $0. An awk $2 in a snippet arrives as a word the user typed. A backslash
+# escape is not a fix, since Codex reads the file as written. Prints each
+# such placeholder and exits 1.
+no_argument_placeholders() {
+  python3 - "$1" <<'PLACEHOLDER'
+import re, sys
+path = sys.argv[1]
+ok = True
+for number, line in enumerate(open(path, encoding='utf-8').read().splitlines(), 1):
+    for match in re.finditer(r'\$(?:\d+(?!\w)|ARGUMENTS)', line):
+        print('  FAIL %s:%d: %s is replaced with the skill arguments on load; use ${N} in shell, a -v variable or regex in awk' % (path, number, match.group(0)))
+        ok = False
+sys.exit(0 if ok else 1)
+PLACEHOLDER
+}
+
 printf '\nManifests\n'
 # Every directory under plugins/ is a plugin both marketplaces list, with a
 # portable plugin.json at its root and a source that exists.
@@ -163,6 +181,8 @@ EVALS
 
   worktree_lifetime_ok "$dir/SKILL.md" || bad "$name: SKILL.md uses a worktree after removing it"
 
+  no_argument_placeholders "$dir/SKILL.md" || bad "$name: SKILL.md has a placeholder the skill arguments would replace"
+
   # Every skill has to be discoverable from the README's Skills table.
   grep -q "^|.*\`$name\`" README.md || bad "$name: not listed in the README Skills table"
 
@@ -201,6 +221,7 @@ for f in "$PLUGIN"/skills/*/template.md "$PLUGIN"/skills/*/template-*.md; do
   head -1 "$f" | grep -q '^---$' && bad "$label: templates must not have frontmatter"
   emoji_free "$f" || bad "$label: contains emoji"
   worktree_lifetime_ok "$f" || bad "$label: uses a worktree after removing it"
+  no_argument_placeholders "$f" || bad "$label: has a placeholder the skill arguments would replace"
   note "$label"
 done
 

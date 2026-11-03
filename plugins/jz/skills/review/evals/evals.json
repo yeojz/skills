@@ -21,7 +21,7 @@
         "Reports on the Guard deletion line how many rejecting guards the diff added, how many were sampled with which test command, how many survived, and the unsampled ones with reasons, or that the diff added no rejecting guard",
         "Runs each criterion's check as the brief names it on the reviewed revision rather than trusting the author's rows, reports a criterion that fails or has no row in the author's verify block as a High naming the criterion by its C id, and prints a Criteria line with the counts run, pass and fail or missing",
         "Does not demote a design or maintainability finding below the severity its consequence earns",
-        "Prints a severity-ranked findings table with stable R-prefixed ids and a detail section per finding",
+        "Prints a severity-ranked findings table with stable F-prefixed ids and a detail section per finding",
         "Severity values are limited to Critical, High, Medium and Low",
         "Writes no file under docs/plans/ or anywhere else",
         "Does not offer to start fixing the findings unless the user asks"
@@ -67,7 +67,7 @@
         "Reads the failing check's log with `gh run view --log-failed` and compares the failing file against `git diff --name-only` before deciding anything about CI",
         "Classifies a failure in a file the diff never touched as a stale base only when the branch is behind the default branch and the check is green there, and rebases rather than rerunning",
         "Classifies a failure in a file the diff never touched that is also red on the current default branch as a pre-existing upstream failure, and neither rebases nor reruns for it",
-        "Classifies a failure in a file the diff changed as a defect with an R id rather than rerunning it",
+        "Classifies a failure in a file the diff changed as a defect with an F id rather than rerunning it",
         "Reruns a suspected flake at most once per failing check on the same head, and treats an identical second failure as a defect with no third run",
         "In the desktop app, binds the PR and turns the monitor on once instead of polling the checks or the PR status in a loop",
         "Lists each check still red at the end of the sweep with its class next to the remaining thread count"
@@ -76,7 +76,7 @@
     {
       "id": 4,
       "prompt": "Get a second opinion on this branch: run an adversarial review with another model and tell me where they agree.",
-      "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, the review tier from the models rule and Codex through its plugin when present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into R ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
+      "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, the review tier from the models rule and Codex through its plugin when present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into F ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
       "files": [],
       "expectations": [
         "Resolves the scope with the three-dot diff and records the head sha so every reviewer reads the same revision",

@@ -95,6 +95,9 @@ and Workflow, with a table naming each mode and one section per mode after it.
 
 Rules for the body:
 
+- Under 300 lines; `validate.sh` fails a longer one. Aim near 150: the
+  whole file is read every time the skill loads, so every line is paid for
+  on every use.
 - Numbered steps with real commands in fenced `bash` blocks.
 - A diagram only for a decision the steps do not make obvious. Linear flow is
   a numbered list.
@@ -253,6 +256,7 @@ check that fails, then a test, with prose last.
 | Rules are read in every session | `load-house-rules.sh`, SessionStart |
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
+| A SKILL.md stays under 300 lines | `validate.sh`, in CI |
 | A mod plugin is listed for Claude Code only, its hooks module exists, its sources carry no `any`, `enum` or `interface`, its tests pass and it type-checks | `validate.sh`: manifests, the grep, `claude plugin test` and `tsc` when present |
 | Open as draft, mark ready only after the gate is green | `pr` Ready section: ready is flipped only when a go-ahead or brief named it, `verify` passed on the pushed head and no check has failed; no hook yet |
 | Model tier matches the job | nothing; `models.md` describes it |
@@ -271,12 +275,24 @@ words` heading in `AGENTS.md` or `CLAUDE.md`, one word per bullet.
 The defaults this setup assumes. Skills must take these as given rather than
 asking about them each time.
 
+### The workflow
+
+`grill` writes a spec in `docs/specs/<slug>.md`: requirements (observable
+outcomes, `R1`, `R2`), decisions, and vertical-slice steps. `criteria` adds a
+Criteria section, one or more checks per requirement (`C1.1`), each a test,
+command, drive or inspection, run once to see it fail, then signed off by
+the owner. `implement` builds a step at a time against them, `verify`
+reports them, `pr` structures the PR body by requirement, and `review`
+re-runs them. `coordinate` drives the steps across sessions. A skill that
+reads a spec reads its status line first: work starts only once it says
+`criteria signed off`.
+
 ### Verification recipes
 
 A repository that can be driven end to end keeps the recipe in a
 `VERIFICATION.md` next to its `AGENTS.md`, or next to a package's manifest in a
 monorepo: Launch, Doctor, Drive, Evidence, Cleanup, and a map from each
-acceptance to the drive step that proves it. `verify` reads the nearest one
+criterion to the drive step that proves it. `verify` reads the nearest one
 upward from the changed paths and cites its Drive section on the `behaviour`
 row. A criterion whose check drives the system cites one of its Drive steps,
 and the step that adds the criterion adds the Drive step, so the recipe stays the one place the drive commands live. It is a

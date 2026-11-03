@@ -1,6 +1,6 @@
 ---
 name: coordinate
-description: Use when a spec's steps have to be driven through worker and reviewer sessions to merge-ready, with the owner merging on GitHub. Triggers on requests like "coordinate the spec", "run steps 2 to 4", "drain the steps", "start the next step", "coordinate the roadmap", "I will review on GitHub", "where are we", "PR 42 is ready for review", "the reviewer said after fixes", "proceed with the next one", or when a session that starts other sessions picks up a step of a spec in docs/specs/.
+description: Use when a spec's steps have to be driven through separate worker and reviewer sessions to merge-ready, with the owner merging on GitHub. Triggers on requests like "coordinate the spec", "drive the spec with workers", "start worker sessions for steps 2 to 4", "drain the steps across sessions", "I will review on GitHub", "where are we", "PR 42 is ready for review", "the reviewer said after fixes", or when a session that starts other sessions picks up a step of a spec in docs/specs/.
 ---
 
 # coordinate

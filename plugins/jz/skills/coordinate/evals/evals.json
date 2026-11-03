@@ -35,14 +35,14 @@
     },
     {
       "id": 3,
-      "prompt": "Reviewer verdict on PR 42: after fixes. R1 P2 packages/core/src/verify.ts:42 secret compared with ===, R2 P2 guard at src/parse.ts:88 survives deletion, R3 P3 naming.",
+      "prompt": "Reviewer verdict on PR 42: after fixes. F1 P2 packages/core/src/verify.ts:42 secret compared with ===, F2 P2 guard at src/parse.ts:88 survives deletion, F3 P3 naming.",
       "expected_output": "The agent does not fix anything itself. It decides whether the fix needs state that lives only in the worker session; if not, it starts a fresh fix session with the original phase brief plus the findings consolidated, standing orders pasted verbatim, one commit per finding, no weakened tests, PR kept draft until verify passes on the pushed head and no check has failed. It logs a relay row in decisions.tsv, and after the fix the same reviewer flow re-checks the new head, bounded at three rounds.",
       "files": [],
       "expectations": [
         "The coordinator makes no code edit in response to the findings",
         "The relay or fresh-session choice is stated with the reason, and a decisions.tsv row of kind relay records it",
         "The fix brief carries the standing orders verbatim, the review file path, one commit per finding, no weakened tests and the draft-until-gated rule",
-        "The re-check is a reviewer pass on the new head that classifies R1, R2 and R3 as fixed, not fixed or no longer applicable with a line each",
+        "The re-check is a reviewer pass on the new head that classifies F1, F2 and F3 as fixed, not fixed or no longer applicable with a line each",
         "The fix loop is bounded at three rounds, after which the row moves to blocked and the owner gets the open findings"
       ]
     },

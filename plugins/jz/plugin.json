@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "jz",
-  "description": "House skills, always-on rules, review personas and hooks: verify before done, ship through a draft PR, audit then execute a plan, grill a design before code.",
+  "description": "House skills, always-on rules, review personas and hooks: grill a spec, write its criteria, implement against them, verify before done, ship through a draft PR, review.",
   "author": {
     "name": "Gerald Yeo",
     "url": "https://github.com/yeojz"

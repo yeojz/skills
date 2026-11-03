@@ -4,7 +4,7 @@
     "name": "Gerald Yeo",
     "url": "https://github.com/yeojz"
   },
-  "description": "Gerald Yeo's coding-agent setup: skills, always-on rules, review personas and hooks.",
+  "description": "Another personal coding-agent setup: skills, always-on rules, review personas and hooks.",
   "plugins": [
     {
       "name": "jz",

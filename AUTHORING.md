@@ -7,7 +7,7 @@ editing a skill, rule, agent or template.
 
 ## Layout
 
-The repository is a plugin marketplace with two plugins. Everything both
+The repository is a plugin marketplace with one plugin. Everything both
 agents load lives in `plugins/jz/`: `skills/`, `rules/`, `agents/` and
 `hooks/`. The marketplace manifests sit at the repository root,
 `.claude-plugin/marketplace.json` for Claude Code and
@@ -16,14 +16,6 @@ directory. For Claude Code the marketplace entry is the plugin's manifest, so
 there is no `plugins/jz/.claude-plugin/plugin.json`; Codex reads the portable
 `plugins/jz/plugin.json`. Neither pins a version, so an install tracks
 commits.
-
-`plugins/jzc/` holds what exists only for Claude Code: mods written against
-its function hooks API (see Mod format below). Its manifest is
-`plugins/jzc/.claude-plugin/plugin.json`, and only the Claude Code marketplace
-lists it. Codex does not run Claude Code mods, so `jzc` stays out of
-`.agents/plugins/marketplace.json`, and `validate.sh` fails if it appears
-there. Anything that an agent other than Claude Code could use belongs in
-`jz`; `jzc` never holds a skill, a rule or an agent.
 
 A plugin cannot ship always-on instruction files or permission entries. The
 rules reach a session through the `load-house-rules.sh` SessionStart hook,
@@ -162,72 +154,6 @@ include `Edit` or `Write`. Installed as a plugin, an agent is the
 subagent type `jz:<name>`. Findings use an id prefix per persona, such as `PE`,
 `SEC` or `TE`, so a plan can trace each item back to the lens that raised it.
 
-## Mod format
-
-A mod is a change to Claude Code's own interface or behaviour: a pane, a
-band, a slash command, a hook on an event the classic hooks do not see. It is
-a TypeScript module on the function hooks API, loaded by the `jzc` plugin.
-The `plugin-authoring` skill that ships with Claude Code carries the API, the
-types and the test kit; read it before writing one.
-
-A plugin loads one hooks module, so `plugins/jzc/hooks/hooks.json` names
-`./register.tsx` and nothing else, and that file only imports each mod's
-`register` from `hooks/mods/<mod>.tsx` and calls it. Adding a mod is one new
-file under `hooks/mods/`, its test beside it as `hooks/mods/<mod>.test.tsx`,
-and one import line in `register.tsx`.
-
-Rules for a mod:
-
-- Strict TypeScript: no `any`, no `enum`, `type` over `interface`.
-  `validate.sh` greps for all three. The one `interface` allowed is
-  `PluginState` in the contract, which the API merges by declaration.
-- Every `$.state` value is declared in `plugins/jzc/types/index.d.ts` under
-  the plugin's name, `jzc`, with the key prefixed by the mod's name
-  (`'skills-used.uses'`), so two mods never share a key. The atom reads
-  `atom({ plugin: 'jzc', key: '<mod>.<name>' } as const, ...)`. Give it a
-  `shape` tag and change the tag when the value's fields change: a reload
-  keeps what the earlier code stored.
-- A slash command carries the `jzc-` prefix in its registered name
-  (`jzc-skills-used`). The engine namespaces a plugin's skills and agents as
-  `jzc:<name>` but registers a command under the bare name it is given, so a
-  bare `skills-used` would collide with any other plugin's.
-- A pane's `requestId` is the mod's name.
-- Never name a model in a mod or its docs.
-- One test file per mod, driving the plugin through `claude-code/testing`
-  on every surface (`terminal`, `desktop`, `vscode`, `mobile`), with a case
-  that seeds a value an earlier version stored so the `shape` guard is
-  proven.
-
-Checks, all of which `make validate` runs when the tool is present:
-
-```bash
-claude plugin validate plugins/jzc
-```
-
-```bash
-claude plugin test plugins/jzc
-```
-
-```bash
-tsc -p plugins/jzc
-```
-
-The type check reads the API declarations the engine lays beside the plugin
-at `plugins/jzc/.claude-plugin/types/`, which is gitignored and written only
-when an interactive session loads the plugin from this folder:
-
-```bash
-CLAUDE_CODE_PLUGIN_DIRS="$PWD/plugins/jzc" claude
-```
-
-Until that folder exists `validate.sh` notes the type check as skipped, so CI
-runs the validator and the tests but not `tsc`. The headless check that a
-command is served is:
-
-```bash
-claude -p --plugin-dir "$PWD/plugins/jzc" '/jzc-skills-used'
-```
-
 ## Template format
 
 A template is plain markdown with no frontmatter, saved as `template.md`, or
@@ -257,7 +183,6 @@ check that fails, then a test, with prose last.
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
 | A SKILL.md stays under 300 lines | `validate.sh`, in CI |
-| A mod plugin is listed for Claude Code only, its hooks module exists, its sources carry no `any`, `enum` or `interface`, its tests pass and it type-checks | `validate.sh`: manifests, the grep, `claude plugin test` and `tsc` when present |
 | Open as draft, mark ready only after the gate is green | `pr` Ready section: ready is flipped only when a go-ahead or brief named it, `verify` passed on the pushed head and no check has failed; no hook yet |
 | Model tier matches the job | nothing; `models.md` describes it |
 | Done means a behaviour level, not only a green script | nothing; the `behaviour` row in `verify` Step 7 names the level the runs support, and `coordinate` Step 5 checks it against the behaviour target in the brief |

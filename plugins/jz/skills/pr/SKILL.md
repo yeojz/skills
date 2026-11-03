@@ -84,7 +84,7 @@ update).
 Read the diff and the commit subjects, never the transcript:
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git fetch origin "$base"
 git diff "origin/$base...HEAD"
 git log "origin/$base..HEAD" --format='%s'
@@ -135,7 +135,7 @@ Rebase, never merge; the `rebase-not-merge.sh` hook enforces it. First prove
 the local branch holds everything on the remote:
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git fetch origin "$base" "<branch>"
 old="$(git rev-parse "origin/<branch>")"
 git merge-base --is-ancestor "$old" HEAD || echo DIVERGED

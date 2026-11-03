@@ -28,7 +28,7 @@ model families. Every finding points at a `file:line` that was read.
 shows:
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git fetch origin "$base"
 git diff "origin/$base...HEAD" --stat
 ```

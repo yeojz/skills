@@ -20,7 +20,7 @@ One paragraph only: what the work is, why it was started, and where it stopped. 
 | Working tree | <clean / dirty, <n> files> |
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git status --short
 git branch --show-current
 git log --oneline "origin/$base..HEAD"
@@ -51,7 +51,7 @@ In the order it should be done.
 - `<repo-relative path>`: <what changed in one line>
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git diff --stat "origin/$base...HEAD"
 git status --short
 ```

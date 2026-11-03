@@ -20,7 +20,7 @@ reviewer is never the implementer, and merging stays the owner's click.
 
 ```bash
 ls AGENTS.md CONTEXT.md docs/specs docs/adr 2>/dev/null
-awk '/^## /{p = ($0 == "## Standing orders")} p' AGENTS.md
+awk '/^## /{p = /^## Standing orders$/} p' AGENTS.md
 ```
 
 Read every file that exists: the glossary and ADRs go into every brief. The
@@ -177,7 +177,7 @@ tip in its `base` column, not with a plain rebase, which would replay the
 parent's squashed commits as its own:
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git fetch origin "$base" "<branch>"
 old="$(git rev-parse "origin/<branch>")"
 git merge-base --is-ancestor "$old" HEAD || echo DIVERGED

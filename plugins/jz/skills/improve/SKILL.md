@@ -45,7 +45,7 @@ zero or several matches is a stop, so ask which.
 **The project's history**, for the project path:
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git fetch origin "$base"
 git log --oneline --since='60 days ago' "origin/$base" | grep -iE 'revert|^[0-9a-f]+ fix' | head -40
 gh pr list --state merged --limit 15 --json number,title

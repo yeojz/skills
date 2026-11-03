@@ -151,7 +151,7 @@ it. Don't commit or claim done.
 ### Step 6: After a rebase, merge or squash
 
 ```bash
-base="$(git ls-remote --symref origin HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2 }')"
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
 git status; git diff --check
 ls .git/rebase-merge .git/rebase-apply 2>/dev/null
 git log --oneline "origin/$base..HEAD"

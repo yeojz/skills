@@ -11,5 +11,3 @@ docs/plans/
 # Local notes, not published.
 PROPOSAL.md
 
-# The engine lays the plugin API types beside a mod it loads from this folder.
-plugins/*/.claude-plugin/types/

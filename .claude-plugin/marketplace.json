@@ -4,7 +4,7 @@
     "name": "Gerald Yeo",
     "url": "https://github.com/yeojz"
   },
-  "description": "Gerald Yeo's coding-agent setup: skills, always-on rules, review personas, hooks and Claude Code mods.",
+  "description": "Gerald Yeo's coding-agent setup: skills, always-on rules, review personas and hooks.",
   "plugins": [
     {
       "name": "jz",
@@ -24,24 +24,6 @@
         "verification",
         "review",
         "hooks"
-      ]
-    },
-    {
-      "name": "jzc",
-      "source": "./plugins/jzc",
-      "description": "Claude Code-only mods on the function hooks API: a skills-used pane and the /jzc-skills-used command that reopens it.",
-      "author": {
-        "name": "Gerald Yeo",
-        "url": "https://github.com/yeojz"
-      },
-      "homepage": "https://github.com/yeojz/skills",
-      "repository": "https://github.com/yeojz/skills",
-      "license": "MIT",
-      "category": "engineering",
-      "keywords": [
-        "mods",
-        "pane",
-        "skills"
       ]
     }
   ]

@@ -178,6 +178,10 @@ EVALS
 
   grep -qE '## Common Mistakes' "$dir/SKILL.md" || bad "$name: no Common Mistakes table"
 
+  # A skill is read in full on every load, so its length is a cost paid each time.
+  skill_lines="$(grep -c '' "$dir/SKILL.md")"
+  [ "$skill_lines" -le 300 ] || bad "$name: SKILL.md is $skill_lines lines, over the 300-line limit"
+
   emoji_free "$dir/SKILL.md" || bad "$name: SKILL.md contains emoji"
 
   worktree_lifetime_ok "$dir/SKILL.md" || bad "$name: SKILL.md uses a worktree after removing it"

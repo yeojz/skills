@@ -82,7 +82,7 @@ Format, in the review file and in the posted review:
 ```markdown
 | ID | Priority | Location | Finding |
 |---|---|---|---|
-| R1 | P1 | `packages/core/src/verify.ts:42` | <one sentence> |
+| F1 | P1 | `packages/core/src/verify.ts:42` | <one sentence> |
 ```
 
 Followed by one section per finding: the cited lines quoted, why it matters here, and the fix with the command that proves it.

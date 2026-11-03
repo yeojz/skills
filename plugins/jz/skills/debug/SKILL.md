@@ -68,8 +68,9 @@ to the value when it is set:
 
 ```bash
 if [ -n "${TOKEN:-}" ]; then echo "TOKEN: set"; else echo "TOKEN: unset or empty"; fi
-``` The first layer where the
-value is missing or wrong is where to look. Log before the dangerous
+```
+
+The first layer where the value is missing or wrong is where to look. Log before the dangerous
 operation, not after it fails. Remove the instrumentation before the fix is
 committed.
 

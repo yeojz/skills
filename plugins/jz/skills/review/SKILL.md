@@ -105,7 +105,7 @@ revision; judge an inspection criterion against its written standard. A
 check that fails, has no row in the author's `verify` block, or reads
 `not run` there is a High naming the criterion.
 
-Report in the session, ids `R1`, `R2` stable once printed:
+Report in the session, finding ids `F1`, `F2` (so they never collide with a spec's `R1` requirements), stable once printed:
 
 ```markdown
 ## Review: <branch or PR>, <n> files, +<add>/-<del>
@@ -114,13 +114,13 @@ Scope: `git diff "origin/$base...HEAD"` at <sha>
 
 | ID | Severity | Location | Finding |
 |----|----------|----------|---------|
-| R1 | High | `packages/core/src/verify.ts:42` | Secret compared with `===` |
+| F1 | High | `packages/core/src/verify.ts:42` | Secret compared with `===` |
 
-### R1: <title>
+### F1: <title>
 Evidence: <quoted lines>. Why it matters: <the consequence here>. Fix: <what, and the script that proves it>.
 
 ### Lenses that always report
-- Design: <R ids, or clean, and what was checked>
+- Design: <F ids, or clean, and what was checked>
 - Maintainability: <...>
 - Guard deletion: <n> guards, <k> sampled at <sha> with `<command>`, <s> survived, unsampled: <guard, reason>
 - Criteria: <n> run at <sha>, <p> pass, <f> fail or missing
@@ -144,12 +144,12 @@ confirm first.
    scope, exclusions and grounding rules: `jz:principal-engineer`,
    `jz:security-engineer`, `jz:test-engineer`, `jz:technical-writer`. Drop
    one only when it has nothing to read, and say so. Each prompt ends:
-   "Return findings only. Edit nothing. For each: severity, file:line,
-   finding, quoted evidence, suggested fix. No line, no finding." Without
+   "Return findings only. Edit nothing. One table row each: id, severity,
+   file:line, finding, suggested fix. No line, no finding." Without
    subagents, or for a single small file, run the persona files one at a
    time in full and record that.
-3. **Verify and merge.** Read every returned line yourself. One defect found
-   by two lenses is one finding.
+3. **Verify and merge.** Read every returned line yourself and quote it as
+   the finding's evidence. One defect found by two lenses is one finding.
 4. **Write** `docs/plans/YYYY-MM-DD-HHMM-<slug>.md` from `template.md`:
    ids `A1`, `A2` never renumbered, every row `not started`, every fix naming
    its verification script from `package.json`, remediation sized to one

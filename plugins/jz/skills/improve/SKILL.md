@@ -1,6 +1,6 @@
 ---
 name: improve
-description: Use when a correction keeps coming back and should become a lasting change, either an edit to a skill or rule in this plugin or a check the project runs, instead of a steer typed again. Triggers on requests like "/improve", "/reflect", "/correct", "reflect on this session", "what did I have to correct", "turn that into a rule", "update the skill so this does not happen again", "phase done, what did we learn", "agents keep doing X", "this is the second time", "I keep having to tell you", "make it impossible to", "add a check so this cannot recur", or when a coordinating session closes a step or a handoff is about to be written.
+description: Use when a correction keeps coming back and should become a lasting change, either an edit to a skill or rule in this plugin or a check the project runs, instead of a steer typed again. Triggers on requests like "/improve", "/reflect", "/correct", "reflect on this session", "what did I have to correct", "turn that into a rule", "update the skill so this does not happen again", "phase done, what did we learn", "agents keep doing X", "this is the second time", "I keep having to tell you", "make it impossible to", "add a check so this cannot recur".
 ---
 
 # improve

@@ -77,11 +77,12 @@ the step.
 **3d. Prove and record.** Run the `verify` skill. Write the result back
 before the checkpoint, not at the end:
 
-- a spec step: each of its criteria's Status becomes `pass on the working tree`
-  or `fail`, with the step's line under the step heading. Once the
-  checkpoint commit lands, the passes become `pass at <short sha>` of that
-  commit, and that spec edit goes into the next checkpoint commit; a sha
-  never labels uncommitted work
+- a spec step: each of its criteria's Status becomes `pass` or `fail`, or
+  `met` or `not met` for an inspection, and the step's Status line under its
+  heading reads `done`, `blocked` or `not started`. The spec edit goes into
+  the same checkpoint commit as the code it describes. The sha that proves
+  it lives in the verify block and the PR body, never in the spec, since a
+  squash merge would orphan it
 - a plan item: a status line beneath it
 
 | Status | When | Records |
@@ -107,7 +108,7 @@ One row per item, out-of-scope ones included:
 ```markdown
 | Item | Status | Evidence |
 |---|---|---|
-| Step 1 | done | C1.1 pass at 4f2a9c1, C1.2 pass at 4f2a9c1 (committed) |
+| Step 1 | done | C1.1 pass, C1.2 met (verify at 4f2a9c1) |
 | Step 2 | blocked | C2.2 fail: `pnpm test -- -t "expired cookie"` exit 1 |
 | Step 3 | not started | out of scope this run |
 ```

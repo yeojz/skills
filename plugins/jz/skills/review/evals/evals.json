@@ -76,7 +76,7 @@
     {
       "id": 4,
       "prompt": "Get a second opinion on this branch: run an adversarial review with another model and tell me where they agree.",
-      "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, the review tier from the models rule and Codex through its plugin when present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into R ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
+      "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, the review tier from the models rule and Codex through its plugin when present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into F ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
       "files": [],
       "expectations": [
         "Resolves the scope with the three-dot diff and records the head sha so every reviewer reads the same revision",

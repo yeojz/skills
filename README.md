@@ -166,64 +166,50 @@ plugins/jzc/                      the Claude Code-only plugin
 
 ### Skills
 
-A change usually runs through the skills in this order. `grill` settles
-what to build and leaves a spec of requirements and steps, or `review`'s audit mode
-leaves a plan. `criteria` writes how each requirement will be proven, before anything
-is built. `coordinate` drives a spec's steps through the rest of the loop,
-one fresh session per step and one per review. `implement` builds step by
-step against the criteria, reaching for
-`debug`, `sync-docs` or `guard-deps` as the item demands.
-`verify` gates every done claim. `pr` commits, pushes, opens the draft PR
-with its body, and cleans up after the merge, and `review` handles the
-comments. `improve` turns a correction that came back into an edit to a
-skill or rule here, or into a check the project runs. `handoff` carries the state when
-context runs out.
+Twelve skills, in three groups. The workflow runs in this order:
 
-#### Settle the work
+```
+grill  ->  criteria  ->  implement  ->  verify  ->  pr  ->  review
+what and    how we'll     build it        prove it     ship it  second
+steps       know it's     against them                          opinion
+            done
+```
+
+`grill` settles what to build and writes a spec of requirements and steps.
+`criteria` writes how each requirement will be proven, and sees each check
+fail before anything is built. `implement` builds a step at a time against
+those criteria, `verify` gates every done claim, `pr` ships it as a draft
+PR structured by requirement, and `review` gives an independent read.
+`coordinate` drives a spec's steps through that loop with one fresh session
+per step and per review, and `handoff` carries the state when context runs
+out.
+
+#### Workflow
 
 | Skill | Use it for |
 |---|---|
 | `grill` | Interview a plan until nothing is assumed; in spec mode write the spec (requirements, decisions, vertical-slice steps), the glossary, ADRs and standing orders as decisions land |
 | `criteria` | Write acceptance criteria per requirement (scenario, what counts as passing, and a test, command, drive or inspection check), run each once to see it fail, and get the owner's sign-off |
-| `coordinate` | Drive a spec's steps to merge-ready: one fresh worker per step from the phase template, with the step's criteria and behaviour target as Done means, checked against the worker's verify block; one fresh reviewer per PR; bounded fix rounds; the units and decisions ledgers; one line per PR |
+| `implement` | Build a spec step or plan item: see its criteria fail, write tests first, build the least change, record each criterion's status, checkpoint per item |
+| `verify` | The completion gate: runs the repo's own scripts cheapest first, pastes output and exit codes, reports one row per concern and per criterion and the behaviour level reached, and raises coverage to a threshold with the per-file table |
+| `pr` | Verify, commit, push and open a draft PR with a body written from the diff, structured by requirement when there is a spec; ready only when asked; rebase when the default branch moves; clean up after the merge |
+| `review` | Change review with design, maintainability, guard-deletion and criteria lenses that always report; audit mode for a whole repo or a plan, fanned out to personas into a plan file; the PR comment and red-CI sweep; an adversarial mode across two model families |
+| `coordinate` | Drive a spec's steps to merge-ready: one fresh worker per step with the step's criteria and behaviour target as Done means, one fresh reviewer per PR, bounded fix rounds, the units and decisions ledgers, one line per PR |
+| `handoff` | Write a resumable handoff before context runs out, with decisions read from the `coordinate` ledger rather than from memory |
 
-#### Build
+#### Task
 
 | Skill | Use it for |
 |---|---|
-| `implement` | Build a spec step or plan item: see its criteria fail, write tests first, build the least change, record each criterion's status, checkpoint per item |
-| `debug` | Reproduce, instrument, trace to the root cause, one fix at a time |
+| `debug` | Reproduce, instrument, trace to the root cause, a failing test first, one fix at a time |
 | `guard-deps` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
 | `sync-docs` | Bring READMEs, guides and doc comments back in line with the code |
 
-#### Prove it
-
-| Skill | Use it for |
-|---|---|
-| `verify` | The completion gate: runs the repo's own scripts cheapest first, pastes output and exit codes, reports one row per concern and per criterion and the behaviour level reached (live-verified, unit-only, type-check-only or not run), and raises coverage to a threshold with the per-file table |
-
-#### Ship and review
-
-| Skill | Use it for |
-|---|---|
-| `pr` | Verify, commit, push and open a draft PR with a body written from the diff, structured by requirement when there is a spec; ready only when asked; rebase when the default branch moves; clean up after the merge |
-| `review` | Change review with design, maintainability, guard-deletion and criteria lenses that always report; audit mode for a whole repo or a plan, fanned out to personas into a plan file; the PR comment and red-CI sweep; an adversarial mode across two model families |
-
-#### Close the loop
-
-A review or a phase ends with corrections. These two spend each one once,
-so it is never typed again: neither ships anything, and they feed the next
-phase rather than this one.
+#### Self-improvement
 
 | Skill | Use it for |
 |---|---|
 | `improve` | Corrections that came back, from the session transcript, review threads and reverts: proposed as edits to a skill or rule in this plugin behind an approval by number, or fixed in the project at the highest level that holds, with the check proven red on the past mistake and an enforcement row |
-
-#### Hand over
-
-| Skill | Use it for |
-|---|---|
-| `handoff` | Write a resumable handoff before context runs out, with decisions read from the `coordinate` ledger rather than from memory |
 
 `verify` is the one the others depend on. It is what stops "done" from meaning
 "probably done".

@@ -30,6 +30,7 @@ Glossary: `CONTEXT.md`. ADRs: `docs/adr/`.
 
 ### Step 1: <Vertical slice, named for what it delivers>
 
+- Status: not started
 - Serves: R1
 - Blocked by: none
 - Owns: <packages, directories or files>

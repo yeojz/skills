@@ -8,8 +8,8 @@ description: Use when a spec's steps have to be driven through separate worker a
 ## Overview
 
 Drives a spec's steps to merge-ready: one worker session per step in its
-own worktree, one fresh reviewer per pull request, through Codex where
-present, bounded fix rounds that escalate a tier when one fails,
+own worktree, one fresh reviewer per pull request, on the other model
+family where present, bounded fix rounds that escalate a tier when one fails,
 and one line to the owner when a PR is ready to merge. Every brief comes
 from this skill's templates, and every session, verdict and decision is
 written to two ledgers, so "where are we" is answered from a file. The
@@ -87,9 +87,9 @@ stalls. The step's criteria go under Done means, copied as written. The
 behaviour target is the highest level the step's checks can reach:
 `live-verified` when any is a drive check, `unit-only` when any is a test
 check, otherwise none, and the criteria alone decide. The owner can set it
-otherwise. Name the model tier: this session's model, as
-`rules/models.md` gives a step under a coordinator, one up for a subtle or
-security-sensitive step.
+otherwise. Name the model tier and the host's model for it: this session's
+tier, as `rules/models.md` gives a step under a coordinator, one up for a
+subtle or security-sensitive step.
 
 Owns also lists the two parts of the spec that `implement` records
 progress in, and nothing else in it: this step's status line under its
@@ -132,12 +132,12 @@ with the notes folder and ledgers named, before starting anything new.
 ### Step 6: Brief and start the reviewer
 
 Fill `template-review.md` for the PR and start a fresh session on the review
-tier: through Codex where its plugin is present, otherwise opus, or fable
-for a step that is subtle or security-sensitive, needed an escalated fix
+tier: the other family from this session's where present (Codex from
+Claude, Claude Code from Codex), otherwise strong, or top for a step that is subtle or security-sensitive, needed an escalated fix
 round, or touches an ADR-tier decision. Never the worker, never a fork of
 it, never this session. A contested design gets a second reviewer on the
-other family from the first, with the same brief. Check a Codex verdict
-against the brief like any other: gate, criteria rows, one COMMENT review. The reviewer runs the gate and
+family the first did not run on, with the same brief. Check an other-family
+verdict against the brief like any other: gate, criteria rows, one COMMENT review. The reviewer runs the gate and
 every criterion on a detached checkout, probes base against candidate, runs
 the `review` skill's change mode, posts one COMMENT review (never approve or
 request changes), writes `review-pr<number>.md`, and returns merge as is,
@@ -151,7 +151,7 @@ after fixes, or rework. The step's Review gate sets the brief's Post field:
 |---|---|
 | State only the worker has: uncommitted changes, a running process, a half-done rebase | The worker, by relay |
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
-| A round after one whose findings came back not fixed | A fresh session one tier above the last round's model, up to fable, with the same consolidated brief |
+| A round after one whose findings came back not fixed | A fresh session one tier above the last round's, up to top, with the same consolidated brief |
 
 A relay carries the standing orders verbatim, the review file path, one
 commit per finding, no weakened tests, draft until `verify` passes on the
@@ -227,7 +227,7 @@ row that disagrees with `gh pr view` in the file first.
 | Starting a step whose requirement has no criterion | Send it to `criteria` |
 | Moving a row to `ready` on the worker's word | Check sha, criteria rows, behaviour and `isDraft` |
 | Reviewing in the worker session, or here | A fresh reviewer on the review tier |
-| Reviewing on Claude while the Codex plugin is present | Codex first; opus or fable only as the fallback |
+| Reviewing on this session's family while the other is present | The other family first; strong or top only as the fallback |
 | Retrying a failed fix round on the same model | One tier up, in a fresh session |
 | Forking this session into a worker | Fresh context plus the brief |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |

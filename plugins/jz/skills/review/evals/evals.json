@@ -76,12 +76,12 @@
     {
       "id": 4,
       "prompt": "Get a second opinion on this branch: run an adversarial review with another model and tell me where they agree.",
-      "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, the review tier from the models rule and Codex through its plugin when present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into F ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
+      "expected_output": "One brief is written once and sent verbatim to two or more fresh reviewers on different model families, one on this session's family at the fallback review tier from the models rule and one on the other family when its plugin or CLI is present, none of which sees the other's findings. Every returned finding is verified at the cited line in this session, merged by location into F ids, and bucketed into act on, consider, noted and dismissed with an agreement map showing which reviewer raised each. Nothing is edited, committed or posted.",
       "files": [],
       "expectations": [
         "Resolves the scope with the three-dot diff and records the head sha so every reviewer reads the same revision",
         "Writes the brief to one file carrying the diff command, the lens table, the grounding rules and the output shape, and sends the same text to every reviewer",
-        "Starts the reviewers fresh and in one batch, one on the review tier from the models rule and one through the Codex plugin when present, or says the plugin is absent and names the gap",
+        "Starts the reviewers fresh and in one batch, one on this session's family at the fallback review tier from the models rule and one on the other family when its plugin or CLI is present, or says it is absent and names the gap",
         "Labels each reviewer with its family and tier in the report and does not let one reviewer see another's findings",
         "Verifies each returned finding against the cited lines before bucketing it, and dismisses one two reviewers agreed on when the code refutes it, quoting the refuting line",
         "Prints an agreement map with one row per merged finding and one column per reviewer, each cell raised with a severity, not raised or contradicted",

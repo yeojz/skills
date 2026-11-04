@@ -6,7 +6,7 @@ session and never the implementer. Every field is filled. Delete this
 comment before sending.
 -->
 
-Model tier: <the review tier from rules/models.md: Codex where its plugin is present; otherwise opus, or fable for a subtle or security-sensitive step, one that needed an escalated fix round, or one touching an ADR-tier decision>
+Model tier: <the review tier from rules/models.md and the host's model for it: the other family from the coordinator's where present; otherwise strong, or top for a subtle or security-sensitive step, one that needed an escalated fix round, or one touching an ADR-tier decision>
 Repo: <absolute path to the main checkout>
 PR: <URL>, branch `<branch>` into `<default branch>`, head `<sha the worker reported>`
 Notes folder: <absolute path>; write the review as `review-pr<number>.md` there

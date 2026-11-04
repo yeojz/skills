@@ -21,7 +21,7 @@
 - Do not state a release-type opinion; that decision belongs to the repo owner.
 - Open PRs as drafts unless told otherwise.
 
-- List the repo owner as the commit author.
+- Commit as the identity whose credentials push the commit: the owner when the session pushes with the owner's own SSH key or token, otherwise the identity the harness configured. Never set another person's name or email as the author.
 - Attribution follows the harness. Never add a co-author trailer yourself.
 - Never include an agent session link in a commit message or PR body.
 

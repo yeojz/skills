@@ -20,14 +20,14 @@
     {
       "id": 2,
       "prompt": "Worker says: PR 42 is ready, head a9c1f3e, make validate exit 0 on a clean checkout.",
-      "expected_output": "The agent checks the claim against gh pr view and origin/<branch> before moving the row to ready, binds the PR monitor once, then fills template-review.md and starts a fresh reviewer session on the review tier that is not the worker session. The brief requires the gate on a detached checkout, a base-against-candidate probe, design and maintainability at the same weight as correctness, guard-deletion sampling, P1 to P3 findings with file:line, one COMMENT review and never an approval.",
+      "expected_output": "The agent checks the claim against gh pr view and origin/<branch> before moving the row to ready, binds the PR monitor once, then fills template-review.md and starts a fresh reviewer session that is not the worker session, choosing the review tier first and then the other model family at that tier where present. The brief requires the gate on a detached checkout, a base-against-candidate probe, design and maintainability at the same weight as correctness, guard-deletion sampling, P1 to P3 findings with file:line, one COMMENT review and never an approval.",
       "files": [],
       "expectations": [
         "Runs gh pr view and compares headRefOid with the reported sha before the units.tsv row moves to ready",
         "Checks that every criterion in the brief has its own row in the worker's verify block before the behaviour row, with the brief's command, an exit code and pass, or met for an inspection; a criterion with no row or one reading not run goes back to the worker as one line naming the criterion, and the row does not move to ready",
         "The review brief carries the criteria and requires each command run on the detached checkout and checked against the worker's row, with a failed or missing criterion as a P1 naming it",
         "The review brief keeps the detached worktree from the gate through the criteria checks and the guard sample and removes it only in its Cleanup section, so no step runs in a checkout an earlier step removed",
-        "The reviewer is a separate fresh session on the review tier, not the worker session and not the coordinator itself, on the other model family from the coordinator's when present, otherwise the strong tier, or top when the step is subtle or security-sensitive",
+        "The reviewer is a separate fresh session, not the worker session and not the coordinator itself; its tier is chosen first, strong, or top when the step is subtle or security-sensitive, and it runs on the other model family from the coordinator's at that tier when present, otherwise on the coordinator's",
         "The review brief follows template-review.md and names the detached gate, the correctness probe, the equal-weight design and maintainability lenses, guard-deletion sampling and the P1 to P3 table with file:line",
         "The brief says to post one COMMENT review and never approve or request changes",
         "A decisions.tsv row of kind verdict is written when the reviewer reports"
@@ -119,12 +119,14 @@
     {
       "id": 10,
       "prompt": "Re-check on PR 42 after round 1: F1 not fixed. The worker's session still has uncommitted changes to src/verify.ts and is halfway through a rebase.",
-      "expected_output": "Escalation wins over the worker-state route. The agent relays one handover to the worker to finish or abort the rebase, stop its processes, write the uncommitted change as round-1.patch in the notes folder and report the pushed head, then starts a fresh session one tier above round 1's with the consolidated brief naming that head and patch.",
+      "expected_output": "Escalation wins over the worker-state route. The agent relays one handover to the worker: before touching the rebase, stage everything, write the full delta against the pushed head as round-1.patch in the notes folder and record the tree id and the rebase's onto commit; only then abort the rebase and stop its processes. It then starts a fresh session one tier above round 1's whose brief names the head, patch, tree id and onto, and which applies the patch and checks the tree id before any other work.",
       "files": [],
       "expectations": [
         "Round 2 runs in a fresh session one tier above round 1's, not in the worker by relay",
-        "Before it starts, the worker gets one handover relay covering the rebase, its processes, the uncommitted change as a patch in the notes folder, and the pushed head",
-        "The escalated brief names the pushed head and the patch path, and a decisions.tsv relay row records the route, the tier and why"
+        "Before it starts, the worker gets one handover relay that snapshots with git add -A and a binary diff against the pushed head before any rebase abort, and never finishes the rebase",
+        "The handover reports the pushed head, the patch path, the tree id from git write-tree and the rebase's onto commit",
+        "The escalated session applies the patch on the pushed head and compares git write-tree with the reported tree id before any other work, stopping on a mismatch, so the staged conflict resolution in src/verify.ts survives",
+        "A decisions.tsv relay row records the route, the tier and why"
       ]
     }
   ]

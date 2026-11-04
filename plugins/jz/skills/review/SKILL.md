@@ -208,9 +208,9 @@ In the desktop app, bind the PR and turn its monitor on instead of polling.
    at that sha, the lens table, the grounding rules, the report table, and
    "read only: edit nothing, post nothing".
 2. Start two fresh reviewers on different model families in one batch: one
-   on this session's family at the review tier `rules/models.md` falls back
-   to, one on the other family when its plugin or CLI is present (otherwise a
-   second fresh session, and say so). Label
+   on this session's family and one on the other family when its plugin or
+   CLI is present (otherwise a second fresh session, and say so), both at the
+   review tier `rules/models.md` gives, with model and effort named. Label
    them A and B with each one's family and tier. Same brief, verbatim;
    neither sees the other.
 3. Verify every finding at its line yourself; agreement never replaces that.

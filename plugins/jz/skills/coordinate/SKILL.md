@@ -158,11 +158,32 @@ The first row that matches wins:
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
 
 Escalation overrides the worker-state route. Before the escalated session
-starts, relay one handover to the last round's session: finish or abort a
-half-done rebase, stop its processes, write any uncommitted change as
-`round-<n>.patch` in the notes folder rather than commit it, and report the
-pushed head and the patch path. The escalated brief names that head and
-that patch; when the session has stopped, the brief says so and starts from
+starts, relay one handover to the last round's session. It snapshots
+everything before touching the rebase state, since an abort drops staged
+conflict resolutions and a finish turns them into local commits a patch of
+uncommitted changes misses:
+
+```bash
+pushed="$(git rev-parse "origin/<branch>")"
+onto="$(cat "$(git rev-parse --git-path rebase-merge/onto)" 2>/dev/null)"
+git add -A
+git diff --cached --binary "$pushed" > "<notes folder>/round-<n>.patch"
+git write-tree
+```
+
+Only then does it abort any rebase (never finish one) and stop its
+processes. It reports the pushed head, the patch path, the tree id, and
+`onto` when a rebase was in progress. The escalated session starts from the
+pushed head and proves the handover before anything else:
+
+```bash
+git apply --index "<notes folder>/round-<n>.patch"
+[ "$(git write-tree)" = "<tree id>" ] || echo MISMATCH
+```
+
+`MISMATCH` is a stop. A rebase that was in progress is redone from the
+pushed head onto `onto`, using the snapshot for the resolutions already
+made. When the last session has stopped, the brief says so and starts from
 the pushed head alone.
 
 A relay carries the standing orders verbatim, the review file path, one
@@ -239,8 +260,9 @@ row that disagrees with `gh pr view` in the file first.
 | Starting a step whose requirement has no criterion | Send it to `criteria` |
 | Moving a row to `ready` on the worker's word | Check sha, criteria rows, behaviour and `isDraft` |
 | Reviewing in the worker session, or here | A fresh reviewer on the review tier |
-| Reviewing on this session's family while the other is present | The other family first; strong or top only as the fallback |
+| Reviewing on this session's family while the other is present, or without a tier | Tier first, strong or top; then the other family at that tier where present |
 | Retrying a failed fix round on the same model | One tier up, in a fresh session |
+| Aborting or finishing a rebase before the handover snapshot | Snapshot against the pushed head first, then abort |
 | Forking this session into a worker | Fresh context plus the brief |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |
 | Waiting on an unmerged PR | Base on its branch and record the parent tip |

@@ -131,11 +131,13 @@ with the notes folder and ledgers named, before starting anything new.
 
 ### Step 6: Brief and start the reviewer
 
-Fill `template-review.md` for the PR and start a fresh session on the review
-tier: the other family from this session's where present (Codex from
-Claude, Claude Code from Codex), otherwise strong, or top for a step that is subtle or security-sensitive, needed an escalated fix
-round, or touches an ADR-tier decision. Never the worker, never a fork of
-it, never this session. A contested design gets a second reviewer on the
+Fill `template-review.md` for the PR and start a fresh reviewer. Choose the
+tier first: strong, or top for a step that is subtle or security-sensitive,
+needed an escalated fix round, or touches an ADR-tier decision. Then the
+family: the other one from this session's where present (Codex from Claude,
+Claude Code from Codex), otherwise this one, at that tier on whichever host
+runs it, with the model and effort set explicitly. Never the worker, never a
+fork of it, never this session. A contested design gets a second reviewer on the
 family the first did not run on, with the same brief. Check an other-family
 verdict against the brief like any other: gate, criteria rows, one COMMENT review. The reviewer runs the gate and
 every criterion on a detached checkout, probes base against candidate, runs
@@ -147,11 +149,21 @@ after fixes, or rework. The step's Review gate sets the brief's Post field:
 
 ### Step 7: Fix rounds
 
+The first row that matches wins:
+
 | The fix needs | Run it in |
 |---|---|
+| A round after one whose findings came back not fixed | A fresh session one tier above the last round's, up to top: the phase brief plus every later directive, consolidated, after the state handover below |
 | State only the worker has: uncommitted changes, a running process, a half-done rebase | The worker, by relay |
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
-| A round after one whose findings came back not fixed | A fresh session one tier above the last round's, up to top, with the same consolidated brief |
+
+Escalation overrides the worker-state route. Before the escalated session
+starts, relay one handover to the last round's session: finish or abort a
+half-done rebase, stop its processes, write any uncommitted change as
+`round-<n>.patch` in the notes folder rather than commit it, and report the
+pushed head and the patch path. The escalated brief names that head and
+that patch; when the session has stopped, the brief says so and starts from
+the pushed head alone.
 
 A relay carries the standing orders verbatim, the review file path, one
 commit per finding, no weakened tests, draft until `verify` passes on the

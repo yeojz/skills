@@ -104,6 +104,28 @@
         "The brief's behaviour target reads none, with the criteria alone deciding, not unit-only or live-verified",
         "When checking the worker's report, a met C5.1 with no behaviour test is accepted rather than sent back for a missing test"
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "Worker says PR 51 is ready. Step 4 rotates the session signing key, so the brief marked it security-sensitive. The Codex plugin is installed in this Claude session.",
+      "expected_output": "The agent picks the review tier first, top because the step is security-sensitive, then the family, Codex because it is present, and the review brief names Codex, its strongest model and its highest reasoning effort explicitly rather than whatever Codex defaults to.",
+      "files": [],
+      "expectations": [
+        "The review tier is top, decided from the step being security-sensitive before the family is chosen",
+        "The reviewer runs through Codex, not on Claude, because the plugin is present",
+        "The review brief's Model tier line names the host, the model and the reasoning effort for top on Codex, and does not leave effort to a default"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Re-check on PR 42 after round 1: F1 not fixed. The worker's session still has uncommitted changes to src/verify.ts and is halfway through a rebase.",
+      "expected_output": "Escalation wins over the worker-state route. The agent relays one handover to the worker to finish or abort the rebase, stop its processes, write the uncommitted change as round-1.patch in the notes folder and report the pushed head, then starts a fresh session one tier above round 1's with the consolidated brief naming that head and patch.",
+      "files": [],
+      "expectations": [
+        "Round 2 runs in a fresh session one tier above round 1's, not in the worker by relay",
+        "Before it starts, the worker gets one handover relay covering the rebase, its processes, the uncommitted change as a patch in the notes folder, and the pushed head",
+        "The escalated brief names the pushed head and the patch path, and a decisions.tsv relay row records the route, the tier and why"
+      ]
     }
   ]
 }

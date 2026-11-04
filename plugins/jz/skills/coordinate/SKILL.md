@@ -7,8 +7,9 @@ description: Use when a spec's steps have to be driven through separate worker a
 
 ## Overview
 
-Drives a spec's steps to merge-ready: one fresh worker session per step in
-its own worktree, one fresh reviewer per pull request, bounded fix rounds,
+Drives a spec's steps to merge-ready: one worker session per step in its
+own worktree, one fresh reviewer per pull request, on the other model
+family where present, bounded fix rounds that escalate a tier when one fails,
 and one line to the owner when a PR is ready to merge. Every brief comes
 from this skill's templates, and every session, verdict and decision is
 written to two ledgers, so "where are we" is answered from a file. The
@@ -86,9 +87,9 @@ stalls. The step's criteria go under Done means, copied as written. The
 behaviour target is the highest level the step's checks can reach:
 `live-verified` when any is a drive check, `unit-only` when any is a test
 check, otherwise none, and the criteria alone decide. The owner can set it
-otherwise. Name the model tier
-`rules/models.md` gives a scoped unit, one up for a subtle or
-security-sensitive step.
+otherwise. Name the model tier and the host's model and effort for it: the
+coordinating tier `rules/models.md` gives, not the model this session runs
+on, one up for a subtle or security-sensitive step.
 
 Owns also lists the two parts of the spec that `implement` records
 progress in, and nothing else in it: this step's status line under its
@@ -96,10 +97,15 @@ heading, and the Status cells of this step's rows in the Criteria table. If
 two steps' rows conflict in a rebase, each keeps its own status.
 
 Save it as `phase-<id>.md` in the notes folder, write the row as `scoped`,
-then start the worker fresh in its own worktree on that tier: in the desktop
-app, `start_session` with fresh context and a worktree; elsewhere, a new
-session with the brief pasted. Never fork this session into a worker and
-never implement the step here. Move the row to `running`.
+then start the worker in its own worktree on that tier: in the desktop app,
+`start_session` with fresh context and a worktree; elsewhere, a new session
+with the brief pasted. A worker on the same tier may take the step by relay
+instead when the step is blocked by that worker's own PR or its Owns
+overlaps the files that worker owned, that PR is `merge-ready` or `merged`,
+and the worker's context use is under 50%: the whole brief, a new worktree
+and branch. Log the reuse and the reason. Never
+fork this session into a worker and never implement the step here. Move the
+row to `running`.
 
 ### Step 5: Check the worker's report
 
@@ -125,10 +131,15 @@ with the notes folder and ledgers named, before starting anything new.
 
 ### Step 6: Brief and start the reviewer
 
-Fill `template-review.md` for the PR and start a fresh session on the review
-tier: never the worker, never a fork of it, never this session. A contested
-design gets a second reviewer on another model family, through Codex where
-its plugin is present, with the same brief. The reviewer runs the gate and
+Fill `template-review.md` for the PR and start a fresh reviewer. Choose the
+tier first: strong, or top for a step that is subtle or security-sensitive,
+needed an escalated fix round, or touches an ADR-tier decision. Then the
+family: the other one from this session's where present (Codex from Claude,
+Claude Code from Codex), otherwise this one, at that tier on whichever host
+runs it, with the model and effort set explicitly. Never the worker, never a
+fork of it, never this session. A contested design gets a second reviewer on the
+family the first did not run on, with the same brief. Check an other-family
+verdict against the brief like any other: gate, criteria rows, one COMMENT review. The reviewer runs the gate and
 every criterion on a detached checkout, probes base against candidate, runs
 the `review` skill's change mode, posts one COMMENT review (never approve or
 request changes), writes `review-pr<number>.md`, and returns merge as is,
@@ -138,15 +149,24 @@ after fixes, or rework. The step's Review gate sets the brief's Post field:
 
 ### Step 7: Fix rounds
 
+The first row that matches wins:
+
 | The fix needs | Run it in |
 |---|---|
+| A round after one whose findings came back not fixed | A fresh session one tier above the last round's, up to top, from the pushed head: the phase brief plus every later directive, consolidated |
 | State only the worker has: uncommitted changes, a running process, a half-done rebase | The worker, by relay |
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
+
+Escalation overrides the worker-state route and starts from the pushed head.
+Before it starts, relay one line to the last round's session: abort any
+rebase and stop its processes. Its unpushed work does not carry over; that
+round failed, and the escalated brief names the review file and what each
+round tried instead.
 
 A relay carries the standing orders verbatim, the review file path, one
 commit per finding, no weakened tests, draft until `verify` passes on the
 pushed head and no check has failed, and the phase template's report shape.
-Never restart a stopped session. Log the route and why. The
+Never restart a stopped session. Log the route, the tier and why. The
 reviewer re-checks the new head and marks each finding fixed, not fixed or
 no longer applicable. After three rounds, the row is `blocked`: report the
 open findings and what each round tried.
@@ -217,6 +237,9 @@ row that disagrees with `gh pr view` in the file first.
 | Starting a step whose requirement has no criterion | Send it to `criteria` |
 | Moving a row to `ready` on the worker's word | Check sha, criteria rows, behaviour and `isDraft` |
 | Reviewing in the worker session, or here | A fresh reviewer on the review tier |
+| Reviewing on this session's family while the other is present, or without a tier | Tier first, strong or top; then the other family at that tier where present |
+| Retrying a failed fix round on the same model | One tier up, in a fresh session |
+| Carrying a failed round's unpushed work into the escalated round | Abort its rebase, stop its processes, start from the pushed head |
 | Forking this session into a worker | Fresh context plus the brief |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |
 | Waiting on an unmerged PR | Base on its branch and record the parent tip |

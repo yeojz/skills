@@ -12,7 +12,7 @@
         "A step serving a requirement with no criterion is not started and is handed to the criteria skill",
         "Each brief follows template-phase.md with every section filled, including Read first, Decisions already made, Not asked for now and Done means",
         "Each brief's Done means carries the step's criteria as written and a behaviour target of live-verified when any criterion is a drive check, unit-only when any is a test check, otherwise none",
-        "Each brief names the model tier and the Standing orders block is copied from AGENTS.md word for word",
+        "Each brief names the model tier, the coordinating tier with its model and effort, not whatever model the coordinator runs on, one up when the step is subtle or security-sensitive, and the Standing orders block is copied from AGENTS.md word for word",
         "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file",
         "Each brief's Owns lists the step's status line and the Status cells of its criteria rows in the spec, so the worker can record progress as implement requires without editing anything else in the spec"
       ]
@@ -20,14 +20,14 @@
     {
       "id": 2,
       "prompt": "Worker says: PR 42 is ready, head a9c1f3e, make validate exit 0 on a clean checkout.",
-      "expected_output": "The agent checks the claim against gh pr view and origin/<branch> before moving the row to ready, binds the PR monitor once, then fills template-review.md and starts a fresh reviewer session on the review tier that is not the worker session. The brief requires the gate on a detached checkout, a base-against-candidate probe, design and maintainability at the same weight as correctness, guard-deletion sampling, P1 to P3 findings with file:line, one COMMENT review and never an approval.",
+      "expected_output": "The agent checks the claim against gh pr view and origin/<branch> before moving the row to ready, binds the PR monitor once, then fills template-review.md and starts a fresh reviewer session that is not the worker session, choosing the review tier first and then the other model family at that tier where present. The brief requires the gate on a detached checkout, a base-against-candidate probe, design and maintainability at the same weight as correctness, guard-deletion sampling, P1 to P3 findings with file:line, one COMMENT review and never an approval.",
       "files": [],
       "expectations": [
         "Runs gh pr view and compares headRefOid with the reported sha before the units.tsv row moves to ready",
         "Checks that every criterion in the brief has its own row in the worker's verify block before the behaviour row, with the brief's command, an exit code and pass, or met for an inspection; a criterion with no row or one reading not run goes back to the worker as one line naming the criterion, and the row does not move to ready",
         "The review brief carries the criteria and requires each command run on the detached checkout and checked against the worker's row, with a failed or missing criterion as a P1 naming it",
         "The review brief keeps the detached worktree from the gate through the criteria checks and the guard sample and removes it only in its Cleanup section, so no step runs in a checkout an earlier step removed",
-        "The reviewer is a separate fresh session on the review tier, not the worker session and not the coordinator itself",
+        "The reviewer is a separate fresh session, not the worker session and not the coordinator itself; its tier is chosen first, strong, or top when the step is subtle or security-sensitive, and it runs on the other model family from the coordinator's at that tier when present, otherwise on the coordinator's",
         "The review brief follows template-review.md and names the detached gate, the correctness probe, the equal-weight design and maintainability lenses, guard-deletion sampling and the P1 to P3 table with file:line",
         "The brief says to post one COMMENT review and never approve or request changes",
         "A decisions.tsv row of kind verdict is written when the reviewer reports"
@@ -43,7 +43,8 @@
         "The relay or fresh-session choice is stated with the reason, and a decisions.tsv row of kind relay records it",
         "The fix brief carries the standing orders verbatim, the review file path, one commit per finding, no weakened tests and the draft-until-gated rule",
         "The re-check is a reviewer pass on the new head that classifies F1, F2 and F3 as fixed, not fixed or no longer applicable with a line each",
-        "The fix loop is bounded at three rounds, after which the row moves to blocked and the owner gets the open findings"
+        "The fix loop is bounded at three rounds, after which the row moves to blocked and the owner gets the open findings",
+        "A round after one whose findings came back not fixed starts a fresh session one tier above the last round's"
       ]
     },
     {
@@ -102,6 +103,29 @@
       "expectations": [
         "The brief's behaviour target reads none, with the criteria alone deciding, not unit-only or live-verified",
         "When checking the worker's report, a met C5.1 with no behaviour test is accepted rather than sent back for a missing test"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Worker says PR 51 is ready. Step 4 rotates the session signing key, so the brief marked it security-sensitive. The Codex plugin is installed in this Claude session.",
+      "expected_output": "The agent picks the review tier first, top because the step is security-sensitive, then the family, Codex because it is present, and the review brief names Codex, its strongest model and its highest reasoning effort explicitly rather than whatever Codex defaults to.",
+      "files": [],
+      "expectations": [
+        "The review tier is top, decided from the step being security-sensitive before the family is chosen",
+        "The reviewer runs through Codex, not on Claude, because the plugin is present",
+        "The review brief's Model tier line names the host, the model and the reasoning effort for top on Codex, and does not leave effort to a default"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Re-check on PR 42 after round 1: F1 not fixed. The worker's session is halfway through a rebase onto main with uncommitted changes to src/verify.ts.",
+      "expected_output": "Escalation wins over the worker-state route. The agent relays one line to the worker to abort the rebase and stop its processes, carries none of its unpushed work over, and starts a fresh session one tier above round 1's from the pushed head with the consolidated brief naming the review file and what round 1 tried.",
+      "files": [],
+      "expectations": [
+        "Round 2 runs in a fresh session one tier above round 1's, not in the worker by relay",
+        "The worker gets one relay to abort the rebase and stop its processes, and nothing else is asked of it",
+        "The escalated session starts from the pushed head; no patch, stash or snapshot of the worker's unpushed changes is made or applied",
+        "The escalated brief names the review file and what round 1 tried, and a decisions.tsv relay row records the route, the tier and why"
       ]
     }
   ]

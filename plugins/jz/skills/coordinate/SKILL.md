@@ -153,36 +153,15 @@ The first row that matches wins:
 
 | The fix needs | Run it in |
 |---|---|
-| A round after one whose findings came back not fixed | A fresh session one tier above the last round's, up to top: the phase brief plus every later directive, consolidated, after the state handover below |
+| A round after one whose findings came back not fixed | A fresh session one tier above the last round's, up to top, from the pushed head: the phase brief plus every later directive, consolidated |
 | State only the worker has: uncommitted changes, a running process, a half-done rebase | The worker, by relay |
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
 
-Escalation overrides the worker-state route. Before the escalated session
-starts, relay one handover to the last round's session: stop its processes,
-then run `handover.sh`, beside this file, in its worktree with the phase's
-Owns paths. It snapshots only those paths in a throwaway index, so the notes
-folder and the owner's other files stay out. Mid-rebase, it also bundles the
-commits already replayed and records the stopped commit, so its resolution
-is reused at that commit only. It aborts the rebase only once everything is
-written; a failure leaves the rebase untouched.
-
-```bash
-bash <skill-dir>/handover.sh save <branch> "<notes folder>" <n> <each Owns path>
-```
-
-The escalated brief names `round-<n>.env`. The escalated session runs
-`restore` first, in its own clean worktree:
-
-```bash
-bash <skill-dir>/handover.sh restore "<notes folder>" <n>
-```
-
-Exit 1 (tree `MISMATCH`, or the branch moved since the handover) is a stop.
-Exit 3 is a conflict in a commit replayed after the stop: resolve it against
-that commit, never from the snapshot, then `git rebase --continue`. Work
-continues on the detached HEAD it leaves, pushed with
-`--force-with-lease=<branch>:<pushed>`. When the last session has stopped,
-the brief says so and starts from the pushed head alone.
+Escalation overrides the worker-state route and starts from the pushed head.
+Before it starts, relay one line to the last round's session: abort any
+rebase and stop its processes. Its unpushed work does not carry over; that
+round failed, and the escalated brief names the review file and what each
+round tried instead.
 
 A relay carries the standing orders verbatim, the review file path, one
 commit per finding, no weakened tests, draft until `verify` passes on the
@@ -260,7 +239,7 @@ row that disagrees with `gh pr view` in the file first.
 | Reviewing in the worker session, or here | A fresh reviewer on the review tier |
 | Reviewing on this session's family while the other is present, or without a tier | Tier first, strong or top; then the other family at that tier where present |
 | Retrying a failed fix round on the same model | One tier up, in a fresh session |
-| Hand-copying a handover, or taking a later conflict's resolution from the snapshot | `handover.sh save` and `restore`; resolve later conflicts against the replayed commit |
+| Carrying a failed round's unpushed work into the escalated round | Abort its rebase, stop its processes, start from the pushed head |
 | Forking this session into a worker | Fresh context plus the brief |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |
 | Waiting on an unmerged PR | Base on its branch and record the parent tip |

@@ -158,42 +158,31 @@ The first row that matches wins:
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
 
 Escalation overrides the worker-state route. Before the escalated session
-starts, relay one handover to the last round's session. It snapshots the
-phase's Owns paths, and nothing else, in a throwaway index before touching
-the rebase, since an abort drops staged resolutions and a finish turns them
-into local commits; the notes folder and the owner's other files stay out:
+starts, relay one handover to the last round's session: stop its processes,
+then run `handover.sh`, beside this file, in its worktree with the phase's
+Owns paths. It snapshots only those paths in a throwaway index, so the notes
+folder and the owner's other files stay out. Mid-rebase, it also bundles the
+commits already replayed and records the stopped commit, so its resolution
+is reused at that commit only. It aborts the rebase only once everything is
+written; a failure leaves the rebase untouched.
 
 ```bash
-set -e
-pushed="$(git rev-parse "origin/<branch>")"
-onto="$(cat "$(git rev-parse --git-path rebase-merge/onto)" 2>/dev/null || true)"
-snap="$(mktemp)"
-GIT_INDEX_FILE="$snap" git read-tree "$pushed"
-GIT_INDEX_FILE="$snap" git add -A -- <each path in Owns>
-GIT_INDEX_FILE="$snap" git diff --cached --binary "$pushed" > "<notes folder>/round-<n>.patch"
-GIT_INDEX_FILE="$snap" git write-tree
-rm -f "$snap"
+bash <skill-dir>/handover.sh save <branch> "<notes folder>" <n> <each Owns path>
 ```
 
-If any line fails or a hook refuses it, the handover stops there with the
-rebase untouched. Otherwise it aborts any rebase (never finishes one), stops
-its processes, and reports the pushed head, the patch path, the tree id, and
-`onto` when a rebase was in progress. The escalated session proves the
-snapshot in a throwaway worktree, so its own checkout stays clean:
+The escalated brief names `round-<n>.env`. The escalated session runs
+`restore` first, in its own clean worktree:
 
 ```bash
-git worktree add --detach "<ref dir>" "<pushed head>"
-git -C "<ref dir>" apply --index "<notes folder>/round-<n>.patch"
-[ "$(git -C "<ref dir>" write-tree)" = "<tree id>" ] || echo MISMATCH
+bash <skill-dir>/handover.sh restore "<notes folder>" <n>
 ```
 
-`MISMATCH` is a stop. With no `onto`, it applies the same patch in its own
-checkout. With one, it rebases its clean checkout of the pushed head onto
-`onto`, takes each conflict's resolution from `<ref dir>`, then copies over
-the remaining edits. `git diff --name-only "<tree id>" -- <Owns paths>`
-afterwards lists only files that commits replayed after the stop changed,
-each named in the report. It removes `<ref dir>` when done. When the last
-session has stopped, the brief says so and starts from the pushed head alone.
+Exit 1 (tree `MISMATCH`, or the branch moved since the handover) is a stop.
+Exit 3 is a conflict in a commit replayed after the stop: resolve it against
+that commit, never from the snapshot, then `git rebase --continue`. Work
+continues on the detached HEAD it leaves, pushed with
+`--force-with-lease=<branch>:<pushed>`. When the last session has stopped,
+the brief says so and starts from the pushed head alone.
 
 A relay carries the standing orders verbatim, the review file path, one
 commit per finding, no weakened tests, draft until `verify` passes on the
@@ -271,7 +260,7 @@ row that disagrees with `gh pr view` in the file first.
 | Reviewing in the worker session, or here | A fresh reviewer on the review tier |
 | Reviewing on this session's family while the other is present, or without a tier | Tier first, strong or top; then the other family at that tier where present |
 | Retrying a failed fix round on the same model | One tier up, in a fresh session |
-| Aborting a rebase before the handover snapshot, or staging with `git add -A` | Snapshot the Owns paths in a throwaway index first, then abort |
+| Hand-copying a handover, or taking a later conflict's resolution from the snapshot | `handover.sh save` and `restore`; resolve later conflicts against the replayed commit |
 | Forking this session into a worker | Fresh context plus the brief |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |
 | Waiting on an unmerged PR | Base on its branch and record the parent tip |

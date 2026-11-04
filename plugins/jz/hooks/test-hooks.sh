@@ -216,19 +216,28 @@ ask '"gh pr ready -- --undo"'                   "--undo after --"               
 ask '"gh pr ready --undo -- 5"'                 "undo then -- and the number"    allow
 ask '"gh pr ready 5 --undo=maybe"'              "undo spelling gh rejects"       ask
 ask '"gh pr edit 5 --title t"'                  "gh pr edit"                     allow
-ask '"gh pr merge 5 --squash"'                  "gh pr merge"                    ask
+ask '"gh pr merge 5 --squash"'                  "gh pr merge is denied elsewhere" allow
 ask '"git status && gh pr create -d"'           "draft create after &&"          allow
 ask '"git status && gh pr create"'              "gh pr create after &&"          ask
 ask '"git push --force"'                        "push --force"                   ask
 ask '"git push -f origin x"'                    "push -f"                        ask
 ask '"git push -fu origin x"'                   "push -fu cluster"               ask
-ask '"git push --force-with-lease=x:abc"'       "push --force-with-lease=ref"    ask
+ask '"git push --force-with-lease=x:abc"'       "lease pinned to a sha"          allow
+ask '"git push --force-with-lease=x: origin x"'  "lease that expects no ref"      allow
+ask '"git push --force-with-lease=x"'           "lease on a ref without a sha"   ask
+ask '"git push --force-with-lease=x:abc --force-if-includes"' "pinned lease with if-includes" allow
+ask '"git push --force-if-includes --force-with-lease=x:abc"' "if-includes before a pinned lease" allow
+ask '"git push --force-w=x:abc origin x"'      "pinned lease by an abbreviation" allow
+ask '"git push --force-w origin x"'            "bare lease by an abbreviation"  ask
+ask '"git push --force-with-lease=x:abc origin +y"' "pinned lease beside a plus refspec" ask
+ask '"git push --force-with-lease=x:abc -f"'    "pinned lease beside -f"         ask
+ask '"git push origin -- +x"'                   "plus refspec after --"          ask
 ask '"git push origin --force-with-lease"'      "push remote then lease"         ask
 ask '"git push --force-if-includes"'            "push --force-if-includes"       ask
 ask '"git push origin +main"'                   "push plus refspec"              ask
 ask '"git -C . push -f"'                        "push -f behind git -C"          ask
 ask '"nohup git push --force"'                  "push behind nohup"              ask
-ask '"/usr/bin/gh pr merge 5"'                  "gh through an absolute path"    ask
+ask '"/usr/bin/gh pr ready 5"'                  "gh through an absolute path"    ask
 ask '"git push origin \\\n  --force-with-lease"' "push with a line continuation"  ask
 ask '"gh pr create \\\n  --draft \\\n  --title t"'  "draft create across lines"      allow
 ask '"gh pr create \\\n  --title t"'          "gh pr create across lines"      ask
@@ -243,7 +252,7 @@ ask '"env -u GITHUB_TOKEN gh pr create"'          "gh behind env -u with an oper
 ask '"timeout --signal TERM 30 git push --force"' "push behind timeout --signal"   ask
 ask '"sudo -u root git push -f"'                 "push behind sudo -u"            ask
 ask '"nice -n 5 git push --force"'               "push behind nice -n"            ask
-ask '"env -- gh pr merge 5"'                     "gh after a double dash"         ask
+ask '"env -- gh pr ready 5"'                     "gh after a double dash"         ask
 ask '"timeout -s TERM 30 git push"'              "plain push behind timeout -s"   allow
 ask '"env --default-signal git push --force"'    "push behind bare --default-signal" ask
 ask '"env --ignore-signal git push --force"'     "push behind bare --ignore-signal" ask
@@ -675,5 +684,99 @@ pushgit remote add dead "$FIXTURE/no-such-remote.git"
 scan '"git push dead main"'                     "unreachable remote asks"        ask
 scan '"git push origin nosuchbranch"'           "unknown ref asks"               ask
 rm -rf "$PUSHREPO" "$FIXTURE/remote.git" "$FIXTURE/archive.git" "$FIXTURE/target2.git"
+
+printf '\nprotect-default-branches.sh\n'
+protect() {
+  # protect <json-quoted command> <label> <expected exit> [cwd]
+  printf '  %-52s' "$2"
+  printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${4:-$PROTREPO}" \
+    | "$HOOK_DIR/protect-default-branches.sh" >/dev/null 2>&1
+  local got=$?
+  if [ "$got" = "$3" ]; then
+    echo "exit=$got PASS"
+  else
+    echo "exit=$got FAIL, expected $3"
+    fail=1
+  fi
+}
+
+# A repository with a bare remote, main and a feature branch both published,
+# and one unpublished commit on each, so every push below would move a ref.
+PROTREPO="$FIXTURE/protrepo"
+git init -q -b main "$PROTREPO"
+git init -q --bare "$FIXTURE/protremote.git"
+git -C "$PROTREPO" remote add origin "$FIXTURE/protremote.git"
+protgit() { git -C "$PROTREPO" -c user.email=dev@example.com -c user.name=dev "$@"; }
+protgit commit -q --allow-empty -m 'feat: start' && protgit push -q -u origin main
+protgit checkout -q -b feature && protgit commit -q --allow-empty -m 'feat: one'
+protgit push -q -u origin feature
+protgit commit -q --allow-empty -m 'feat: two'
+protgit checkout -q main && protgit commit -q --allow-empty -m 'feat: on main'
+protgit checkout -q feature
+feature_tip="$(git -C "$FIXTURE/protremote.git" rev-parse refs/heads/feature)"
+
+protect '"git push"'                             "bare push of a feature branch"  0
+protect '"git push origin feature"'              "push a feature branch"          0
+protect "\"git push --force-with-lease=feature:$feature_tip origin feature\"" "pinned lease on a feature branch" 0
+protect '"git push origin main"'                 "push main"                      2
+protect '"git push origin feature:main"'         "feature onto main"              2
+protect '"git push origin HEAD:main"'            "HEAD onto main"                 2
+protect '"git push origin +feature:main"'        "forced refspec onto main"       2
+protect '"git push origin feature:refs/heads/master"' "feature onto a new master"  2
+protect '"git push origin feature:develop"'      "feature onto a new develop"     2
+protect '"git push origin :main"'                "delete main by refspec"         2
+protect '"git push origin --delete main"'        "delete main by --delete"        2
+protect '"git push --all origin"'                "--all with main ahead"          2
+protect '"git push --mirror origin"'             "--mirror"                       2
+protect '"git push --dry-run origin main"'       "a dry run moves nothing"        0
+protect '"git push origin feature && git push origin main"' "main after a feature push" 2
+protect '"cd protrepo && git push origin main"'  "push main after cd"             2 "$FIXTURE"
+protect '"git -C protrepo push origin main"'     "push main behind git -C"        2 "$FIXTURE"
+protect '"bash -c \"git push origin main\""'     "push main inside bash -c"       2
+protect '"git -c remote.origin.push=refs/heads/feature:refs/heads/main push origin"' "configured refspec onto main" 2
+protect '"echo git push origin main"'            "push inside echo"               0
+protect '"git commit -m \"merge main notes\""'   "merge only in a commit message" 0
+protgit checkout -q main
+protect '"git push"'                             "bare push from main"            2
+protgit push -q origin main
+protgit checkout -q feature
+protect '"git push --all origin"'                "--all with main up to date"     0
+# The remote's own default counts, whatever its name.
+protgit symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/release
+protect '"git push origin feature:release"'      "onto the default origin/HEAD names" 2
+protgit symbolic-ref -d refs/remotes/origin/HEAD
+# When the dry run cannot answer, the arguments are read by hand.
+protgit remote add dead "$FIXTURE/no-such-remote.git"
+protect '"git push dead feature"'                "unreachable remote, feature"    0
+protect '"git push dead main"'                   "unreachable remote, main"       2
+protect '"git push dead feature:main"'           "unreachable remote, onto main"  2
+protect '"git push --all dead"'                  "unreachable remote, --all"      2
+protgit checkout -q main
+protect '"git push dead"'                        "unreachable remote from main"   2
+protgit checkout -q feature
+protect '"git push origin main \"unterminated"'  "unparseable push of main"       2
+
+protect '"gh pr view 5"'                         "gh pr view"                     0
+protect '"gh pr merge 5 --squash"'               "gh pr merge"                    2
+protect '"gh pr merge --auto --squash 5"'        "gh pr merge --auto"             2
+protect '"gh pr merge 5 --disable-auto"'         "gh pr merge --disable-auto"     0
+protect '"/usr/bin/gh pr merge 5"'               "gh pr merge by absolute path"   2
+protect '"env -u GITHUB_TOKEN gh pr merge 5"'    "gh pr merge behind env -u"      2
+protect '"bash -c \"gh pr merge 5\""'            "gh pr merge inside bash -c"     2
+protect '"echo gh pr merge 5"'                   "gh pr merge inside echo"        0
+protect '"gh api repos/o/r/pulls/5/merge"'       "GET on the merge endpoint"      0
+protect '"gh api -X PUT repos/o/r/pulls/5/merge"' "PUT on the merge endpoint"     2
+protect '"gh api -XPUT repos/o/r/pulls/5/merge"' "attached -XPUT"                 2
+protect '"gh api --method=PUT /repos/o/r/pulls/5/merge"' "--method=PUT"           2
+protect '"gh api repos/o/r/pulls/5/merge -f merge_method=squash"' "fields imply a write" 2
+protect '"gh api repos/o/r/merges -f base=main -f head=x"' "repository merges endpoint" 2
+protect '"gh api repos/o/r/pulls/5"'             "read a pull request"            0
+protect '"gh api graphql -f query=\"mutation { mergePullRequest(input: {}) { clientMutationId } }\""' "GraphQL mergePullRequest" 2
+protect '"gh api graphql -f query=\"mutation { enablePullRequestAutoMerge(input: {}) { clientMutationId } }\""' "GraphQL auto-merge" 2
+protect '"gh api graphql -f query=\"query { viewer { login } }\""' "GraphQL query"  0
+printf 'mutation { mergePullRequest(input: {}) { clientMutationId } }' > "$PROTREPO/q.graphql"
+protect '"gh api graphql --input q.graphql"'     "GraphQL mutation from --input"  2
+protect '"gh pr merge 5 \"unterminated"'         "unparseable gh pr merge"        2
+rm -rf "$PROTREPO" "$FIXTURE/protremote.git"
 
 exit "$fail"

@@ -3,9 +3,12 @@
 #
 # Asks for confirmation before a remote write that is hard to take back or
 # that signals reviewers: opening a pull request ready for review, marking one
-# ready, merging one, and any force push. A branch push and a draft pull
-# request can be withdrawn and pass without a prompt. A plugin cannot add
-# permissions.ask entries to the host's settings, so the ask lives here instead.
+# ready, and a force push that is not pinned to the sha it replaces. A branch
+# push, a draft pull request and a `--force-with-lease=<ref>:<sha>` push can
+# be withdrawn or fail safe, and pass without a prompt. Merging a pull request
+# and pushing to a default branch are denied outright by
+# protect-default-branches.sh. A plugin cannot add permissions.ask entries to
+# the host's settings, so the ask lives here instead.
 #
 # The command line is split by command_lines.py, the parser every hook shares,
 # so a line continuation, a quoted separator, a comment or a wrapper such as
@@ -34,8 +37,8 @@ import sys
 
 sys.path.insert(0, sys.argv[1])
 from command_lines import commands_in, git_call  # noqa: E402
+from git_push import resolve_push_long_option  # noqa: E402
 
-FORCE_FLAGS = {"--force", "-f", "--force-if-includes"}
 SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 # The option tables of gh pr create and gh pr ready (cli/cli v2.103.0), with
 # the persistent --repo/-R. gh parses them with pflag: a bool option takes an
@@ -59,16 +62,41 @@ BOOL_SPELLINGS = {
     "0": False, "f": False, "F": False, "FALSE": False, "false": False, "False": False,
 }
 # When the line cannot be lexed at all, lean towards asking.
-RAW_REMOTE_WRITE = re.compile(r"\bgh\s+pr\s+(create|merge|ready)\b|\bgit\s+push\b.*(--force|\s-f\b|\s\+\S)")
+RAW_REMOTE_WRITE = re.compile(r"\bgh\s+pr\s+(create|ready)\b|\bgit\s+push\b.*(--force|\s-f\b|\s\+\S)")
 
 
 def push_is_forced(args):
+    """Whether a git push can overwrite a remote branch without naming the sha it replaces.
+
+    A lease that names the expected sha, `--force-with-lease=<ref>:<sha>`, fails
+    unless the remote is still where the caller last saw it, so it passes. A bare
+    lease checks against the remote-tracking ref, which a background fetch can
+    move, so it is treated like --force. --force-if-includes only refines a lease
+    and asks on its own. Long options resolve by unambiguous prefix, as git
+    resolves them.
+    """
+    pinned = False
+    forced = False
+    includes = False
     for token in args:
-        if token in FORCE_FLAGS or token.startswith("--force-with-lease") or token.startswith("+"):
-            return True
-        if SHORT_CLUSTER.match(token) and "f" in token[1:]:
-            return True
-    return False
+        if token.startswith("--") and token != "--":
+            name, has_value, value = token[2:].partition("=")
+            resolved = resolve_push_long_option(name)
+            if resolved == "force":
+                forced = True
+            elif resolved == "force-with-lease":
+                if has_value and ":" in value:
+                    pinned = True
+                else:
+                    forced = True
+            elif resolved == "force-if-includes":
+                includes = True
+            continue
+        if token.startswith("+"):
+            forced = True
+        elif SHORT_CLUSTER.match(token) and "f" in token[1:]:
+            forced = True
+    return forced or (includes and not pinned)
 
 
 def final_bool_option(args, bool_options, value_options, name):
@@ -150,13 +178,11 @@ def reason_for(argv):
             return "gh pr create without --draft opens a pull request ready for review; confirm first, or open it as a draft."
         if argv[2] == "ready" and not ready_is_undo(argv[3:]):
             return "gh pr ready signals reviewers; confirm before marking a pull request ready."
-        if argv[2] == "merge":
-            return "gh pr merge lands on the default branch; confirm first."
     call = git_call(argv, ".")
     if call is not None:
         subcommand, args, _ = call
         if subcommand == "push" and push_is_forced(args):
-            return "git push with a force option rewrites the remote branch; confirm first."
+            return "git push with a force option not pinned to the sha it replaces can discard commits on the remote; confirm first, or use --force-with-lease=<branch>:<sha>."
     return None
 
 

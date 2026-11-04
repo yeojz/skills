@@ -87,9 +87,9 @@ stalls. The step's criteria go under Done means, copied as written. The
 behaviour target is the highest level the step's checks can reach:
 `live-verified` when any is a drive check, `unit-only` when any is a test
 check, otherwise none, and the criteria alone decide. The owner can set it
-otherwise. Name the model tier and the host's model for it: this session's
-tier, as `rules/models.md` gives a step under a coordinator, one up for a
-subtle or security-sensitive step.
+otherwise. Name the model tier and the host's model and effort for it: the
+coordinating tier `rules/models.md` gives, not the model this session runs
+on, one up for a subtle or security-sensitive step.
 
 Owns also lists the two parts of the spec that `implement` records
 progress in, and nothing else in it: this step's status line under its
@@ -158,33 +158,42 @@ The first row that matches wins:
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
 
 Escalation overrides the worker-state route. Before the escalated session
-starts, relay one handover to the last round's session. It snapshots
-everything before touching the rebase state, since an abort drops staged
-conflict resolutions and a finish turns them into local commits a patch of
-uncommitted changes misses:
+starts, relay one handover to the last round's session. It snapshots the
+phase's Owns paths, and nothing else, in a throwaway index before touching
+the rebase, since an abort drops staged resolutions and a finish turns them
+into local commits; the notes folder and the owner's other files stay out:
 
 ```bash
+set -e
 pushed="$(git rev-parse "origin/<branch>")"
-onto="$(cat "$(git rev-parse --git-path rebase-merge/onto)" 2>/dev/null)"
-git add -A
-git diff --cached --binary "$pushed" > "<notes folder>/round-<n>.patch"
-git write-tree
+onto="$(cat "$(git rev-parse --git-path rebase-merge/onto)" 2>/dev/null || true)"
+snap="$(mktemp)"
+GIT_INDEX_FILE="$snap" git read-tree "$pushed"
+GIT_INDEX_FILE="$snap" git add -A -- <each path in Owns>
+GIT_INDEX_FILE="$snap" git diff --cached --binary "$pushed" > "<notes folder>/round-<n>.patch"
+GIT_INDEX_FILE="$snap" git write-tree
+rm -f "$snap"
 ```
 
-Only then does it abort any rebase (never finish one) and stop its
-processes. It reports the pushed head, the patch path, the tree id, and
-`onto` when a rebase was in progress. The escalated session starts from the
-pushed head and proves the handover before anything else:
+If any line fails or a hook refuses it, the handover stops there with the
+rebase untouched. Otherwise it aborts any rebase (never finishes one), stops
+its processes, and reports the pushed head, the patch path, the tree id, and
+`onto` when a rebase was in progress. The escalated session proves the
+snapshot in a throwaway worktree, so its own checkout stays clean:
 
 ```bash
-git apply --index "<notes folder>/round-<n>.patch"
-[ "$(git write-tree)" = "<tree id>" ] || echo MISMATCH
+git worktree add --detach "<ref dir>" "<pushed head>"
+git -C "<ref dir>" apply --index "<notes folder>/round-<n>.patch"
+[ "$(git -C "<ref dir>" write-tree)" = "<tree id>" ] || echo MISMATCH
 ```
 
-`MISMATCH` is a stop. A rebase that was in progress is redone from the
-pushed head onto `onto`, using the snapshot for the resolutions already
-made. When the last session has stopped, the brief says so and starts from
-the pushed head alone.
+`MISMATCH` is a stop. With no `onto`, it applies the same patch in its own
+checkout. With one, it rebases its clean checkout of the pushed head onto
+`onto`, takes each conflict's resolution from `<ref dir>`, then copies over
+the remaining edits. `git diff --name-only "<tree id>" -- <Owns paths>`
+afterwards lists only files that commits replayed after the stop changed,
+each named in the report. It removes `<ref dir>` when done. When the last
+session has stopped, the brief says so and starts from the pushed head alone.
 
 A relay carries the standing orders verbatim, the review file path, one
 commit per finding, no weakened tests, draft until `verify` passes on the
@@ -262,7 +271,7 @@ row that disagrees with `gh pr view` in the file first.
 | Reviewing in the worker session, or here | A fresh reviewer on the review tier |
 | Reviewing on this session's family while the other is present, or without a tier | Tier first, strong or top; then the other family at that tier where present |
 | Retrying a failed fix round on the same model | One tier up, in a fresh session |
-| Aborting or finishing a rebase before the handover snapshot | Snapshot against the pushed head first, then abort |
+| Aborting a rebase before the handover snapshot, or staging with `git add -A` | Snapshot the Owns paths in a throwaway index first, then abort |
 | Forking this session into a worker | Fresh context plus the brief |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |
 | Waiting on an unmerged PR | Base on its branch and record the parent tip |

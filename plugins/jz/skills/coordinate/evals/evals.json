@@ -12,7 +12,7 @@
         "A step serving a requirement with no criterion is not started and is handed to the criteria skill",
         "Each brief follows template-phase.md with every section filled, including Read first, Decisions already made, Not asked for now and Done means",
         "Each brief's Done means carries the step's criteria as written and a behaviour target of live-verified when any criterion is a drive check, unit-only when any is a test check, otherwise none",
-        "Each brief names the model tier, the coordinator's own model unless the step is subtle or security-sensitive, and the Standing orders block is copied from AGENTS.md word for word",
+        "Each brief names the model tier, the coordinating tier with its model and effort, not whatever model the coordinator runs on, one up when the step is subtle or security-sensitive, and the Standing orders block is copied from AGENTS.md word for word",
         "Each worker is a fresh session in its own worktree, not a fork of the coordinator, and the coordinator edits no source file",
         "Each brief's Owns lists the step's status line and the Status cells of its criteria rows in the spec, so the worker can record progress as implement requires without editing anything else in the spec"
       ]
@@ -118,14 +118,17 @@
     },
     {
       "id": 10,
-      "prompt": "Re-check on PR 42 after round 1: F1 not fixed. The worker's session still has uncommitted changes to src/verify.ts and is halfway through a rebase.",
-      "expected_output": "Escalation wins over the worker-state route. The agent relays one handover to the worker: before touching the rebase, stage everything, write the full delta against the pushed head as round-1.patch in the notes folder and record the tree id and the rebase's onto commit; only then abort the rebase and stop its processes. It then starts a fresh session one tier above round 1's whose brief names the head, patch, tree id and onto, and which applies the patch and checks the tree id before any other work.",
+      "prompt": "Re-check on PR 42 after round 1: F1 not fixed. The worker's session is halfway through a rebase with a staged resolution in src/verify.ts and an untracked src/verify.test.ts, both inside the phase's Owns. The unignored notes folder docs/plans/2026-11-04-coordinate-auth/ and an unrelated stray.txt are also untracked.",
+      "expected_output": "Escalation wins over the worker-state route. The handover snapshots only the Owns paths through a throwaway index against the pushed head, writes round-1.patch, records the tree id and the rebase's onto, and only then aborts the rebase. The escalated session proves the patch in a throwaway worktree, rebases its own clean checkout onto onto, carries the snapshot's resolution and new test over, and names any file that still differs from the snapshot with its cause.",
       "files": [],
       "expectations": [
         "Round 2 runs in a fresh session one tier above round 1's, not in the worker by relay",
-        "Before it starts, the worker gets one handover relay that snapshots with git add -A and a binary diff against the pushed head before any rebase abort, and never finishes the rebase",
-        "The handover reports the pushed head, the patch path, the tree id from git write-tree and the rebase's onto commit",
-        "The escalated session applies the patch on the pushed head and compares git write-tree with the reported tree id before any other work, stopping on a mismatch, so the staged conflict resolution in src/verify.ts survives",
+        "The handover uses a throwaway index with git add limited to the Owns paths, never git add -A, so neither the notes folder nor stray.txt is in the patch and the artifact hook does not refuse it",
+        "The snapshot runs before the rebase is aborted, the rebase is never finished, and a failed snapshot line leaves the rebase untouched",
+        "The handover reports the pushed head, the patch path, the tree id and the rebase's onto commit",
+        "The escalated session applies the patch in a throwaway worktree and compares git write-tree with the tree id, stopping on a mismatch, while its own checkout stays clean",
+        "It rebases its own checkout of the pushed head onto onto, the rebase starts without an uncommitted-changes refusal, and src/verify.ts ends with the snapshot's resolution and src/verify.test.ts is present",
+        "Any file in the Owns paths that still differs from the tree id afterwards is named in the report with the replayed commit that changed it",
         "A decisions.tsv relay row records the route, the tier and why"
       ]
     }

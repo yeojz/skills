@@ -7,7 +7,7 @@ is pasted verbatim from the repo's AGENTS.md, never paraphrased.
 Delete this comment before sending.
 -->
 
-Model tier: <the coordinator's tier, as rules/models.md names for a step under a coordinator, and the host's model and reasoning effort for it; one tier up when the step is subtle or security-sensitive; for a fix round after a failed one, one tier above the last round's>
+Model tier: <the coordinating tier from rules/models.md, not the model the coordinator runs on, and the host's model and reasoning effort for it; one tier up when the step is subtle or security-sensitive; for a fix round after a failed one, one tier above the last round's>
 Repo: <absolute path to the main checkout>
 Branch: `<type>/<scope>-<description>` in its own worktree under `.claude/worktrees/`, based on `<default branch, or the unmerged dependency's branch>`
 Notes folder: <absolute path>; write the hand-over note there as `unit-<id>.md`

@@ -6,7 +6,7 @@ session and never the implementer. Every field is filled. Delete this
 comment before sending.
 -->
 
-Model tier: <the review tier from rules/models.md; never below it>
+Model tier: <the review tier from rules/models.md: a model that wrote no commit on this PR, never below sonnet; another family through Codex where present>
 Repo: <absolute path to the main checkout>
 PR: <URL>, branch `<branch>` into `<default branch>`, head `<sha the worker reported>`
 Notes folder: <absolute path>; write the review as `review-pr<number>.md` there

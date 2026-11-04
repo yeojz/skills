@@ -220,7 +220,7 @@ injects them at session start.
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |
 | `parallelism.md` | Fan independent work out to subagents by default; wait for the owner only at a lettered design fork, a remote write that asks, or an action the brief marks as theirs |
-| `models.md` | Which model tier does coordination, review, scoped implementation and scans |
+| `models.md` | Which model tier does grilling, coordination, implementation, review, fix escalation and scans |
 
 ### Hooks
 

@@ -7,8 +7,9 @@ description: Use when a spec's steps have to be driven through separate worker a
 
 ## Overview
 
-Drives a spec's steps to merge-ready: one fresh worker session per step in
-its own worktree, one fresh reviewer per pull request, bounded fix rounds,
+Drives a spec's steps to merge-ready: one worker session per step in its
+own worktree, one fresh reviewer per pull request on a model that wrote none
+of the change, bounded fix rounds that escalate a tier when one fails,
 and one line to the owner when a PR is ready to merge. Every brief comes
 from this skill's templates, and every session, verdict and decision is
 written to two ledgers, so "where are we" is answered from a file. The
@@ -86,8 +87,8 @@ stalls. The step's criteria go under Done means, copied as written. The
 behaviour target is the highest level the step's checks can reach:
 `live-verified` when any is a drive check, `unit-only` when any is a test
 check, otherwise none, and the criteria alone decide. The owner can set it
-otherwise. Name the model tier
-`rules/models.md` gives a scoped unit, one up for a subtle or
+otherwise. Name the model tier: this session's model, as
+`rules/models.md` gives a step under a coordinator, one up for a subtle or
 security-sensitive step.
 
 Owns also lists the two parts of the spec that `implement` records
@@ -96,10 +97,14 @@ heading, and the Status cells of this step's rows in the Criteria table. If
 two steps' rows conflict in a rebase, each keeps its own status.
 
 Save it as `phase-<id>.md` in the notes folder, write the row as `scoped`,
-then start the worker fresh in its own worktree on that tier: in the desktop
-app, `start_session` with fresh context and a worktree; elsewhere, a new
-session with the brief pasted. Never fork this session into a worker and
-never implement the step here. Move the row to `running`.
+then start the worker in its own worktree on that tier: in the desktop app,
+`start_session` with fresh context and a worktree; elsewhere, a new session
+with the brief pasted. A worker on the same tier whose own PR is
+`merge-ready` or `merged`, and whose context use is under 50%, may take the
+step instead by relay: the whole brief, a new worktree and branch, and
+nothing carried over from its last step but the cache. Log the reuse. Never
+fork this session into a worker and never implement the step here. Move the
+row to `running`.
 
 ### Step 5: Check the worker's report
 
@@ -126,7 +131,8 @@ with the notes folder and ledgers named, before starting anything new.
 ### Step 6: Brief and start the reviewer
 
 Fill `template-review.md` for the PR and start a fresh session on the review
-tier: never the worker, never a fork of it, never this session. A contested
+tier: a model that wrote no commit on the PR and never below sonnet, never
+the worker, never a fork of it, never this session. A contested
 design gets a second reviewer on another model family, through Codex where
 its plugin is present, with the same brief. The reviewer runs the gate and
 every criterion on a detached checkout, probes base against candidate, runs
@@ -142,13 +148,15 @@ after fixes, or rework. The step's Review gate sets the brief's Post field:
 |---|---|
 | State only the worker has: uncommitted changes, a running process, a half-done rebase | The worker, by relay |
 | Anything else | A fresh session: the phase brief plus every later directive, consolidated |
+| A round after one whose findings came back not fixed | A fresh session one tier above the last round's model, up to fable, with the same consolidated brief |
 
 A relay carries the standing orders verbatim, the review file path, one
 commit per finding, no weakened tests, draft until `verify` passes on the
 pushed head and no check has failed, and the phase template's report shape.
-Never restart a stopped session. Log the route and why. The
+Never restart a stopped session. Log the route, the tier and why. The
 reviewer re-checks the new head and marks each finding fixed, not fixed or
-no longer applicable. After three rounds, the row is `blocked`: report the
+no longer applicable; when an escalated round ran on the reviewer's model,
+the re-check goes to a fresh reviewer on another model. After three rounds, the row is `blocked`: report the
 open findings and what each round tried.
 
 ### Step 8: Report merge-ready, start the next
@@ -217,6 +225,8 @@ row that disagrees with `gh pr view` in the file first.
 | Starting a step whose requirement has no criterion | Send it to `criteria` |
 | Moving a row to `ready` on the worker's word | Check sha, criteria rows, behaviour and `isDraft` |
 | Reviewing in the worker session, or here | A fresh reviewer on the review tier |
+| A reviewer on a model that wrote part of the change | Another model, never below sonnet |
+| Retrying a failed fix round on the same model | One tier up, in a fresh session |
 | Forking this session into a worker | Fresh context plus the brief |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |
 | Waiting on an unmerged PR | Base on its branch and record the parent tip |

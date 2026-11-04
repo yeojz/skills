@@ -16,10 +16,12 @@
 # --all, --mirror or --branches, or a bare push from a protected branch is
 # denied, and anything else is left to the other hooks.
 #
-# A merge is `gh pr merge` other than `--disable-auto`, which arms auto-merge
-# too; `gh api` with a write to pulls/<n>/merge or to the repository merges
-# endpoint; and a GraphQL call carrying mergePullRequest,
-# enablePullRequestAutoMerge or mergeBranch. This is a guardrail against a
+# A merge is `gh pr merge`, which arms auto-merge too, unless its final
+# --disable-auto is true; `gh api` with a write to pulls/<n>/merge or to the
+# repository merges endpoint; and a GraphQL call carrying mergePullRequest,
+# enablePullRequestAutoMerge or mergeBranch, inline, in an --input file or in
+# a typed `-F key=@file` field. A query read from standard input cannot be
+# inspected and is denied. This is a guardrail against a
 # mistake, not a wall: branch protection on GitHub is what holds.
 #
 # The command line is split by command_lines.py, the parser every hook shares,
@@ -50,6 +52,7 @@ import sys
 sys.path.insert(0, sys.argv[1])
 from command_lines import commands_with_directory, git_call, git_repository_options  # noqa: E402
 from git_push import dry_run_updates, resolve_push_long_option, run_git, walk_push_options  # noqa: E402
+from gh_options import final_bool_option, gh_command  # noqa: E402
 
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 BRANCH_PREFIX = "refs/heads/"
@@ -60,14 +63,28 @@ WHOLESALE_PUSH_OPTIONS = {"all", "branches", "mirror"}
 MERGE_MUTATIONS = re.compile(r"\b(mergePullRequest|enablePullRequestAutoMerge|mergeBranch)\b")
 PULL_MERGE_ENDPOINT = re.compile(r"(^|/)pulls/[^/]+/merge/?$")
 REPO_MERGES_ENDPOINT = re.compile(r"(^|/)merges/?$")
-# The option table of gh api (cli/cli v2.103.0) with the persistent --repo/-R
-# it does not take; every option outside the value set is a flag.
+# The option table of gh pr merge (cli/cli v2.103.0) with the persistent
+# --repo/-R, read by gh_options.final_bool_option. Only a line whose final
+# --disable-auto is provably true passes; an option missing here asks gh
+# something the hook cannot follow, so the line is denied.
+PR_MERGE_BOOL_OPTIONS = {
+    "admin": None, "auto": None, "delete-branch": "d", "disable-auto": None,
+    "merge": "m", "rebase": "r", "squash": "s", "help": "h",
+}
+PR_MERGE_VALUE_OPTIONS = {
+    "author-email": "A", "body": "b", "body-file": "F", "match-head-commit": None,
+    "subject": "t", "repo": "R",
+}
+# The option table of gh api (cli/cli v2.103.0); every option outside the
+# value set is a flag. A typed field, -F or --field, reads `key=@path` from
+# the file, and `@-` or --input - from standard input.
 GH_API_VALUE_SHORTS = {"X", "f", "F", "H", "p", "q", "t"}
 GH_API_VALUE_LONGS = {"method", "raw-field", "field", "header", "preview", "jq",
                       "template", "input", "hostname", "cache"}
 GH_API_FIELD_OPTIONS = {"-f", "-F", "--raw-field", "--field", "--input"}
+GH_API_TYPED_FIELD_OPTIONS = {"-F", "--field"}
 # When the line cannot be lexed at all, lean towards denying.
-RAW_MERGE = re.compile(r"\bgh\s+pr\s+merge\b(?!.*--disable-auto)")
+RAW_MERGE = re.compile(r"\bgh\b.*\bpr\s+merge\b")
 RAW_PUSH = re.compile(r"\bgit\b.*\bpush\b.*(\s|:|\+|/)(main|master|develop|trunk)\b|\bgit\b.*\bpush\b.*\s--(all|mirror|branches)\b")
 
 protected_by_directory = {}
@@ -147,62 +164,74 @@ def reason_for_push(directory, options, args):
 
 
 def gh_api_call(args):
-    """(method, endpoint, field values, input file) of a gh api call."""
+    """(method, endpoint, values, files) of a gh api call.
+
+    `values` holds every option value and operand as written; `files` holds
+    the paths whose contents gh sends: the --input file and each typed field's
+    `@path`, with "-" for standard input.
+    """
     method = None
     endpoint = None
     values = []
-    input_file = None
+    files = []
     has_fields = False
     rest = list(args)
     while rest:
         token = rest.pop(0)
+        option = value = None
         if token.startswith("--"):
-            name, has_value, value = token[2:].partition("=")
+            name, has_value, attached = token[2:].partition("=")
             if name in GH_API_VALUE_LONGS:
-                if not has_value:
-                    value = rest.pop(0) if rest else ""
-                if name == "method":
-                    method = value
-                elif name == "input":
-                    input_file = value
-                values.append(value)
-                has_fields = has_fields or ("--" + name) in GH_API_FIELD_OPTIONS
-            continue
-        if token.startswith("-") and len(token) > 1:
+                option = "--" + name
+                value = attached if has_value else (rest.pop(0) if rest else "")
+        elif token.startswith("-") and len(token) > 1:
             letter, attached = token[1], token[2:]
             if letter in GH_API_VALUE_SHORTS:
-                value = attached.lstrip("=") if attached else (rest.pop(0) if rest else "")
-                if letter == "X":
-                    method = value
-                values.append(value)
-                has_fields = has_fields or ("-" + letter) in GH_API_FIELD_OPTIONS
-            continue
-        if endpoint is None:
+                option = "-" + letter
+                value = attached[1:] if attached.startswith("=") else attached
+                if not attached:
+                    value = rest.pop(0) if rest else ""
+        elif endpoint is None:
             endpoint = token
+            continue
         else:
             values.append(token)
+            continue
+        if option is None:
+            continue
+        values.append(value)
+        if option in {"-X", "--method"}:
+            method = value
+        elif option == "--input":
+            files.append(value)
+        elif option in GH_API_TYPED_FIELD_OPTIONS and "=@" in value:
+            files.append(value.split("=@", 1)[1])
+        has_fields = has_fields or option in GH_API_FIELD_OPTIONS
     if method is None:
         method = "POST" if has_fields else "GET"
-    return method.upper(), endpoint or "", values, input_file
+    return method.upper(), endpoint or "", values, files
 
 
-def reason_for_gh(argv, directory):
-    if len(argv) >= 3 and argv[1] == "pr" and argv[2] == "merge":
-        if "--disable-auto" in argv[3:]:
+def reason_for_gh(words, args, directory):
+    if words == ("pr", "merge"):
+        if final_bool_option(args, PR_MERGE_BOOL_OPTIONS, PR_MERGE_VALUE_OPTIONS, "disable-auto") is True:
             return None
         return "gh pr merge lands a pull request on the default branch, and merging is the owner's click on GitHub."
-    if len(argv) >= 3 and argv[1] == "api":
-        method, endpoint, values, input_file = gh_api_call(argv[2:])
+    if words == ("api",):
+        method, endpoint, values, files = gh_api_call(args)
         if method != "GET" and PULL_MERGE_ENDPOINT.search(endpoint):
             return "gh api %s %s merges a pull request, and merging is the owner's click on GitHub." % (method, endpoint)
         if method == "POST" and REPO_MERGES_ENDPOINT.search(endpoint):
             return "gh api POST %s merges one branch into another on the remote." % endpoint
         if endpoint == "graphql":
             text = " ".join(values)
-            if input_file and input_file != "-":
+            for path in files:
+                if path == "-":
+                    return ("This GraphQL call reads its query from standard input, which the hook cannot inspect "
+                            "for a merge; pass the query inline or from a file.")
                 try:
-                    with open(os.path.join(directory, input_file), encoding="utf-8", errors="replace") as handle:
-                        text += handle.read()
+                    with open(os.path.join(directory, path), encoding="utf-8", errors="replace") as handle:
+                        text += " " + handle.read()
                 except OSError:
                     pass
             if MERGE_MUTATIONS.search(text):
@@ -211,8 +240,9 @@ def reason_for_gh(argv, directory):
 
 
 def reason_for(argv, directory):
-    if os.path.basename(argv[0]) == "gh":
-        return reason_for_gh(argv, directory)
+    gh = gh_command(argv)
+    if gh is not None:
+        return reason_for_gh(gh[0], gh[1], directory)
     call = git_call(argv, directory)
     if call is not None and call[0] == "push":
         return reason_for_push(call[2], git_repository_options(argv), call[1])

@@ -244,7 +244,9 @@ The hooks that read a command line share one parser, `command_lines.py`, so a
 line continuation, a quoted separator, a trailing comment, a `timeout 30`
 wrapper or a `bash -c` script is read the way the shell will read it. The
 hooks that judge a push share `git_push.py`, which reads the push options the
-way git does and asks git's dry run which refs the push would update.
+way git does and asks git's dry run which refs the push would update. The
+hooks that judge a `gh` call share `gh_options.py`, which finds the subcommand
+past `-R o/r` and reads each flag's final value the way gh does.
 
 The hooks have their own regression suite, which builds a throwaway repo and
 feeds each hook the payloads it will see. Exit 2 denies a tool call, exit 0

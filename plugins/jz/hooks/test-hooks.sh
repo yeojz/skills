@@ -222,16 +222,23 @@ ask '"git status && gh pr create"'              "gh pr create after &&"         
 ask '"git push --force"'                        "push --force"                   ask
 ask '"git push -f origin x"'                    "push -f"                        ask
 ask '"git push -fu origin x"'                   "push -fu cluster"               ask
-ask '"git push --force-with-lease=x:abc"'       "lease pinned to a sha"          allow
+ask '"git push --force-with-lease=x:0123456789abcdef0123456789abcdef01234567"'       "lease pinned to a sha"          allow
 ask '"git push --force-with-lease=x: origin x"'  "lease that expects no ref"      allow
 ask '"git push --force-with-lease=x"'           "lease on a ref without a sha"   ask
-ask '"git push --force-with-lease=x:abc --force-if-includes"' "pinned lease with if-includes" allow
-ask '"git push --force-if-includes --force-with-lease=x:abc"' "if-includes before a pinned lease" allow
-ask '"git push --force-w=x:abc origin x"'      "pinned lease by an abbreviation" allow
+ask '"git push --force-with-lease=x:0123456789abcdef0123456789abcdef01234567 --force-if-includes"' "pinned lease with if-includes" allow
+ask '"git push --force-if-includes --force-with-lease=x:0123456789abcdef0123456789abcdef01234567"' "if-includes before a pinned lease" allow
+ask '"git push --force-w=x:0123456789abcdef0123456789abcdef01234567 origin x"'      "pinned lease by an abbreviation" allow
 ask '"git push --force-w origin x"'            "bare lease by an abbreviation"  ask
-ask '"git push --force-with-lease=x:abc origin +y"' "pinned lease beside a plus refspec" ask
-ask '"git push --force-with-lease=x:abc -f"'    "pinned lease beside -f"         ask
+ask '"git push --force-with-lease=x:0123456789abcdef0123456789abcdef01234567 origin +y"' "pinned lease beside a plus refspec" ask
+ask '"git push --force-with-lease=x:0123456789abcdef0123456789abcdef01234567 -f"'    "pinned lease beside -f"         ask
 ask '"git push origin -- +x"'                   "plus refspec after --"          ask
+ask '"git push --force-with-lease=x:refs/remotes/origin/x origin x"' "lease expecting a tracking ref" ask
+ask '"git push --force-with-lease=x:origin/x origin x"' "lease expecting a short ref name" ask
+ask '"git push --force-with-lease=x:abc1234 origin x"' "lease expecting a short hex"   ask
+ask '"gh -R o/r pr create --title t"'          "create behind a leading -R"     ask
+ask '"gh --repo=o/r pr create --title t"'      "create behind a leading --repo=" ask
+ask '"gh --repo o/r pr create --draft"'        "draft create behind --repo"     allow
+ask '"gh pr -R o/r ready 5"'                   "ready with -R between the words" ask
 ask '"git push origin --force-with-lease"'      "push remote then lease"         ask
 ask '"git push --force-if-includes"'            "push --force-if-includes"       ask
 ask '"git push origin +main"'                   "push plus refspec"              ask
@@ -777,6 +784,24 @@ protect '"gh api graphql -f query=\"query { viewer { login } }\""' "GraphQL quer
 printf 'mutation { mergePullRequest(input: {}) { clientMutationId } }' > "$PROTREPO/q.graphql"
 protect '"gh api graphql --input q.graphql"'     "GraphQL mutation from --input"  2
 protect '"gh pr merge 5 \"unterminated"'         "unparseable gh pr merge"        2
+protect '"gh -R o/r pr merge 5 --squash"'        "merge behind a leading -R"      2
+protect '"gh --repo=o/r pr merge 5 --squash"'    "merge behind a leading --repo=" 2
+protect '"gh pr -R o/r merge 5"'                 "merge with -R between the words" 2
+protect '"gh -R o/r pr merge 5 --disable-auto"'  "disable-auto behind a leading -R" 0
+protect '"gh pr merge 5 --squash --body \"--disable-auto\""' "--disable-auto as the value of --body" 2
+protect '"gh pr merge 5 -b --disable-auto --squash"' "--disable-auto as the value of -b" 2
+protect '"gh pr merge 5 --disable-auto --disable-auto=false"' "disable-auto reset to false" 2
+protect '"gh pr merge 5 --disable-auto=true"'    "--disable-auto=true"            0
+protect '"gh pr merge 5 --disable-auto --bogus"' "disable-auto beside an unknown option" 2
+protect '"gh pr merge 5 -- --disable-auto"'      "--disable-auto after --"        2
+protect '"gh api graphql -F query=@q.graphql"'   "GraphQL mutation from -F @file" 2
+protect '"gh api graphql --field=query=@q.graphql"' "GraphQL mutation from --field=@file" 2
+protect '"gh api graphql -Fquery=@q.graphql"'    "GraphQL mutation from attached -F" 2
+protect '"gh api graphql -f query=@q.graphql"'   "raw -f sends @q.graphql literally" 0
+protect '"gh api graphql -F query=@-"'           "GraphQL query from stdin field" 2
+protect '"gh api graphql --input -"'             "GraphQL body from stdin"        2
+printf 'query { viewer { login } }' > "$PROTREPO/safe.graphql"
+protect '"gh api graphql -F query=@safe.graphql"' "GraphQL query from -F @file"   0
 rm -rf "$PROTREPO" "$FIXTURE/protremote.git"
 
 exit "$fail"

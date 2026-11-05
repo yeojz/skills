@@ -11,3 +11,6 @@ docs/plans/
 # Local notes, not published.
 PROPOSAL.md
 
+
+# Type declarations the engine writes beside a hooks module.
+plugins/*/.claude-plugin/types/

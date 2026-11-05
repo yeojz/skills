@@ -4,8 +4,11 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
-# jz is the one plugin, read by both Claude Code and Codex.
+# jz is the agent-agnostic plugin, read by both Claude Code and Codex, and the
+# one that carries skills, rules and agents. Every other plugin is Claude
+# Code only: a hooks module, listed in CLAUDE_ONLY.
 PLUGIN=plugins/jz
+CLAUDE_ONLY=(plugins/herdr)
 
 fail=0
 note() { printf '  %s\n' "$*"; }
@@ -64,9 +67,11 @@ PLACEHOLDER
 }
 
 printf '\nManifests\n'
-# Every directory under plugins/ is a plugin both marketplaces list, with a
-# portable plugin.json at its root and a source that exists.
-python3 - "$PLUGIN" <<'MANIFESTS' || fail=1
+# Every directory under plugins/ is a plugin the Claude Code marketplace lists
+# with a source that exists. An agent-agnostic plugin has a portable
+# plugin.json and Codex lists it too; a Claude Code only plugin has
+# .claude-plugin/plugin.json and a hooks module, and Codex does not list it.
+python3 - "$PLUGIN" "${CLAUDE_ONLY[@]}" <<'MANIFESTS' || fail=1
 import json, os, sys
 ok = True
 
@@ -131,8 +136,21 @@ for plugin_dir in plugin_dirs:
                     check(os.path.isfile(script), '%s hook names a missing script: %s' % (event, script))
                     check(os.access(script, os.X_OK), '%s hook script is not executable: %s' % (event, script))
         print('  ' + portable_path)
+    elif os.path.isfile(claude_path):
+        # Claude Code only: the hooks are a TypeScript module, which Codex cannot run.
+        claude_manifest = load(claude_path)
+        check(claude_manifest.get('name') == plugin_name, '%s name is %r' % (claude_path, claude_manifest.get('name')))
+        check('version' not in claude_manifest, '%s must not pin a version; installs track commits' % claude_path)
+        check(claude_manifest.get('description') == claude_entry.get('description'), '%s: descriptions differ between the marketplace entry and plugin.json' % plugin_name)
+        check(plugin_name not in codex_entries, '.agents/plugins/marketplace.json lists %s, a Claude Code only plugin' % plugin_name)
+        hooks = load(os.path.join(plugin_dir, 'hooks', 'hooks.json'))
+        modules = hooks.get('modules', [])
+        check(bool(modules), plugin_dir + '/hooks/hooks.json needs a modules list')
+        for module in modules:
+            check(os.path.isfile(os.path.join(plugin_dir, 'hooks', module)), '%s/hooks/hooks.json names a missing module: %s' % (plugin_dir, module))
+        print('  ' + claude_path)
     else:
-        check(False, plugin_dir + ' has no plugin.json')
+        check(False, plugin_dir + ' has no plugin.json or .claude-plugin/plugin.json')
     print('  ' + os.path.join(plugin_dir, 'hooks', 'hooks.json'))
 
 for name in ('.claude-plugin/marketplace.json', '.agents/plugins/marketplace.json'):
@@ -251,13 +269,23 @@ printf '\nPlugin validation\n'
 # Claude Code's own validator is the authority on the manifests. It is optional
 # here so a machine without the CLI still validates the rest.
 if command -v claude >/dev/null 2>&1; then
-  if claude plugin validate . >/dev/null 2>&1 && claude plugin validate "$PLUGIN" >/dev/null 2>&1; then
-    note "claude plugin validate passed for the marketplace and the plugin"
-  else
-    bad "claude plugin validate failed, run it on . and $PLUGIN to see why"
-  fi
+  for dir in . "$PLUGIN" "${CLAUDE_ONLY[@]}"; do
+    if claude plugin validate "$dir" >/dev/null 2>&1; then
+      note "claude plugin validate passed for $dir"
+    else
+      bad "claude plugin validate failed, run it on $dir to see why"
+    fi
+  done
+  # A hooks module's behaviour is held by its own tests.
+  for dir in "${CLAUDE_ONLY[@]}"; do
+    if claude plugin test "$dir" >/dev/null 2>&1; then
+      note "claude plugin test passed for $dir"
+    else
+      bad "claude plugin test failed, run it on $dir to see why"
+    fi
+  done
 else
-  note "claude not installed, plugin validation skipped"
+  note "claude not installed, plugin validation and tests skipped"
 fi
 
 printf '\nMakefile\n'

@@ -25,6 +25,24 @@
         "review",
         "hooks"
       ]
+    },
+    {
+      "name": "herdr",
+      "source": "./plugins/herdr",
+      "description": "Herdr integration: reports the session's model, effort, context window and usage to Herdr's session-bar mod.",
+      "author": {
+        "name": "Gerald Yeo",
+        "url": "https://github.com/yeojz"
+      },
+      "homepage": "https://github.com/yeojz/skills",
+      "repository": "https://github.com/yeojz/skills",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "herdr",
+        "status",
+        "usage"
+      ]
     }
   ]
 }

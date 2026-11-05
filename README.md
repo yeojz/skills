@@ -3,7 +3,8 @@
 Portable coding-agent setup: skills, always-on rules, review personas and
 hooks, packaged as one plugin, `jz`, in a marketplace that Claude Code and
 Codex both read. Add the marketplace on any machine and the agents behave the
-same.
+same. The marketplace also carries `herdr`, a Claude Code only plugin for the
+[Herdr](https://herdr.dev) app; see [Herdr](#herdr).
 
 A skill loads when you type its command, `/jz:verify` or `/jz:pr`, or when
 the brief that starts a session names it. A plain request such as "commit"
@@ -150,6 +151,9 @@ plugins/jz/                       the agent-agnostic plugin
   rules/       always on, injected at session start by a hook
   agents/      four read-only review personas the review skill's audit mode fans out to
   hooks/       the hook scripts and the hooks.json that wires them up
+plugins/herdr/                    Claude Code only: a hooks module for Herdr
+  hooks/       register.ts, and the hooks.json that names it
+  tests/       claude plugin test suite
 ```
 
 ### Skills
@@ -262,6 +266,27 @@ and plugin manifests, every skill, rule, agent and template, `bash -n` and
 and the plugin when the Claude Code CLI is installed, a 300-line limit on
 every skill, and a check that every skill is listed in this README. Run it before
 committing a change here.
+
+---
+
+## Herdr
+
+`herdr` reports each Claude Code session's model, effort, context window and
+`ctx`, `5h` and `7d` usage to the `session-bar` mod in the
+[Herdr](https://herdr.dev) app. Inside a Herdr terminal it writes them to
+`~/.local/state/herdr-session-bar/<terminal>.json` after each turn and usage
+change; outside Herdr it writes nothing. It is a TypeScript hooks module, so
+Codex does not list it.
+
+```bash
+claude plugin install herdr@yeojz-skills
+```
+
+Restart the Claude Code sessions in Herdr afterwards. The Herdr side is the
+`session-bar` mod from
+[cybertron288/herdr-mods](https://github.com/cybertron288/herdr-mods/tree/main/session-bar)
+(MIT), installed in `~/.config/herdr-app/mods/`; this plugin writes the file
+that mod reads, in place of the companion plugin it ships with.
 
 ---
 

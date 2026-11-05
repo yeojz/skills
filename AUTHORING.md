@@ -7,8 +7,8 @@ editing a skill, rule, agent or template.
 
 ## Layout
 
-The repository is a plugin marketplace with one plugin. Everything both
-agents load lives in `plugins/jz/`: `skills/`, `rules/`, `agents/` and
+The repository is a plugin marketplace. Its main plugin is `jz`: everything
+both agents load lives in `plugins/jz/`: `skills/`, `rules/`, `agents/` and
 `hooks/`. The marketplace manifests sit at the repository root,
 `.claude-plugin/marketplace.json` for Claude Code and
 `.agents/plugins/marketplace.json` for Codex, and both point at that
@@ -16,6 +16,12 @@ directory. For Claude Code the marketplace entry is the plugin's manifest, so
 there is no `plugins/jz/.claude-plugin/plugin.json`; Codex reads the portable
 `plugins/jz/plugin.json`. Neither pins a version, so an install tracks
 commits.
+
+A plugin that only Claude Code can run, such as `plugins/herdr/`, whose hooks
+are a TypeScript module, carries `.claude-plugin/plugin.json` instead of the
+portable `plugin.json`, is listed in the Claude Code marketplace alone, and
+holds its behaviour in `tests/*.test.ts` under `claude plugin test`. Name it
+in `CLAUDE_ONLY` at the top of `validate.sh`, which validates and tests it.
 
 A plugin cannot ship always-on instruction files or permission entries. The
 rules reach a session through the `load-house-rules.sh` SessionStart hook,

@@ -178,7 +178,8 @@ check that fails, then a test, with prose last.
 | Rule | Enforced by |
 |---|---|
 | Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts.sh`, PreToolUse |
-| Ask before a `gh pr create` without `--draft`, `gh pr ready`, `gh pr merge` and any force push | `confirm-remote-writes.sh`, PreToolUse |
+| Ask before a `gh pr create` without `--draft`, `gh pr ready` and any force push not pinned with `--force-with-lease=<branch>:<sha>` | `confirm-remote-writes.sh`, PreToolUse |
+| Never push to a default branch and never merge a pull request; the owner merges on GitHub | `protect-default-branches.sh`, PreToolUse |
 | Commit, push and open PRs through the `pr` skill | `require-pr-skill.sh`, PreToolUse, from the transcript the payload names; a host whose payload carries no transcript path is not gated |
 | Rebase onto the default branch, never merge it in; the default branch's own checkout may fast-forward | `rebase-not-merge.sh`, PreToolUse |
 | No secret, token or credential reaches a remote | `scan-secrets-before-push.sh`, PreToolUse, through betterleaks or gitleaks when installed |

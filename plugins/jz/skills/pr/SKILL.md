@@ -27,10 +27,12 @@ push, a push never becomes a PR, a PR never becomes ready.
 | "main has moved, rebase" | Rebase |
 | "PR 12 merged, clean up" | Cleanup |
 
-A push and a draft PR can be withdrawn, so they need no question beyond the
-request. Ready, merge and force push wait for a go-ahead that names them; the
+A push, a draft PR and a force push pinned with
+`--force-with-lease=<branch>:<sha>` need no question beyond the request.
+Ready and any other force push wait for a go-ahead that names them; the
 `confirm-remote-writes.sh` hook asks the host for those, so do not ask again
-in prose.
+in prose. Merging a PR and pushing to the default branch are the owner's;
+`protect-default-branches.sh` denies both.
 
 ## Workflow
 

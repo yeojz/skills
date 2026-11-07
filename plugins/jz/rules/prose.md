@@ -9,7 +9,7 @@ Numbered so a steer can cite one: "prose rule 4". The numbers never move; a reti
 5. Write headings in sentence case.
 6. Use straight quotes and apostrophes, never curly ones.
 7. Never write emoji, dingbats or decorative symbols in code, comments, docs, commits or PR text.
-8. Never put model names or AI identifiers in code, comments, docs, commits or PR text.
+8. Never put model names or AI identifiers in code, comments, docs, commits or PR text. The one exception is an ADR's Sign-off line and the PR Decisions line that repeats it, which name models by display name, never by version slug.
 9. Use em-dashes sparingly; a comma, a colon or a new sentence usually reads better.
 10. Never mention a predecessor or reference repository in prose that lands in the project; name only the project's own files.
 11. Never refer to content the text does not contain: a design "set out below" is written below, or the sentence goes.

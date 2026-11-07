@@ -1,5 +1,7 @@
 # <Short title of the decision>
 
+Sign-off: <the git user.name of the person who chose, or (C) <coordinator model>, (W) <worker model>, (R) <option reviewer model>>
+
 <One to three sentences: the context, what was decided, and why.>
 
 <!--
@@ -9,6 +11,14 @@ Write an ADR only when all three hold:
 1. Hard to reverse: changing the decision later costs something real.
 2. Surprising without context: a future reader would wonder why it was done this way.
 3. A real trade-off: there were genuine alternatives and one was picked for specific reasons.
+
+Sign-off is always present and never edited later. A person's choice reads
+their `git config user.name`, for example `Sign-off: Jane Doe`. A decision
+coordinate's auto mode made names the three models by display name, as the
+briefs' Model tier lines give them, for example
+`Sign-off: (C) Opus 5.5, (W) Opus 5.5, (R) Fable 5.1`, for the coordinator,
+the worker and the option reviewer. Someone who disagrees with a
+model sign-off writes a new ADR that supersedes it.
 
 Optional sections, only when they add something:
 - Status frontmatter (proposed, accepted, deprecated, superseded by ADR-NNNN) when decisions get revisited.

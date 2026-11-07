@@ -100,7 +100,8 @@ subject, because the PR squash-merges into it.
 
 - **With a spec** (a `docs/specs/*.md` the branch serves): one line per
   requirement the PR touches, saying what changed and which criteria prove it.
-  Name any ADR the PR adds under Decisions. A criterion still failing or not run
+  Name any ADR the PR adds under Decisions, with its Sign-off value, so a
+  model sign-off is seen before the merge. A criterion still failing or not run
   goes under Follow-ups with the step that will close it. Do not paste the
   Criteria table.
 - **Sections**: Summary, Trade-offs, Follow-ups and Verification, plus

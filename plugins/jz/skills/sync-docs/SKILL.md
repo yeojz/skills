@@ -133,7 +133,8 @@ report it. Repoint anything that linked into a removed section.
 
 No emoji; em-dashes only where they help; placeholder secrets only and no
 example that prints one (rewrite it to use the value without printing);
-`example.com` for domains; no model names or AI identifiers. Removing a
+`example.com` for domains; no model names or AI identifiers outside an
+ADR's Sign-off line, which stays as written. Removing a
 name is a whole-repo sweep across every surface and the source, help text
 and doc comments included:
 

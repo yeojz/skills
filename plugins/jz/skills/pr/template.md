@@ -15,7 +15,7 @@ and the step when there is one.>
 
 ## Decisions
 
-- ADR-<NNNN> <title>, added in this PR
+- ADR-<NNNN> <title>, added in this PR, Sign-off: <the ADR's Sign-off value>
 
 ## Trade-offs
 

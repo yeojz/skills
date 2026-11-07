@@ -72,7 +72,8 @@ green. Refactor only while green, and add nothing new while refactoring.
 When the build forces a decision that is hard to reverse, surprising, and a
 real trade-off, stop and put it to the owner as lettered options. Write the
 answer as an ADR from the `grill` skill's `template-adr.md` and link it from
-the step.
+the step, with the Sign-off line as that template gives it: the person who
+chose, or the coordinator's line when it relayed an auto decision.
 
 **3d. Prove and record.** Run the `verify` skill. Write the result back
 before the checkpoint, not at the end:

@@ -15,6 +15,7 @@ SEPARATOR_CHARS = set("();<>|&\n")
 REDIRECTIONS = {"<", ">", ">>", "<<", "<&", ">&", "&>", "<<<", ">|"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
 DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
+VARIABLE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z_0-9]*)\}|([A-Za-z_][A-Za-z_0-9]*))")
 
 WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "stdbuf",
             "nice", "ionice", "xargs"}
@@ -275,6 +276,58 @@ def git_repository_options(argv):
     return git_options_named(argv, GIT_REPOSITORY_OPTIONS)
 
 
+def start_directory(cwd):
+    """The directory a hook judges a command line from.
+
+    The event's cwd when it exists. A session whose own worktree was removed
+    keeps sending that path, so a missing cwd falls back to its nearest
+    existing ancestor: a command that names its repository with `git -C` or
+    an absolute path is judged where it points, and one that relies on the
+    cwd is still judged somewhere real rather than nowhere. Without a cwd,
+    the hook's own directory, or the root when even that was removed.
+    """
+    if isinstance(cwd, str) and cwd:
+        try:
+            here = os.path.abspath(cwd)
+        except OSError:
+            here = cwd
+        while not os.path.isdir(here):
+            parent = os.path.dirname(here)
+            if parent == here:
+                break
+            here = parent
+        return here
+    try:
+        return os.getcwd()
+    except OSError:
+        return os.sep
+
+
+def expand_variables(token, variables):
+    """Replace `$name` and `${name}` with values assigned earlier on the line.
+
+    A name the line never assigned is left as written, so the hook sees the
+    same unresolved text it would have seen without expansion.
+    """
+    def replace(match):
+        name = match.group(1) or match.group(2)
+        return variables.get(name, match.group(0))
+    return VARIABLE.sub(replace, token)
+
+
+def assignments(segment):
+    """The (name, value) pairs of a command made only of assignments, else None.
+
+    `m=/repo` and `export m=/repo` set a shell variable for the commands after
+    them. A prefix assignment such as `m=/repo git ...` only sets the
+    environment of that one command, and is not reported here.
+    """
+    words = segment[1:] if segment and segment[0] == "export" else segment
+    if not words or not all(ASSIGNMENT.match(word) for word in words):
+        return None
+    return [tuple(word.split("=", 1)) for word in words]
+
+
 def commands_with_directory(command_line, directory, depth=0):
     """Yield (argv, via_xargs, directory) for every simple command.
 
@@ -282,23 +335,45 @@ def commands_with_directory(command_line, directory, depth=0):
     MAX_SHELL_DEPTH, and a `cd` moves the directory the commands after it run
     in, within its own shell scope: a `( ... )` subshell restores the outer
     directory at `)`, and a `cd` that is a pipeline element or a background job
-    runs in a subshell of its own and moves nothing. `git -C` is not applied
-    here; git_call resolves it per call. Raises ValueError on unbalanced quotes.
+    runs in a subshell of its own and moves nothing. A variable assigned on the
+    line, such as `m=/repo; git -C "$m" ...`, is expanded in the commands after
+    it under the same scoping. The lexer has already dropped the quotes, so a
+    `$m` inside single quotes is expanded too. `git -C` is not applied here;
+    git_call resolves it per call. Raises ValueError on unbalanced quotes.
     """
     scopes = [directory]
+    variable_scopes = [{}]
     moved_to = None
+    assigned = None
     previous_separator = ""
     for segment in command_segments(lex(command_line)):
         if isinstance(segment, str):
-            if moved_to is not None and not is_pipe(segment) and not is_background(segment):
+            in_this_shell = not is_pipe(segment) and not is_background(segment)
+            if is_pipe(previous_separator):
+                in_this_shell = False
+            if moved_to is not None and in_this_shell:
                 scopes[-1] = moved_to
+            if assigned is not None and in_this_shell:
+                variable_scopes[-1].update(assigned)
             moved_to = None
+            assigned = None
             for char in segment:
                 if char == "(":
                     scopes.append(scopes[-1])
+                    variable_scopes.append(dict(variable_scopes[-1]))
                 elif char == ")" and len(scopes) > 1:
                     scopes.pop()
+                    variable_scopes.pop()
             previous_separator = segment
+            continue
+        variables = variable_scopes[-1]
+        if variables:
+            segment = [expand_variables(token, variables) for token in segment]
+        pairs = assignments(segment)
+        if pairs is not None:
+            assigned = dict(assigned or {})
+            for name, value in pairs:
+                assigned[name] = expand_variables(value, dict(variables, **assigned))
             continue
         argv, via_xargs = peel_wrappers(segment)
         if not argv:

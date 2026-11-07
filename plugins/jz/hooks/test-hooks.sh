@@ -20,9 +20,9 @@ echo "not a claude directory" > "$FIXTURE/src/.claudette"
 fail=0
 
 check() {
-  # check <json-quoted command> <label> <expected exit>
+  # check <json-quoted command> <label> <expected exit> [cwd]
   printf '  %-52s' "$2"
-  printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "$FIXTURE" \
+  printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${4:-$FIXTURE}" \
     | "$HOOK_DIR/no-claude-artifacts.sh" >/dev/null 2>&1
   local got=$?
   if [ "$got" = "$3" ]; then
@@ -103,6 +103,17 @@ check '"cd src && git add ."'                  "add dot in a clean subdirectory"
 
 git -C "$FIXTURE" checkout -- docs/plans/x.md
 check '"git commit -m x"'                      "commit with nothing to commit" 0
+
+# A session whose own worktree was removed still sends that directory as cwd.
+# Commands that name their repository keep working; one that relies on the
+# cwd is judged from the nearest directory that still exists.
+GONE="$FIXTURE/gone/worktree"
+check "\"git -C $FIXTURE status\""             "missing cwd, git -C an existing repo" 0 "$GONE"
+check "\"git -C $FIXTURE add README.md\""      "missing cwd, add a clean path by -C" 0 "$GONE"
+check "\"git -C $FIXTURE add .claude\""        "missing cwd, add .claude by -C"  2 "$GONE"
+check '"git add -A"'                           "missing cwd, add -A in the parent" 2 "$GONE"
+check '"m=.claude; git -C \"$m\" add settings.json"'      'add behind -C "$m"'               2
+check "\"m=$FIXTURE; git -C \\\"\$m\\\" add .claude\"" "missing cwd, add .claude by -C \"\$m\"" 2 "$GONE"
 
 printf '\nload-project-rules.sh\n'
 printf '  %-52s' "emits context when CLAUDE.md is present"
@@ -308,9 +319,9 @@ printf '\nrebase-not-merge.sh\n'
 # tested at the end of this block.
 git -C "$FIXTURE" checkout -q -b topic
 deny() {
-  # deny <json-quoted command> <label> <expected exit> <hook>
+  # deny <json-quoted command> <label> <expected exit> <hook> [cwd]
   printf '  %-52s' "$2"
-  printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "$FIXTURE" \
+  printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${5:-$FIXTURE}" \
     | "$HOOK_DIR/$4" >/dev/null 2>&1
   local got=$?
   if [ "$got" = "$3" ]; then
@@ -406,6 +417,14 @@ deny '"git checkout topic && git pull --no-rebase origin main"' "checkout then p
 deny '"git checkout -b fresh && git merge main"'  "checkout -b then merge main, on main" 2 rebase-not-merge.sh
 deny '"git switch -c fresh; git merge --ff-only origin/main"' "switch -c then ff-only, on main" 2 rebase-not-merge.sh
 deny '"git -C child checkout -b x && git merge --ff-only origin/main"' "switch in another repo keeps the exception" 0 rebase-not-merge.sh
+# A -C or cd target held in a shell variable is judged where the variable
+# points, also from a session whose own cwd was removed.
+deny "\"m=$FIXTURE; git -C \\\"\$m\\\" merge --ff-only origin/main\"" "ff-only behind -C \"\$m\", on main" 0 rebase-not-merge.sh
+deny "\"m=$FIXTURE; git -C \\\"\$m\\\" merge --ff-only origin/main\"" "the same from a missing cwd" 0 rebase-not-merge.sh "$GONE"
+deny "\"m=$FIXTURE && cd \\\"\${m}\\\" && git merge --ff-only origin/main\"" "ff-only after cd \"\${m}\", on main" 0 rebase-not-merge.sh "$GONE"
+deny "\"export m=child; git -C \\\"\$m\\\" merge origin/stable\"" "merge stable behind -C \"\$m\" child" 2 rebase-not-merge.sh
+deny '"m=child; (m=.); cd \"$m\" && git merge origin/stable"' "a subshell assignment does not leak" 2 rebase-not-merge.sh
+deny '"m=child | true; cd \"$m\" && git merge origin/stable"' "a piped assignment does not leak" 0 rebase-not-merge.sh
 deny '"git merge --ff-only origin/main && git switch topic"' "ff-only then switch, on main" 0 rebase-not-merge.sh
 # Without origin/HEAD every common default name counts, and a branch with one
 # of those names merging a different one is still a merge of the default.
@@ -413,9 +432,18 @@ git -C "$FIXTURE" symbolic-ref --delete refs/remotes/origin/HEAD
 git -C "$FIXTURE" checkout -q -b develop
 deny '"git merge main"'                          "merge main while on develop"    2 rebase-not-merge.sh
 deny '"git merge develop"'                       "merge develop while on develop" 0 rebase-not-merge.sh
-git -C "$FIXTURE" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 git -C "$FIXTURE" checkout -q topic
+# The advice names the branch being merged, never the first common name.
+printf '  %-52s' "advice names main without origin/HEAD"
+advice="$(printf '{"tool_name":"Bash","tool_input":{"command":"git merge origin/main"},"cwd":"%s"}' "$FIXTURE" \
+  | "$HOOK_DIR/rebase-not-merge.sh" 2>&1 >/dev/null)"
+case "$advice" in
+  *"git fetch origin main && git rebase origin/main"*) echo "PASS" ;;
+  *) echo "FAIL: $advice"; fail=1 ;;
+esac
+git -C "$FIXTURE" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 deny '"git merge --ff-only origin/main"'         "ff-only origin/main while on topic" 2 rebase-not-merge.sh
+deny "\"m=$FIXTURE; git -C \\\"\$m\\\" merge --ff-only origin/main\"" "ff-only behind -C \"\$m\", on topic" 2 rebase-not-merge.sh "$GONE"
 
 printf '\nrequire-pr-skill.sh\n'
 # Transcript fixtures in the shape Claude Code writes: a Skill call is an
@@ -552,6 +580,8 @@ deny '"cd src/deep && git commit -m \"feat: deepword\""' "ancestor policy below 
 deny '"cd src/deep && git commit -m \"feat: oracle\""' "root policy two levels down"  2 no-restricted-words.sh
 deny '"git commit -m \"feat: deepword\""'        "src policy not applied at the root" 0 no-restricted-words.sh
 deny '"cd src && git commit -m \"feat: fine\""'  "clean message in src"           0 no-restricted-words.sh
+deny "\"git -C $FIXTURE/src commit -m \\\"feat: oracle\\\"\"" "missing cwd, root policy by -C" 2 no-restricted-words.sh "$FIXTURE/gone/worktree"
+deny "\"git -C $FIXTURE/src commit -m \\\"feat: fine\\\"\"" "missing cwd, clean message by -C" 0 no-restricted-words.sh "$FIXTURE/gone/worktree"
 rm -f "$FIXTURE"/input-*.json "$FIXTURE/child/AGENTS.md" "$FIXTURE/child/body.md" "$FIXTURE/src/body.md" "$FIXTURE/src/AGENTS.md"
 rm -f "$FIXTURE/AGENTS.md" "$FIXTURE"/body-*.md "$FIXTURE/input-link.json"
 
@@ -739,6 +769,8 @@ protect '"git push --dry-run origin main"'       "a dry run moves nothing"      
 protect '"git push origin feature && git push origin main"' "main after a feature push" 2
 protect '"cd protrepo && git push origin main"'  "push main after cd"             2 "$FIXTURE"
 protect '"git -C protrepo push origin main"'     "push main behind git -C"        2 "$FIXTURE"
+protect "\"git -C $PROTREPO push origin feature\"" "missing cwd, push a feature by -C" 0 "$FIXTURE/gone/worktree"
+protect "\"git -C $PROTREPO push origin main\""  "missing cwd, push main by -C"   2 "$FIXTURE/gone/worktree"
 protect '"bash -c \"git push origin main\""'     "push main inside bash -c"       2
 protect '"git -c remote.origin.push=refs/heads/feature:refs/heads/main push origin"' "configured refspec onto main" 2
 protect '"echo git push origin main"'            "push inside echo"               0

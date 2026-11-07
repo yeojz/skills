@@ -58,7 +58,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, sys.argv[1])
-from command_lines import commands_with_directory, git_call, git_repository_options  # noqa: E402
+from command_lines import commands_with_directory, git_call, git_repository_options, start_directory  # noqa: E402
 from git_push import dry_run_updates, run_git, walk_push_options  # noqa: E402
 
 SCANNERS = ("betterleaks", "gitleaks")
@@ -285,7 +285,7 @@ except Exception:
     sys.exit(0)
 if not isinstance(command, str):
     sys.exit(0)
-start = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+start = start_directory(cwd)
 
 try:
     for argv, _, directory in commands_with_directory(command, start):

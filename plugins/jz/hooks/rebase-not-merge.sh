@@ -16,7 +16,10 @@
 #
 # The command line is split by command_lines.py, the parser every hook shares,
 # and each command is judged in the directory it runs in, so a leading `cd` or
-# a `git -C` resolves the default branch of the repository it targets.
+# a `git -C` resolves the default branch of the repository it targets, also
+# when the target is a shell variable assigned earlier on the line. The advice
+# names the branch the command tried to merge, since without origin/HEAD the
+# default is only known to be one of the common names.
 #
 # Reads the PreToolUse event JSON on stdin. Exit 0 allows, exit 2 denies.
 set -uo pipefail
@@ -42,7 +45,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, sys.argv[1])
-from command_lines import commands_with_directory, git_call, git_config_overrides  # noqa: E402
+from command_lines import commands_with_directory, git_call, git_config_overrides, start_directory  # noqa: E402
 
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 REBASE_VALUES_THAT_REBASE = {"true", "merges", "interactive", "preserve", "i"}
@@ -71,9 +74,12 @@ def default_branch(directory):
     return names
 
 
+def bare_name(token):
+    return token.split("/", 1)[-1] if token.startswith(("origin/", "upstream/")) else token
+
+
 def names_default(token, defaults):
-    bare = token.split("/", 1)[-1] if token.startswith(("origin/", "upstream/")) else token
-    return bare in defaults
+    return bare_name(token) in defaults
 
 
 def config_value(directory, config_overrides, key):
@@ -124,7 +130,7 @@ def pull_rebases(args, directory, config_overrides):
 
 
 def reason_for(argv, directory, switched):
-    """The reason to deny this call, or None, and the directory it was judged in.
+    """The reason to deny this call, or None, the directory it was judged in and the branch it names.
 
     `switched` holds the git directories where an earlier command on the same
     line was a checkout or switch. The checkout is read before any of the line
@@ -134,33 +140,40 @@ def reason_for(argv, directory, switched):
     """
     call = git_call(argv, directory)
     if call is None:
-        return None, directory
+        return None, directory, None
     sub, args, git_directory = call
     if sub in {"checkout", "switch"}:
         switched.add(git_directory)
-        return None, git_directory
+        return None, git_directory, None
     defaults = default_branch(git_directory)
     current = None if git_directory in switched else current_branch(git_directory)
     if sub == "merge":
         if any(a in {"--abort", "--continue", "--quit"} for a in args):
-            return None, git_directory
+            return None, git_directory, None
         for a in args:
             if a.startswith("-") or not names_default(a, defaults):
                 continue
             if current is not None and names_default(a, {current}):
                 continue
-            return "Merging the default branch into this branch is not the house workflow.", git_directory
+            return "Merging the default branch into this branch is not the house workflow.", git_directory, bare_name(a)
     if sub == "pull":
         positional = [a for a in args if not a.startswith("-")]
         if (len(positional) >= 2 and names_default(positional[1], defaults)
                 and not (current is not None and names_default(positional[1], {current}))
                 and not pull_rebases(args, git_directory, git_config_overrides(argv))):
-            return "Pulling the default branch without an effective --rebase merges it into this branch.", git_directory
-    return None, git_directory
+            return ("Pulling the default branch without an effective --rebase merges it into this branch.",
+                    git_directory, bare_name(positional[1]))
+    return None, git_directory, None
 
 
-def deny(reason, directory):
-    base = sorted(default_branch(directory))[0]
+def deny(reason, directory, branch=None):
+    """Deny with advice to rebase onto the branch the command names.
+
+    Without origin/HEAD the default is one of several common names, and the
+    branch the command tried to merge is the one to rebase onto.
+    """
+    defaults = default_branch(directory)
+    base = branch or (next(iter(defaults)) if len(defaults) == 1 else "<default-branch>")
     print("Blocked: " + reason, file=sys.stderr)
     print("Rebase instead: git fetch origin " + base + " && git rebase origin/" + base, file=sys.stderr)
     sys.exit(2)
@@ -174,17 +187,18 @@ except Exception:
     sys.exit(0)
 if not isinstance(command, str):
     sys.exit(0)
-start = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+start = start_directory(cwd)
 
 switched = set()
 try:
     for argv, _, directory in commands_with_directory(command, start):
-        reason, git_directory = reason_for(argv, directory, switched)
+        reason, git_directory, branch = reason_for(argv, directory, switched)
         if reason:
-            deny(reason, git_directory)
+            deny(reason, git_directory, branch)
 except ValueError:
-    if RAW_MERGE.search(command):
-        deny("The command could not be parsed and looks like a merge of the default branch.", start)
+    match = RAW_MERGE.search(command)
+    if match:
+        deny("The command could not be parsed and looks like a merge of the default branch.", start, match.group(1))
 sys.exit(0)
 PY
 )"

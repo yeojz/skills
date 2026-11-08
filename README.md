@@ -269,12 +269,13 @@ mention git or gh (`! git push`, `find -exec git add`), a dashed `git-push`
 binary, a git option or subcommand the guards do not know, aliases included,
 a `-c` key outside the plain settings, an option or word that makes git run
 a command (`submodule foreach`, `bisect run`, `rebase -x`, `--upload-pack`),
-a gh command word the guards do not know, and unbalanced quotes. A line with
+a gh subcommand the guards do not know, and unbalanced quotes. A line with
 one of those is judged on the plain commands it does have, and when it also
 names something a guard judges, or the construct could stand for one (a
-nested shell, a command-running git option, an unknown git or gh word), the
-owner is asked about the rest; a read-only `git -C "$repo" status` passes
-in silence.
+nested shell, a program handed `sh -c`, a dashed git binary, a `-c` key
+outside the plain settings, a command-running git option, an unknown git or
+gh subcommand), the owner is asked about the rest; a read-only
+`git -C "$repo" status` passes in silence.
 Every git call a guard makes runs with the repository's filesystem monitor,
 hooks and signature display off, on a scratch copy of the index where it
 would take the lock, under one deadline for the whole run.

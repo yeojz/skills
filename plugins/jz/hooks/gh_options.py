@@ -13,6 +13,11 @@ import os
 PERSISTENT_VALUE_OPTIONS = {"-R", "--repo"}
 # Commands whose second word is an operand, not a subcommand.
 SINGLE_WORD_COMMANDS = {"api"}
+# gh's own first words. Any other is an alias, whose expansion the guards do not read.
+GH_COMMANDS = {"alias", "api", "attestation", "auth", "browse", "cache", "codespace", "completion", "config",
+               "copilot", "extension", "gist", "gpg-key", "help", "issue", "label", "org", "pr", "preview",
+               "project", "release", "repo", "ruleset", "run", "search", "secret", "ssh-key", "status",
+               "variable", "workflow"}
 
 
 def gh_command(argv):

@@ -12,9 +12,10 @@ The parser follows plain commands only (see command_lines.py). A line with
 anything else on it, a subshell, a variable, a here-document, a wrapper, a
 nested shell, is judged on the plain commands it does have and asked about
 for the rest, when the line also names a command a guard judges or the
-construct could stand for one: a nested shell, a command-running git
-option, a dashed git binary, an unknown git or gh word. The run has one
-deadline under the
+construct could stand for one: a nested shell, a program handed `sh -c`, a
+dashed git binary, a `-c` key outside the plain settings, a command-running
+git option, an unknown git or gh subcommand. The run has one deadline under
+the
 host's 60 s hook timeout; when it passes, the owner is asked rather than the
 host failing open.
 

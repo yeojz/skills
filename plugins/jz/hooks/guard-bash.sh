@@ -14,9 +14,10 @@ set -uo pipefail
 payload="$(cat)"
 
 # Cheap pre-filter, so an ordinary shell call does not pay for a python start-up.
-# Every guard judges a git or gh call.
+# Every guard judges a git or gh call, and a word split by empty quotes or a
+# backslash (g""it, g\it) may spell one without the letters standing together.
 case "$payload" in
-  *git*|*gh*) ;;
+  *git*|*gh*|*'\"\"'*|*"''"*|*'\\'*) ;;
   *) exit 0 ;;
 esac
 

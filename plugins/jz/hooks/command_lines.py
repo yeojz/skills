@@ -23,18 +23,19 @@ any other program whose arguments mention git or gh (`! git push`,
 subcommand outside the known sets, an alias among them, a `-c` key outside
 the plain settings in PLAIN_CONFIG, an option or word that makes git run a
 command (`submodule foreach`, `bisect run`, `rebase -x`, `--upload-pack`),
-a gh command word outside GH_COMMANDS, and unbalanced quotes. The
-dispatcher asks the owner about such a line when it also names a command a
-guard judges, or when the construct could stand for one: a nested shell, a
-command-running git option, an unknown git or gh word; the owner rewrites
-the line in the plain form or confirms it as written.
+a gh subcommand outside GH_COMMANDS, and unbalanced quotes. The dispatcher
+asks the owner about such a line when it also names a command a guard
+judges, or when the construct could stand for one: a nested shell, a
+program handed `sh -c`, a dashed git binary, a `-c` key outside the plain
+settings, a command-running git option, an unknown git or gh subcommand;
+the owner rewrites the line in the plain form or confirms it as written.
 """
 
 import os
 import re
 import shlex
 
-from gh_options import gh_command
+from gh_options import GH_COMMANDS, gh_command
 
 SEPARATOR_CHARS = set("();<>|&\n")
 REDIRECTIONS = {"<", ">", ">>", "<&", ">&", "&>", ">|", "<>", "&>>", ">>&"}
@@ -59,31 +60,37 @@ WRAPPERS = {"command", "env", "sudo", "doas", "nohup", "time", "timeout", "nice"
 # Programs that run a command line of their own, which the parser cannot see.
 NESTED_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "eval", "exec", "xargs", "source", "."}
 # Where a git subcommand runs a command line from its arguments: the word or
-# option that introduces it. A two-character option may carry its value
-# attached, as in -x"git push". `for-each-repo` always runs one. push is not
-# listed: its --receive-pack and --exec are errors in the push resolver, so
-# a protected name beside them is still denied rather than asked about.
+# option that introduces it. git accepts a unique prefix of a long option and
+# a short option with its value attached or inside a cluster, so a trigger
+# matches those spellings too. push is not listed: its --receive-pack and
+# --exec are errors in the push resolver, so a protected name beside them is
+# still denied rather than asked about.
 GIT_RUNNERS = {
-    "submodule": {"foreach"}, "bisect": {"run"}, "for-each-repo": {""},
+    "submodule": {"foreach"}, "bisect": {"run"},
     "rebase": {"-x", "--exec"}, "difftool": {"-x", "--extcmd"}, "grep": {"-O", "--open-files-in-pager"},
-    "fetch": {"--upload-pack"}, "pull": {"--upload-pack"}, "clone": {"--upload-pack"},
-    "ls-remote": {"--upload-pack"},
+    "fetch": {"--upload-pack"}, "pull": {"--upload-pack"}, "clone": {"-u", "--upload-pack"},
+    "ls-remote": {"-u", "--upload-pack"}, "fetch-pack": {"--exec", "--upload-pack"},
+    "send-pack": {"--exec", "--receive-pack"}, "archive": {"--exec"},
 }
-# The `-c key=value` settings a plain command carries. Any other key may
-# name a program for git to run (core.fsmonitor, core.sshCommand,
-# core.pager, a filter, a credential helper) and is reported instead.
-PLAIN_CONFIG = ("user.", "advice.", "color.", "pull.", "push.", "rebase.", "merge.", "fetch.", "remote.",
-                "branch.", "url.", "status.", "log.", "commit.", "tag.", "init.", "protocol.", "http.",
-                "safe.directory", "core.autocrlf", "core.quotepath", "core.ignorecase", "core.filemode",
-                "core.safecrlf", "core.longpaths")
-# The gh command words. Any other first word is an alias, whose expansion the guards do not read.
-GH_COMMANDS = {"alias", "api", "attestation", "auth", "browse", "cache", "codespace", "completion", "config",
-               "copilot", "extension", "gist", "gpg-key", "help", "issue", "label", "org", "pr", "preview",
-               "project", "release", "repo", "ruleset", "run", "search", "secret", "ssh-key", "status",
-               "variable", "workflow"}
-# The nested shells that make sense as an argument: `find -exec sh -c`, `xargs -I{} bash`. `.` and
-# `source` are left out, since a `.` argument is usually a path.
-SHELL_ARGUMENTS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "eval", "xargs"}
+# Subcommands that always run a command line.
+ALWAYS_RUNS = {"for-each-repo"}
+# The `-c key=value` settings a plain command carries: values git reads as
+# text, never as a program or a transport. Any other key is reported.
+PLAIN_CONFIG = re.compile(r"""^(
+    user\.\w+ | advice\.\w+ | color\.[\w.]+ | status\.\w+ |
+    pull\.(rebase|ff) | push\.(default|autosetupremote|followtags) |
+    rebase\.(autostash|autosquash|updaterefs) | fetch\.(prune|prunetags) |
+    branch\..+\.(remote|merge|rebase|pushremote) | branch\.autosetuprebase |
+    remote\.pushdefault | remote\.[^.]+\.(url|pushurl|fetch|push|mirror|prune) |
+    url\..+\.(insteadof|pushinsteadof) |
+    log\.(date|abbrevcommit|decorate|showsignature) | commit\.(gpgsign|verbose|cleanup) |
+    tag\.(gpgsign|sort) | init\.defaultbranch | safe\.directory |
+    core\.(autocrlf|quotepath|ignorecase|filemode|safecrlf|longpaths|eol) |
+    merge\.(conflictstyle|ff|autostash) | http\.(sslverify|postbuffer|version)
+)$""", re.VERBOSE)
+# The nested shells that make sense as an argument: `find -exec sh -c`. The
+# argument hides a command only when `-c` follows it.
+SHELL_ARGUMENTS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "eval"}
 
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
                           "--exec-path", "--config-env", "--attr-source"}
@@ -94,10 +101,11 @@ GIT_GLOBAL_FLAGS = {"--no-pager", "--paginate", "-p", "-P", "--bare", "--no-repl
 GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
 GIT_LOCATION_OPTIONS = {"--git-dir", "--work-tree", "--namespace"}
 # The subcommands git ships as builtins (`git --list-cmds=builtins`, git
-# 2.54) plus the scripts every build installs. Any other word, an add-on
-# such as `git lfs` or an optional script such as `git send-email` included,
-# may be an alias where it is not installed, and the guards do not read
-# alias expansions.
+# 2.54) plus the scripts every build installs; the optional scripts
+# (send-email, subtree, request-pull) and the ones whose job is to run
+# commands (filter-branch) are left out. Any other word, an add-on such as
+# `git lfs` included, may be an alias where it is not installed, and the
+# guards do not read alias expansions.
 GIT_COMMANDS = set("""
 add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr
 check-ignore check-mailmap check-ref-format checkout checkout-index cherry cherry-pick clean clone
@@ -122,10 +130,11 @@ class Parsed:
     `unfollowed` names each construct that was not, in the order found, so a
     line with any of them is judged on what was followed and asked about for
     the rest. `hidden` is set when a construct could stand for a judged
-    command the line does not show: a nested shell, a command-running git
-    option or word, a dashed git binary, a `-c` key outside the plain
-    settings, or a git or gh word the guards do not know, so the dispatcher
-    asks even when the rest of the line names no judged command.
+    command the line does not show: a nested shell, a program handed
+    `sh -c`, a dashed git binary, a `-c` key outside the plain settings, a
+    command-running git option or word, or a git or gh subcommand the
+    guards do not know, so the dispatcher asks even when the rest of the
+    line names no judged command.
     """
 
     def __init__(self):
@@ -284,17 +293,32 @@ def git_problem(argv):
     for name, value in options:
         if name not in GIT_OPTIONS_WITH_VALUE and name not in GIT_GLOBAL_FLAGS:
             return "an unknown git option (%s)" % name
-        if name in GIT_CONFIG_OPTIONS and not value.lower().startswith(PLAIN_CONFIG):
+        if name in GIT_CONFIG_OPTIONS and not PLAIN_CONFIG.match(value.partition("=")[0].lower()):
             return "a git configuration override outside the plain settings (%s)" % value.partition("=")[0]
     if not rest:
         return None
     if rest[0] not in GIT_COMMANDS:
         return "an unknown git subcommand (%s)" % rest[0]
-    triggers = GIT_RUNNERS.get(rest[0], set())
+    if rest[0] in ALWAYS_RUNS:
+        return "a git %s subcommand, which runs a command" % rest[0]
     for token in rest[1:]:
-        if token.partition("=")[0] in triggers or any(len(t) == 2 and token.startswith(t) for t in triggers):
-            return "a git %s that runs a command (%s)" % (rest[0], token.partition("=")[0])
-    return "a git %s, which runs a command" % rest[0] if "" in triggers else None
+        if runs_command(token, GIT_RUNNERS.get(rest[0], ())):
+            return "a git %s subcommand that runs a command (%s)" % (rest[0], token.partition("=")[0])
+    return None
+
+
+def runs_command(token, triggers):
+    """Whether an argument spells one of `triggers`: exactly, as a unique long prefix, or as a short option attached or clustered."""
+    name = token.partition("=")[0]
+    for trigger in triggers:
+        if token == trigger:
+            return True
+        if len(trigger) == 2:
+            if token.startswith(trigger) or (SHORT_CLUSTER.match(token) and trigger[1] in token):
+                return True
+        elif name.startswith("--") and len(name) >= 4 and trigger.startswith(name):
+            return True
+    return False
 
 
 def git_call(argv, directory):
@@ -421,7 +445,8 @@ def parse(command_line, directory):
             parsed.hidden = True
             continue
         if name not in {"git", "gh"}:
-            if any(os.path.basename(token) in SHELL_ARGUMENTS for token in argv[1:]):
+            if any(os.path.basename(token) in SHELL_ARGUMENTS and following == "-c"
+                   for token, following in zip(argv[1:], argv[2:])):
                 parsed.skip("a command handed a nested shell (%s)" % name)
                 parsed.hidden = True
                 continue
@@ -431,7 +456,7 @@ def parse(command_line, directory):
         if name == "gh":
             words = gh_command(argv)[0]
             if words and words[0] not in GH_COMMANDS:
-                parsed.skip("an unknown gh command (%s)" % words[0])
+                parsed.skip("an unknown gh subcommand (%s)" % words[0])
                 parsed.hidden = True
                 continue
         if name == "git":

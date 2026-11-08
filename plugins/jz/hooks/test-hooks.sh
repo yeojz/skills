@@ -984,14 +984,29 @@ all_guards '"git rebase --exec=\"git push origin main\" HEAD~1"' "rebase --exec=
 all_guards '"git rebase -x\"git push origin main\" HEAD~1"' "attached -x asks"                  ask
 all_guards '"find . -exec sh -c '"'"'cd . && git push origin main'"'"' \\;"' "sh -c under find asks" ask
 all_guards '"find . -exec sh -c '"'"'git status'"'"' \\;"' "sh -c under find asks without a judged word" ask
-all_guards '"git status; find . -exec sh -c '"'"'g\"\"it push origin main'"'"' \\;"' "quote-split git under a nested shell asks" ask
+all_guards '"find . -exec sh -c '"'"'g\"\"it push origin main'"'"' \\;"' "quote-split git under a nested shell asks" ask
+all_guards '"bash -c '"'"'g\"\"it push origin main'"'"'"' "quote-split git with no literal git asks"  ask
+all_guards '"bash -c '"'"'g\\\\it push origin main'"'"'"' "backslash-split git asks"                ask
+all_guards '"ls -la /bin/sh"'                           "a shell named as a file is silent"       allow
+all_guards '"grep -rn bash scripts"'                    "a shell named as a search word is silent" allow
+all_guards '"find . -exec bash run.sh {} \\;"'         "a shell given a script, no judged word, is silent" allow
 all_guards '"git rebase -x '"'"'g\"\"it push origin main'"'"' HEAD~1"' "quote-split rebase -x asks"         ask
 all_guards '"git submodule foreach '"'"'g\"\"it push origin HEAD:main'"'"'"' "quote-split submodule foreach asks" ask
 all_guards '"git -c core.fsmonitor=\"git push origin main\" status"' "fsmonitor command asks"            ask
 all_guards '"git -c core.pager=\"git push origin main\" log -1"' "pager command asks"                   ask
 all_guards '"git -c core.sshCommand=\"touch x\" status"'  "sshCommand override asks"                  ask
+all_guards '"git -c remote.origin.uploadpack=\"git push origin main\" fetch origin"' "uploadpack config asks" ask
+all_guards '"git -c merge.x.driver=\"git push origin main\" merge f"' "merge driver config asks"    ask
+all_guards '"git -c remote.origin.url=/x -c branch.main.remote=origin status"' "plain remote and branch keys are followed" allow
 all_guards '"git -c user.name=dev -c color.ui=never status"' "plain settings are followed"               allow
 all_guards '"git fetch --upload-pack=\"git push origin main\" origin"' "upload-pack command asks"      ask
+all_guards '"git rebase --exe=\"git push origin main\" HEAD~1"' "abbreviated --exec asks"            ask
+all_guards '"git rebase -ix \"git push origin main\" HEAD~1"' "-x inside a short cluster asks"      ask
+all_guards '"git clone -u \"git push origin main\" ../r.git d"' "clone -u asks"                     ask
+all_guards '"git send-pack --receive-pack=\"git push origin main\" ../r.git main"' "send-pack --receive-pack asks" ask
+all_guards '"git fetch-pack --exec=\"git push origin main\" ../r.git"' "fetch-pack --exec asks"      ask
+all_guards '"git archive --remote=origin --exec=\"git push origin main\" HEAD"' "archive --exec asks" ask
+all_guards '"git rebase -i HEAD~2"'                      "rebase -i is followed"                   allow
 all_guards '"git grep -O\"git push origin main\" hi"'   "grep -O command asks"                      ask
 all_guards '"git clean -fdx"'                           "clean -x is not a command option"        allow
 all_guards '"git for-each-repo --config=x status"'      "for-each-repo always runs a command, asks" ask

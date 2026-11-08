@@ -20,6 +20,7 @@ transcript, since the parent's loaded steps are not in its context.
 import json
 import os
 import re
+import stat
 
 from command_lines import git_call
 from gh_options import gh_command
@@ -67,6 +68,8 @@ def pr_loaded(path):
     anything. A later call that succeeds does.
     """
     pending = set()
+    if not stat.S_ISREG(os.stat(path).st_mode):
+        return False
     with open(path, encoding="utf-8", errors="replace") as transcript:
         for line in transcript:
             if '"Skill"' not in line and "tool_result" not in line and "command-name" not in line:

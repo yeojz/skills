@@ -436,6 +436,10 @@ gate() {
 gate '"git status"'                              "git status without the skill"   0 "$FIXTURE/no-pr.jsonl"
 gate '"git commit -m x"'                         "commit, no transcript path"     0 -
 gate '"git commit -m x"'                         "commit, transcript file absent" 0 "$FIXTURE/absent.jsonl"
+mkfifo "$FIXTURE/transcript.fifo"
+gate '"git commit -m x"'                         "transcript is a FIFO"           0 "$FIXTURE/transcript.fifo"
+gate '"git commit -m x"'                         "transcript is a device"         0 /dev/zero
+rm -f "$FIXTURE/transcript.fifo"
 gate '"git commit -m x"'                         "commit without the skill"       2 "$FIXTURE/no-pr.jsonl"
 gate '"git push -u origin HEAD"'                 "push without the skill"         2 "$FIXTURE/no-pr.jsonl"
 gate '"gh pr create --draft --title t --body b"' "draft PR without the skill"     2 "$FIXTURE/no-pr.jsonl"
@@ -486,6 +490,17 @@ deny '"gh pr create --title t --body \"the oracle says\""'        "restricted wo
 deny '"gh pr comment 5 --body \"matches the predecessor repo\""'  "restricted word in a comment"   2 no-restricted-words
 deny '"gh pr create --draft --body-file body-emoji.md"'           "emoji in a body file"           2 no-restricted-words
 deny '"gh pr create --draft -F body-trailer.md"'                  "trailer in a body file via -F"  2 no-restricted-words
+# A body file that is not a regular file is not read: a device would never
+# end and a FIFO would block, and the guard runs before the owner has approved
+# the command that names it.
+mkfifo "$FIXTURE/body.fifo"
+deny '"gh pr create --draft --body-file /dev/zero"'               "body file is a device"          0 no-restricted-words
+deny '"gh pr create --draft --body-file body.fifo"'               "body file is a FIFO"            0 no-restricted-words
+deny '"git commit -F /dev/zero"'                                  "commit message file is a device" 0 no-restricted-words
+head -c 1100000 /dev/zero | tr '\0' 'a' > "$FIXTURE/body-huge.md"
+printf '\nthe oracle\n' >> "$FIXTURE/body-huge.md"
+deny '"gh pr create --draft --body-file body-huge.md"'            "restricted word past the read cap is not seen" 0 no-restricted-words
+rm -f "$FIXTURE/body.fifo" "$FIXTURE/body-huge.md"
 deny '"gh api repos/o/r/pulls/5/comments -f body=\"an Oracle again\""' "restricted word via gh api -f" 2 no-restricted-words
 deny '"gh api --method POST repos/o/r/issues/5/comments --input input-link.json"' "session link via gh api --input" 2 no-restricted-words
 deny '"gh pr review 5 --comment --body \"ok 👍\""'  "emoji in a review"              2 no-restricted-words
@@ -864,6 +879,12 @@ protect '"gh api graphql -Fquery=@q.graphql"'    "GraphQL mutation from attached
 protect '"gh api graphql -f query=@q.graphql"'   "raw -f sends @q.graphql literally" 0
 protect '"gh api graphql -F query=@-"'           "GraphQL query from stdin field" 2
 protect '"gh api graphql --input -"'             "GraphQL body from stdin"        2
+protect '"gh api graphql --input /dev/zero"'     "GraphQL body from a device"     2
+protect '"gh api graphql --input missing.graphql"' "GraphQL body from a missing file" 0
+head -c 1100000 /dev/zero | tr '\0' ' ' > "$PROTREPO/huge.graphql"
+protect '"gh api graphql --input huge.graphql"'  "GraphQL body past the read cap" 2
+protect '"gh api graphql -F query=@huge.graphql"' "-F @file past the read cap"   2
+protect '"gh api repos/o/r/issues -F body=@huge.graphql"' "REST write with a large body file is not a merge" 0
 printf 'query { viewer { login } }' > "$PROTREPO/safe.graphql"
 protect '"gh api graphql -F query=@safe.graphql"' "GraphQL query from -F @file"   0
 rm -rf "$PROTREPO" "$FIXTURE/protremote.git"

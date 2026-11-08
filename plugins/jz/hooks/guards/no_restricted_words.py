@@ -15,7 +15,7 @@ import re
 from command_lines import git_call
 from gh_options import gh_command
 from git_push import git_text
-from guards import Deny
+from guards import Deny, read_text
 
 NAME = "no-restricted-words"
 
@@ -31,14 +31,12 @@ COMMIT_PROSE_LETTERS = "mF"
 JSON_PROSE_KEYS = {"body", "title", "message", "text", "commit_title", "commit_message"}
 
 def read_file(path, directory):
+    """The text of a body or instruction file, or "" when there is nothing to judge: stdin, a missing path, a device, a FIFO."""
     if path == "-":
         return ""
     full = path if os.path.isabs(path) else os.path.join(directory, path)
-    try:
-        with open(full, encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except OSError:
-        return ""
+    found = read_text(full)
+    return found[0] if found else ""
 
 
 def json_prose(text):

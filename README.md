@@ -242,7 +242,7 @@ The guards, each a module in `hooks/guards/` with a `NAME` and a
 | `no-claude-artifacts` guard | Blocks any staging or commit that would include `.claude/`, `docs/plans/` or `.plans/` |
 | `require-pr-skill` guard | Denies `git commit`, `git push` and `gh pr create` until the session's transcript shows the `pr` skill loaded, by a Skill call whose result reported no error or a typed `/jz:pr`; a payload without a transcript path passes, so the gate holds on Claude Code only |
 | `confirm-remote-writes` guard | Asks before a `gh pr create` without `--draft`, `gh pr ready` and any force push not pinned to a sha, including a bare `--force-with-lease`, `-f` clusters and a `+refspec`; a branch push, a draft PR and a `--force-with-lease=<branch>:<sha>` push pass without a prompt |
-| `protect-default-branches` guard | Blocks a push that would update or delete `main`, `master`, `develop`, `trunk` or the branch `origin/HEAD` names, resolved from the repository's own configuration and tracking refs, and blocks merging a pull request: `gh pr merge` including `--auto`, and the REST and GraphQL merge calls through `gh api`. The owner merges on GitHub |
+| `protect-default-branches` guard | Blocks a push that would update or delete `main`, `master`, `develop`, `trunk` or the branch `origin/HEAD` names, resolved from the repository's own configuration and tracking refs, and blocks merging a pull request: `gh pr merge` in any form, and the REST and GraphQL merge calls through `gh api`. The owner merges on GitHub |
 | `scan-secrets-before-push` guard | Scans the commits a `git push` would publish, with betterleaks or gitleaks when one is on PATH and a builtin set of token shapes otherwise, and asks before the push when something looks like a secret; nothing is installed |
 | `rebase-not-merge` guard | Blocks merging the default branch into a feature branch, or pulling it without `--rebase`; rebase instead. A checkout on the default branch may fast-forward itself |
 | `no-restricted-words` guard | Blocks a commit message, PR body, review or comment that carries an emoji, an agent attribution trailer, a session link, a model version slug, or a word listed under a `## Restricted words` heading in the repo's `AGENTS.md` or `CLAUDE.md` |
@@ -267,8 +267,9 @@ does and works out from the repository's configuration and tracking refs
 which refs the push would update. It never contacts the remote and never
 runs anything the command names, since a hook runs before the owner approves
 the call. The guards that judge a `gh` call share `gh_options.py`, which
-finds the subcommand past `-R o/r` and reads each flag's final value the way
-gh does. `JZ_GUARDS=<name>,<name>` restricts a run to the guards named, which
+finds the subcommand past `-R o/r`; the flags that matter, `--draft` and
+`--undo`, are read as literal tokens rather than through an emulation of gh's
+option parser. `JZ_GUARDS=<name>,<name>` restricts a run to the guards named, which
 is how the suite tests one at a time.
 
 The hooks have their own regression suite, which builds a throwaway repo and

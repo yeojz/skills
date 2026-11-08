@@ -12,7 +12,7 @@ here instead.
 import re
 
 from command_lines import SHORT_CLUSTER, git_call
-from gh_options import final_bool_option, gh_command
+from gh_options import gh_command
 from git_push import resolve_push_long_option
 from guards import Ask
 
@@ -22,21 +22,11 @@ NAME = "confirm-remote-writes"
 # "the ref must not exist yet". Anything else, a ref name or a short hex that
 # could be one, is read from a ref a fetch can move.
 PINNED_EXPECTATION = re.compile(r"^(|[0-9a-f]{40}|[0-9a-f]{64})$")
-# The option tables of gh pr create and gh pr ready (cli/cli v2.103.0), with
-# the persistent --repo/-R, read by gh_options.final_bool_option. A line that
-# uses an option missing here, or a bool spelling gh rejects, is not provably
-# a draft, so it asks.
-PR_CREATE_BOOL_OPTIONS = {
-    "draft": "d", "editor": "e", "web": "w", "fill": "f", "fill-verbose": None,
-    "fill-first": None, "no-maintainer-edit": None, "dry-run": None, "help": "h",
-}
-PR_CREATE_VALUE_OPTIONS = {
-    "title": "t", "body": "b", "body-file": "F", "base": "B", "head": "H",
-    "reviewer": "r", "assignee": "a", "label": "l", "project": "p",
-    "milestone": "m", "recover": None, "template": "T", "attach": None, "repo": "R",
-}
-PR_READY_BOOL_OPTIONS = {"undo": None, "help": "h"}
-PR_READY_VALUE_OPTIONS = {"repo": "R"}
+# A draft and an undo are read as literal tokens: `--draft`, or a short
+# cluster of letters with `d` in it, and `--undo`. gh's own option parser is
+# not emulated, so `--draft=false` or `--title --draft` are read by their
+# surface; both are rare, and an ask or a draft PR is cheap either way.
+DRAFT_CLUSTER = re.compile(r"^-[A-Za-z]*d[A-Za-z]*$")
 
 
 def push_is_forced(args):
@@ -47,7 +37,8 @@ def push_is_forced(args):
     as does an empty expectation, which requires the ref not to exist. A bare
     lease, or one whose expectation is a ref name such as
     `refs/remotes/origin/x`, checks against a ref a background fetch can move,
-    so it is treated like --force. --force-if-includes only refines a lease
+    so it is treated like --force, as are --mirror and --prune, which delete
+    remote refs. --force-if-includes only refines a lease
     and asks on its own. Long options resolve by unambiguous prefix, as git
     resolves them.
     """
@@ -58,7 +49,8 @@ def push_is_forced(args):
         if token.startswith("--") and token != "--":
             name, has_value, value = token[2:].partition("=")
             resolved = resolve_push_long_option(name)
-            if resolved == "force":
+            if resolved in {"force", "mirror", "prune"}:
+                # --mirror is an implicit +refs/*:refs/* that also deletes; --prune deletes too.
                 forced = True
             elif resolved == "force-with-lease":
                 if has_value and ":" in value and PINNED_EXPECTATION.match(value.split(":", 1)[1]):
@@ -76,11 +68,11 @@ def push_is_forced(args):
 
 
 def create_is_draft(args):
-    return final_bool_option(args, PR_CREATE_BOOL_OPTIONS, PR_CREATE_VALUE_OPTIONS, "draft") is True
+    return any(token == "--draft" or DRAFT_CLUSTER.match(token) for token in args)
 
 
 def ready_is_undo(args):
-    return final_bool_option(args, PR_READY_BOOL_OPTIONS, PR_READY_VALUE_OPTIONS, "undo") is True
+    return "--undo" in args
 
 
 def reason_for(argv):

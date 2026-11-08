@@ -177,14 +177,12 @@ check that fails, then a test, with prose last.
 
 | Rule | Enforced by |
 |---|---|
-| Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts` guard, PreToolUse |
+| Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts` guard, PreToolUse: an add or commit is denied while one is unignored, modified or staged |
 | Ask before a `gh pr create` without `--draft`, `gh pr ready` and any force push not pinned with `--force-with-lease=<branch>:<sha>` | `confirm-remote-writes` guard, PreToolUse |
 | Never push to a default branch and never merge a pull request; the owner merges on GitHub | `protect-default-branches` guard, PreToolUse |
 | Commit, push and open PRs through the `pr` skill | `require-pr-skill` guard, PreToolUse, from the transcript the payload names; a host whose payload carries no transcript path is not gated |
-| Rebase onto the default branch, never merge it in; the default branch's own checkout may fast-forward | `rebase-not-merge` guard, PreToolUse |
+| Rebase, never merge a branch in; a checkout may fast-forward with `--ff-only` | `rebase-not-merge` guard, PreToolUse |
 | No secret, token or credential reaches a remote | `scan-secrets-before-push` guard, PreToolUse, through betterleaks or gitleaks when installed |
-| No emoji, attribution trailer, session link or model slug in commit or PR text | `no-restricted-words` guard, PreToolUse |
-| A repository's own restricted words stay out of its PR text | `no-restricted-words` guard, reading `## Restricted words` in `AGENTS.md` or `CLAUDE.md` |
 | Rules are read in every session | `load-house-rules.sh`, SessionStart |
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
@@ -196,7 +194,7 @@ check that fails, then a test, with prose last.
 | A skill or template carries no `$ARGUMENTS` or `$<digits>` placeholder that Claude Code would fill with the skill's arguments | `validate.sh`: a SKILL.md or template with one fails, naming the line |
 | Every requirement has an acceptance criterion whose check proves it, seen failing before the build, and every criterion has a row in the verify block | nothing; `criteria` Step 3 asks for the check or sends the requirement back to `grill`, `criteria` Step 4 runs each check before sign-off, `implement` stops a step whose requirement has no criterion, `coordinate` Step 3 holds back a step whose requirement has no criterion and Step 5 sends a missing row back, `verify` Step 7 reads `not run` for a criterion without a run, and the review brief re-runs each command |
 | Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes` guard for the remote writes; nothing for the rest, `parallelism.md` states it |
-| Prose rules 7 and 8, no emoji or model name in commit or PR text | `no-restricted-words` guard, PreToolUse; `validate.sh` for emoji in this repo's files |
+| Prose rules 7 and 8, no emoji or model name in commit or PR text | nothing in a hook; `validate.sh` for emoji in this repo's files |
 | Prose rules 1 to 6 and 9 to 14 | nothing; `prose.md` numbers them so a steer cites one, and `improve` turns a repeated steer into the next check |
 
 A repository lists its restricted words as bullets under a `## Restricted

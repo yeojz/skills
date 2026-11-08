@@ -9,9 +9,11 @@ dry run would answer more exactly, but it spawns receive-pack and the ssh
 command, both of which the caller chooses with --receive-pack, --exec and
 -c core.sshCommand, and a PreToolUse hook runs before the owner has approved
 the command. The destination, the refspecs and the old tips are read from the
-repository's configuration and its remote-tracking refs instead. A tracking
-ref can be behind the remote, so a hook built on this scans or denies a
-little more than git would, never less.
+repository's configuration and its remote-tracking refs instead. For a
+configured remote without a pushurl, a tracking ref can be behind the remote,
+so a hook built on this scans or denies a little more than git would, never
+less; for a URL destination nothing local describes the remote, and every
+remote's refs are taken as published.
 """
 
 import os
@@ -30,7 +32,7 @@ PUSH_LONG_OPTIONS = {
 }
 # Options whose value may be a separate token. Every other option is a flag or
 # takes its value attached with =, so the token after it is never its value.
-PUSH_LONG_OPTIONS_WITH_VALUE = {"repo", "receive-pack", "exec", "push-option"}
+PUSH_LONG_OPTIONS_WITH_VALUE = {"repo", "receive-pack", "exec", "push-option", "recurse-submodules"}
 PUSH_SHORT_OPTIONS_WITH_VALUE = "o"
 SHORT_FLAGS = {"d": "delete", "n": "dry-run"}
 GIT_TIMEOUT_SECONDS = 10
@@ -44,12 +46,19 @@ WHOLESALE = {"all", "branches", "mirror", "tags", "delete"}
 PUSH_CONFIG_PREFIXES = ("remote.", "push.", "branch.", "url.")
 
 
+# Configuration that would make a read-only git call run a program from the
+# repository's own config: the filesystem monitor, signature display, hooks.
+# Switched off for every call a guard makes.
+SAFE_CONFIG = ["-c", "core.fsmonitor=false", "-c", "log.showSignature=false",
+               "-c", "core.hooksPath=/dev/null"]
+
+
 def run_git(directory, options, args):
-    """Run one read-only git call with prompts, locks and the pager off."""
+    """Run one read-only git call with prompts, locks, the pager and repository-run programs off."""
     environment = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0",
                        GIT_PAGER="cat", GIT_EDITOR="true")
     try:
-        return subprocess.run(["git", "--no-pager", "-C", directory] + options + args,
+        return subprocess.run(["git", "--no-pager", "-C", directory] + SAFE_CONFIG + options + args,
                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
                               errors="replace", env=environment, timeout=GIT_TIMEOUT_SECONDS)
     except Exception:
@@ -70,14 +79,17 @@ def git_lines(directory, options, args):
 
 
 class PushOptionWalk:
-    """How git push reads its arguments: the options, the operands from the real -- on, the flags set and the final dry-run value."""
+    """How git push reads its arguments: the operands, the flags set, the --repo value and any error."""
 
     def __init__(self):
-        self.options = []
         self.operands = []
         self.flags = set()
-        self.dry_run = False
+        self.repo = None
         self.error = None
+
+    @property
+    def dry_run(self):
+        return "dry-run" in self.flags
 
 
 def resolve_push_long_option(name):
@@ -113,20 +125,22 @@ def walk_push_options(args):
             if resolved is None:
                 walk.error = "git push option %s is not one the hook can follow" % token
                 return walk
-            walk.options.append(token)
             if resolved in PUSH_LONG_OPTIONS_WITH_VALUE and not has_value and not negated:
                 if index >= len(args):
                     walk.error = "git push option %s has no value" % token
                     return walk
-                walk.options.append(args[index])
+                value = args[index]
                 index += 1
+            else:
+                _, _, value = token.partition("=")
+            if resolved == "repo" and not negated:
+                walk.repo = value
             elif negated:
                 walk.flags.discard(resolved)
-            else:
+            elif resolved not in PUSH_LONG_OPTIONS_WITH_VALUE:
                 walk.flags.add(resolved)
             continue
         if token.startswith("-") and len(token) > 1:
-            walk.options.append(token)
             cluster = token[1:]
             while cluster:
                 letter, cluster = cluster[0], cluster[1:]
@@ -135,14 +149,12 @@ def walk_push_options(args):
                         if index >= len(args):
                             walk.error = "git push option -%s has no value" % letter
                             return walk
-                        walk.options.append(args[index])
                         index += 1
                     break
                 if letter in SHORT_FLAGS:
                     walk.flags.add(SHORT_FLAGS[letter])
             continue
         walk.operands.append(token)
-    walk.dry_run = "dry-run" in walk.flags
     return walk
 
 
@@ -179,6 +191,10 @@ class Push:
         self.updates = updates
         self.dry_run = dry_run
 
+    def tracking_ref(self, name):
+        """The tracking ref for branch `name` at the destination, when one describes it."""
+        return "refs/remotes/%s/%s" % (self.remote, name) if self.tracked else None
+
 
 def current_branch(directory, options):
     return git_text(directory, options, ["symbolic-ref", "-q", "--short", "HEAD"]) or None
@@ -206,16 +222,31 @@ def full_ref(directory, options, name):
     return git_text(directory, options, ["rev-parse", "--verify", "--quiet", "--symbolic-full-name", name]) or None
 
 
-def qualify(destination, source_ref):
-    """A destination the way git completes a short one: under refs/heads/, or refs/tags/ for a tag source."""
+def qualify(directory, options, destination, source_ref, remote, tracked):
+    """A destination the way git completes a short one.
+
+    A short name that matches a branch already at the destination is that
+    branch, whatever the source is; `git push origin v1:main` moves main. Only
+    a tag source landing on a name the destination does not have creates a
+    tag. Without tracking refs the destination's branches are unknown, so a
+    short name is read as a branch, the stricter reading.
+    """
     if destination.startswith("refs/"):
         return destination
-    if source_ref and source_ref.startswith(TAGS):
-        return TAGS + destination
+    if source_ref and source_ref.startswith(TAGS) and tracked:
+        if resolve_commit(directory, options, "refs/remotes/%s/%s" % (remote, destination)) is None:
+            return TAGS + destination
     return HEADS + destination
 
 
-def expand_refspec(directory, options, refspec):
+def refs_matching(directory, options, pattern):
+    """The local refs a push wildcard selects: `*` matches across slashes, as git push reads it, unlike for-each-ref."""
+    prefix, _, suffix = pattern.partition("*")
+    listed = local_refs(directory, options, prefix.rsplit("/", 1)[0] + "/" if "/" in prefix else prefix)
+    return [ref for ref in listed if ref.startswith(prefix) and ref.endswith(suffix) and len(ref) >= len(prefix) + len(suffix)]
+
+
+def expand_refspec(directory, options, refspec, remote, tracked):
     """The (source, destination ref) pairs one refspec selects, or an error.
 
     `+src:dst` forces; `:dst` deletes; a bare `src` lands on the ref of the
@@ -228,32 +259,45 @@ def expand_refspec(directory, options, refspec):
             return None, "refspec %s is not one the hook can follow" % refspec
         prefix, _, suffix = source.partition("*")
         pairs = []
-        for ref in local_refs(directory, options, source):
+        for ref in refs_matching(directory, options, source):
             matched = ref[len(prefix):len(ref) - len(suffix) if suffix else None]
             target = destination.replace("*", matched, 1) if colon else ref
-            pairs.append((ref, qualify(target, ref)))
+            pairs.append((ref, qualify(directory, options, target, ref, remote, tracked)))
         return pairs, None
     if not source:
         if not destination:
             return None, "refspec %s names nothing" % refspec
-        return [(None, qualify(destination, None))], None
+        return [(None, qualify(directory, options, destination, None, remote, tracked))], None
     source_ref = full_ref(directory, options, source)
     if not colon:
         if source_ref is None:
             return None, "refspec %s names no local ref, so its destination is unknown" % refspec
         destination = source_ref
-    return [(source, qualify(destination, source_ref))], None
+    return [(source, qualify(directory, options, destination, source_ref, remote, tracked))], None
+
+
+def describes_destination(directory, options, remote):
+    """Whether refs/remotes/<remote>/* describe where a push to `remote` lands.
+
+    Tracking refs are filled from the fetch URL. A pushurl, a second url, or a
+    url.<base>.pushInsteadOf rewrite sends the push somewhere else.
+    """
+    if config(directory, options, "remote.%s.pushurl" % remote) is not None:
+        return False
+    if len(config_all(directory, options, "remote.%s.url" % remote)) > 1:
+        return False
+    return not git_lines(directory, options, ["config", "--get-regexp", r"^url\..*\.pushinsteadof$"])
 
 
 def resolve_push(directory, options, args):
     """What `git push` with these arguments would update, read from the repository. Returns (Push, error).
 
-    The destination is the first operand, else the branch's pushRemote, then
-    remote.pushDefault, then the branch's remote, then origin. The refspecs
-    are the operands after it, else remote.<name>.push, else what
-    push.default selects for the current branch. --all, --branches, --tags
-    and --mirror select whole namespaces; --delete turns each operand into a
-    deletion.
+    The destination is the first operand, else --repo, else the branch's
+    pushRemote, then remote.pushDefault, then the branch's remote, then
+    origin. The refspecs are the operands after it, else remote.<name>.push,
+    else what push.default selects for the current branch. --all,
+    --branches, --tags and --mirror, or remote.<name>.mirror, select whole
+    namespaces; --delete turns each operand into a deletion.
     """
     walk = walk_push_options(args)
     if walk.error:
@@ -263,14 +307,17 @@ def resolve_push(directory, options, args):
     if operands:
         destination = operands[0]
     else:
-        destination = ((branch and config(directory, options, "branch.%s.pushRemote" % branch))
+        destination = (walk.repo
+                       or (branch and config(directory, options, "branch.%s.pushRemote" % branch))
                        or config(directory, options, "remote.pushDefault")
                        or (branch and config(directory, options, "branch.%s.remote" % branch))
                        or "origin")
     remote = destination if destination in git_lines(directory, options, ["remote"]) else None
-    tracked = remote is not None and config(directory, options, "remote.%s.pushurl" % remote) is None
+    tracked = remote is not None and describes_destination(directory, options, remote)
     refspecs = operands[1:]
-    flags = walk.flags
+    flags = set(walk.flags)
+    if remote and (config(directory, options, "remote.%s.mirror" % remote) or "").lower() in {"true", "yes", "on", "1"}:
+        flags.add("mirror")
     updates = []
     if "mirror" in flags:
         updates.extend((ref, ref) for ref in local_refs(directory, options, "refs/"))
@@ -280,7 +327,7 @@ def resolve_push(directory, options, args):
         if "tags" in flags:
             updates.extend((ref, ref) for ref in local_refs(directory, options, TAGS))
         if "delete" in flags:
-            updates.extend((None, qualify(name, None)) for name in refspecs)
+            updates.extend((None, qualify(directory, options, name, None, remote, tracked)) for name in refspecs)
             refspecs = []
         if not refspecs and not flags & WHOLESALE:
             refspecs = config_all(directory, options, "remote.%s.push" % remote) if remote else []
@@ -304,7 +351,7 @@ def resolve_push(directory, options, args):
             else:
                 return None, "push.default is %s" % default
         for refspec in refspecs:
-            pairs, error = expand_refspec(directory, options, refspec)
+            pairs, error = expand_refspec(directory, options, refspec, remote, tracked)
             if error:
                 return None, error
             updates.extend(pairs)

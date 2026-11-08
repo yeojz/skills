@@ -118,7 +118,7 @@ def unpublished_patch(directory, options, revision_arguments):
     if not listed.stdout.strip():
         return "", None
     shown = run_git(directory, options, ["log", "--no-color", "-p", "--diff-merges=first-parent",
-                                "--no-ext-diff", "--no-textconv",
+                                "--no-ext-diff", "--no-textconv", "--no-show-signature",
                                 "--format=commit %h%n%B"] + revision_arguments)
     if shown is None or shown.returncode != 0:
         tail = ((shown.stderr.strip().splitlines() if shown else []) or ["no output"])[-1]

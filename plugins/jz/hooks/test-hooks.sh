@@ -588,13 +588,17 @@ rm -f "$FIXTURE/AGENTS.md" "$FIXTURE"/body-*.md "$FIXTURE/input-link.json"
 
 printf '\nscan-secrets-before-push.sh\n'
 scan() {
-  # scan <json-quoted command> <label> <expected: ask|allow> [cwd]
+  # scan <json-quoted command> <label> <expected: secret|incomplete|allow> [cwd]
+  # A secret ask names a finding; an incomplete ask says the scan did not run.
   printf '  %-52s' "$2"
   local out
   out="$(printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${4:-$PUSHREPO}" \
     | "$HOOK_DIR/scan-secrets-before-push.sh" 2>/dev/null)"
   local got=allow
-  printf '%s' "$out" | grep -q '"permissionDecision": "ask"' && got=ask
+  if printf '%s' "$out" | grep -q '"permissionDecision": "ask"'; then
+    got=incomplete
+    printf '%s' "$out" | grep -q 'Possible secret' && got=secret
+  fi
   if [ "$got" = "$3" ]; then
     echo "$got PASS"
   else
@@ -618,12 +622,12 @@ pushgit add index.ts && pushgit commit -q -m 'feat: start' && pushgit push -q -u
 scan '"git push origin main"'                   "nothing unpublished"            allow
 printf 'const token = "%s";\n' "$FAKE_TOKEN" > "$PUSHREPO/client.ts"
 pushgit add client.ts && pushgit commit -q -m 'feat: add client'
-scan '"git push origin main"'                   "token in an unpublished commit" ask
-scan '"git push"'                               "bare push of the same head"     ask
-scan '"git push --force origin main"'           "forced push is scanned too"     ask
-scan '"git push -u origin main:main"'           "refspec with source and target" ask
-scan '"git -C pushrepo push origin main"'       "push behind git -C"             ask "$FIXTURE"
-scan '"cd pushrepo && git push"'                "push after cd"                  ask "$FIXTURE"
+scan '"git push origin main"'                   "token in an unpublished commit" secret
+scan '"git push"'                               "bare push of the same head"     secret
+scan '"git push --force origin main"'           "forced push is scanned too"     secret
+scan '"git push -u origin main:main"'           "refspec with source and target" secret
+scan '"git -C pushrepo push origin main"'       "push behind git -C"             secret "$FIXTURE"
+scan '"cd pushrepo && git push"'                "push after cd"                  secret "$FIXTURE"
 scan '"echo git push origin main"'              "push inside echo"               allow
 scan '"git push origin --delete main"'          "branch deletion publishes nothing" allow
 scan '"git push origin :main"'                  "empty-source refspec"           allow
@@ -636,7 +640,7 @@ printf 'const key = "%s"; // betterleaks:allow\n' "$FAKE_TOKEN" > "$PUSHREPO/fix
 pushgit add fixture.ts && pushgit commit -q -m 'test: add fixture'
 scan '"git push"'                               "allow comment on the line"      allow
 pushgit commit -q --allow-empty -m "chore: rotate $FAKE_TOKEN"
-scan '"git push"'                               "token in a commit message"      ask
+scan '"git push"'                               "token in a commit message"      secret
 pushgit push -q origin main
 scan '"git push"'                               "everything published again"     allow
 # Only the destination's refs count as published: a commit on another remote
@@ -646,7 +650,7 @@ pushgit remote add archive "$FIXTURE/archive.git"
 printf 'const second = "%s";\n' "$FAKE_TOKEN" > "$PUSHREPO/second.ts"
 pushgit add second.ts && pushgit commit -q -m 'feat: second'
 pushgit push -q archive main
-scan '"git push origin main"'                   "token only on another remote"   ask
+scan '"git push origin main"'                   "token only on another remote"   secret
 scan '"git push archive main"'                  "same token already at the target" allow
 scan '"git push --dry-run origin main"'         "a dry run publishes nothing"    allow
 scan '"git push -n origin main"'                "-n publishes nothing"           allow
@@ -660,7 +664,7 @@ pushgit push -q origin main side
 pushgit merge -q side >/dev/null 2>&1 || true
 printf 'const merged = "%s";\n' "$FAKE_TOKEN" > "$PUSHREPO/value"
 pushgit add value && pushgit commit -q --no-edit
-scan '"git push origin main"'                   "token in a merge resolution"    ask
+scan '"git push origin main"'                   "token in a merge resolution"    secret
 pushgit push -q origin main
 scan '"git push origin main"'                   "merge published"                allow
 # The repository's configuration decides which refs a push publishes:
@@ -673,36 +677,36 @@ pushgit add leaky.ts && pushgit commit -q -m 'feat: leaky'
 pushgit checkout -q main
 scan '"git push origin"'                        "clean HEAD with the default refspec" allow
 pushgit config remote.origin.push refs/heads/leaky:refs/heads/leaky
-scan '"git push origin"'                        "configured refspec publishes leaky" ask
+scan '"git push origin"'                        "configured refspec publishes leaky" secret
 pushgit config --unset remote.origin.push
 pushgit config push.default matching
-scan '"git push origin"'                        "push.default matching publishes leaky" ask
+scan '"git push origin"'                        "push.default matching publishes leaky" secret
 pushgit config --unset push.default
-scan '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec publishes leaky" ask
-scan '"git push --all origin"'                  "--all publishes leaky"          ask
-scan '"git push origin leaky"'                  "leaky named directly"           ask
+scan '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec publishes leaky" secret
+scan '"git push --all origin"'                  "--all publishes leaky"          secret
+scan '"git push origin leaky"'                  "leaky named directly"           secret
 # The hook never pushes, whatever the caller asked for, and never runs the
 # receive-pack or ssh command the caller names.
 before_tip="$(git -C "$FIXTURE/remote.git" rev-parse refs/heads/leaky)"
-scan '"git push --no-dry-run origin leaky"'     "--no-dry-run cannot make the preview push" ask
-scan '"git push -n --no-dry-run origin leaky"'  "-n reset by a later --no-dry-run" ask
+scan '"git push --no-dry-run origin leaky"'     "--no-dry-run cannot make the preview push" secret
+scan '"git push -n --no-dry-run origin leaky"'  "-n reset by a later --no-dry-run" secret
 scan '"git push --no-dry-run -n origin leaky"'  "--no-dry-run reset by a later -n" allow
 scan '"git push --dry origin leaky"'            "abbreviated --dry-run is a dry run" allow
 scan '"git push --no-dry -n origin leaky"'      "abbreviated --no-dry-run reset by -n" allow
-scan '"git push -o n origin leaky"'             "n as the value of -o"           ask
+scan '"git push -o n origin leaky"'             "n as the value of -o"           secret
 git -C "$FIXTURE/remote.git" config receive.advertisePushOptions true
-scan '"git push -o -- origin leaky"'            "-- as the value of -o"          ask
-scan '"git push -o -n origin leaky"'            "-n as the value of -o"          ask
-scan '"git push --push-option=-n origin leaky"' "-n attached to --push-option"   ask
-scan '"git push --push-option -- origin leaky"' "-- as the value of --push-option" ask
-scan '"git push --push-opt -- origin leaky"'    "-- as the value of an abbreviated option" ask
-scan '"git push --receive-pack -n origin leaky"' "-n as the value of --receive-pack" ask
-scan '"git push -on origin leaky"'              "n attached to -o"               ask
-scan '"git push origin leaky -o"'               "dangling -o asks"               ask
-scan '"git push --bogus origin leaky"'          "option outside the table asks"  ask
-scan '"git push origin -- leaky -n"'            "-n after the terminator is an operand" ask
-scan "\"git push --receive-pack=\\\"touch $FIXTURE/scanmarker; git-receive-pack\\\" origin leaky\"" "receive-pack named on a push" ask
-scan "\"git -c core.sshCommand=\\\"touch $FIXTURE/sshmarker\\\" push git@example.invalid:x/y.git leaky\"" "ssh command named on a push to a URL" ask
+scan '"git push -o -- origin leaky"'            "-- as the value of -o"          secret
+scan '"git push -o -n origin leaky"'            "-n as the value of -o"          secret
+scan '"git push --push-option=-n origin leaky"' "-n attached to --push-option"   secret
+scan '"git push --push-option -- origin leaky"' "-- as the value of --push-option" secret
+scan '"git push --push-opt -- origin leaky"'    "-- as the value of an abbreviated option" secret
+scan '"git push --receive-pack -n origin leaky"' "-n as the value of --receive-pack" secret
+scan '"git push -on origin leaky"'              "n attached to -o"               secret
+scan '"git push origin leaky -o"'               "dangling -o asks"               incomplete
+scan '"git push --bogus origin leaky"'          "option outside the table asks"  incomplete
+scan '"git push origin -- leaky -n"'            "-n after the terminator is an operand" incomplete
+scan "\"git push --receive-pack=\\\"touch $FIXTURE/scanmarker; git-receive-pack\\\" origin leaky\"" "receive-pack named on a push" secret
+scan "\"git -c core.sshCommand=\\\"touch $FIXTURE/sshmarker\\\" push git@example.invalid:x/y.git leaky\"" "ssh command named on a push to a URL" secret
 printf '  %-52s' "neither named command was run"
 if [ -e "$FIXTURE/scanmarker" ] || [ -e "$FIXTURE/sshmarker" ]; then echo "FAIL, the hook ran one"; fail=1; else echo "PASS"; fi
 printf '  %-52s' "remote tip unchanged by the previews"
@@ -716,16 +720,38 @@ fi
 # move the destination or the refspec and is not followed, so the push asks;
 # an unrelated override passes.
 git init -q --bare "$FIXTURE/target2.git"
-scan "\"git -c remote.origin.pushurl=$FIXTURE/target2.git push origin main\"" "pushurl override to an empty target" ask
-scan '"git -c remote.origin.push=leaky:leaky push origin"' "refspec override selects leaky" ask
-PUSHSPEC=leaky:leaky scan '"git --config-env=remote.origin.push=PUSHSPEC push origin"' "refspec override via --config-env" ask
-scan '"git -c push.default=matching push origin"' "push.default override selects leaky" ask
+scan "\"git -c remote.origin.pushurl=$FIXTURE/target2.git push origin main\"" "pushurl override to an empty target" incomplete
+scan '"git -c remote.origin.push=leaky:leaky push origin"' "refspec override selects leaky" incomplete
+PUSHSPEC=leaky:leaky scan '"git --config-env=remote.origin.push=PUSHSPEC push origin"' "refspec override via --config-env" incomplete
+scan '"git -c push.default=matching push origin"' "push.default override selects leaky" incomplete
 scan '"git -c user.name=dev push origin main"'  "unrelated -c on a clean HEAD"   allow
 # A remote with no tracking refs publishes everything; a ref that does not
 # resolve cannot be scanned, so the hook asks.
 pushgit remote add dead "$FIXTURE/no-such-remote.git"
-scan '"git push dead main"'                     "unreachable remote asks"        ask
-scan '"git push origin nosuchbranch"'           "unknown ref asks"               ask
+scan '"git push dead main"'                     "unreachable remote asks"        secret
+scan '"git push origin nosuchbranch"'           "unknown ref asks"               incomplete
+# Destinations and selections git resolves that the arguments alone do not show.
+pushgit tag leak-tag leaky
+scan '"git push --tags origin"'                  "--tags publishes a tagged leak" secret
+pushgit tag -d leak-tag >/dev/null
+scan '"git push --mirror origin"'                "--mirror publishes leaky"       secret
+scan '"git push origin refs/heads/*:refs/heads/pub/*"' "wildcard onto another prefix" secret
+pushgit branch -q fix/nested leaky
+scan '"git push origin refs/heads/fix/*:refs/heads/fix/*"' "wildcard matches a nested branch" secret
+pushgit branch -q -D fix/nested
+git init -q --bare "$FIXTURE/target.git"
+pushgit remote add target "$FIXTURE/target.git"
+scan '"git push --repo=target"'                  "--repo names an empty destination" secret
+pushgit remote remove target
+pushgit config remote.origin.pushurl "$FIXTURE/archive.git"
+scan '"git push origin main"'                    "pushurl: every remote's refs count as published" allow
+pushgit config --unset remote.origin.pushurl
+pushgit config push.default nothing
+scan '"git push"'                                "push.default nothing"           incomplete
+pushgit config --unset push.default
+pushgit checkout -q --detach
+scan '"git push"'                                "bare push from a detached HEAD" incomplete
+pushgit checkout -q main
 rm -rf "$PUSHREPO" "$FIXTURE/remote.git" "$FIXTURE/archive.git" "$FIXTURE/target2.git"
 
 printf '\nprotect-default-branches.sh\n'
@@ -781,8 +807,33 @@ protect '"bash -c \"git push origin main\""'     "push main inside bash -c"     
 protect '"git -c remote.origin.push=refs/heads/feature:refs/heads/main push origin"' "configured refspec onto main" 2
 protect '"echo git push origin main"'            "push inside echo"               0
 protect '"git commit -m \"merge main notes\""'   "merge only in a commit message" 0
+# Destinations git resolves that the arguments alone do not show.
+protgit tag v1 main
+protect '"git push origin v1:main"'              "tag pushed onto main by its short name" 2
+protect '"git push origin v1:v1"'                "tag pushed as a new tag"        0
+protgit tag -d v1 >/dev/null
+protect '"git push --repo=origin"'               "--repo from feature"            0
+protect '"git push --recurse-submodules check origin main"' "value option before the operands" 2
+protect '"git push origin refs/heads/*:refs/heads/main"' "unresolvable refspec naming main" 2
+protgit config remote.origin.mirror true
+protect '"git push"'                             "remote.origin.mirror pushes main" 2
+protgit config --unset remote.origin.mirror
+protgit config push.default upstream
+protgit config branch.feature.merge refs/heads/main
+protect '"git push"'                             "upstream mode pushes feature onto main" 2
+protgit config branch.feature.merge refs/heads/feature
+protgit config push.default nothing
+protect '"git push"'                             "push.default nothing names no branch" 0
+protgit config --unset push.default
+protgit config remote.pushDefault origin
+protect '"git push"'                             "remote.pushDefault from feature" 0
+protgit config --unset remote.pushDefault
 protgit checkout -q main
 protect '"git push"'                             "bare push from main"            2
+protect '"git push --repo=origin"'               "--repo from main"               2
+protgit config branch.main.pushRemote origin
+protect '"git push"'                             "pushRemote from main"           2
+protgit config --unset branch.main.pushRemote
 protgit push -q origin main
 protgit checkout -q feature
 protect '"git push --all origin"'                "--all with main up to date"     0

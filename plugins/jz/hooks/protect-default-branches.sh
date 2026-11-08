@@ -107,19 +107,30 @@ def reason_for_push(directory, options, args, config_overrides):
     if override:
         return ("This push carries %s, which changes where or what it publishes, and a command-line "
                 "configuration override is not followed; put the setting in the repository's configuration." % override)
-    push, error = resolve_push(directory, options, args)
-    if error or push.dry_run:
-        return None
     protected = protected_branches(directory, options)
+    push, error = resolve_push(directory, options, args)
+    if error:
+        # Unresolved is not safe: a token naming a protected branch is enough to deny.
+        for token in args:
+            if token.startswith("-"):
+                continue
+            target = token.lstrip("+").partition(":")[2] or token
+            if branch_name(target) in protected:
+                return ("This push could not be resolved (%s) and names %s, and the default branch moves only "
+                        "through a merged pull request." % (error, branch_name(target)))
+        return None
+    if push.dry_run:
+        return None
     for source, destination in push.updates:
         if not destination.startswith(HEADS) or branch_name(destination) not in protected:
             continue
         name = branch_name(destination)
         if source is None:
             return "This push would delete %s on %s, and the default branch moves only through a merged pull request." % (name, push.destination)
-        if push.tracked:
+        tracking = push.tracking_ref(name)
+        if tracking:
             pushed = resolve_commit(directory, options, source)
-            held = resolve_commit(directory, options, "refs/remotes/%s/%s" % (push.remote, name))
+            held = resolve_commit(directory, options, tracking)
             if pushed is not None and pushed == held:
                 continue
         return "This push would update %s on %s, and the default branch moves only through a merged pull request." % (name, push.destination)

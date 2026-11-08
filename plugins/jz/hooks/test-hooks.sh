@@ -494,12 +494,8 @@ deny '"gh pr create --draft -F body-trailer.md"'                  "trailer in a 
 # end and a FIFO would block, and the guard runs before the owner has approved
 # the command that names it.
 mkfifo "$FIXTURE/body.fifo"
-deny '"gh pr create --draft --body-file /dev/zero"'               "body file is a device: unseen, asks, exit 0" 0 no-restricted-words
-deny '"gh pr create --draft --body-file body.fifo"'               "body file is a FIFO"            0 no-restricted-words
-deny '"git commit -F /dev/zero"'                                  "commit message file is a device" 0 no-restricted-words
 head -c 1100000 /dev/zero | tr '\0' 'a' > "$FIXTURE/body-huge.md"
 printf '\nthe oracle\n' >> "$FIXTURE/body-huge.md"
-deny '"gh pr create --draft --body-file body-huge.md"'            "restricted word past the read cap is not seen" 0 no-restricted-words
 rm -f "$FIXTURE/body.fifo" "$FIXTURE/body-huge.md"
 deny '"gh api repos/o/r/pulls/5/comments -f body=\"an Oracle again\""' "restricted word via gh api -f" 2 no-restricted-words
 deny '"gh api --method POST repos/o/r/issues/5/comments --input input-link.json"' "session link via gh api --input" 2 no-restricted-words
@@ -1018,6 +1014,16 @@ all_guards '"nice -n5 git push origin main"'            "attached wrapper value"
 all_guards '"git add .claude; git --work-tree=/nonexistent add y"' "unresolvable call beside a visible offender" deny
 all_guards '"cat <<'"'"'EOF'"'"' | git commit -F -\nfeat: x\nEOF"' "message from stdin asks"          ask
 all_guards '"cat > msg.txt <<EOF\nfeat: x\nEOF\ngit commit -F msg.txt"' "message file written on the same line asks" ask
+mkfifo "$GATEREPO/body.fifo"
+head -c 1100000 /dev/zero | tr '\0' 'a' > "$GATEREPO/body-huge.md"
+printf '## Restricted words\n\n- oracle\n' > "$GATEREPO/AGENTS.md"
+all_guards '"gh pr create --draft --body-file /dev/zero"' "body file is a device: unseen text asks" ask
+all_guards '"gh pr create --draft --body-file body.fifo"' "body file is a FIFO: unseen text asks"  ask
+all_guards '"git commit -F /dev/zero"'                  "message file is a device: unseen text asks" ask
+all_guards '"gh pr create --draft --body-file body-huge.md"' "body past the read cap: unseen text asks" ask
+all_guards '"git commit -F /dev/zero -m \"feat: the oracle\""' "visible restricted word beside unseen text denies" deny
+all_guards '"gh pr create --draft --body-file /dev/zero && git commit -m \"feat: the oracle\""' "restricted word in a later call denies" deny
+rm -f "$GATEREPO/body.fifo" "$GATEREPO/body-huge.md" "$GATEREPO/AGENTS.md"
 all_guards '"sudo -u gh git push origin main"'          "option value spelled gh is not the program" deny
 all_guards '"env -C child git status"'                  "env -C asks"                             ask
 all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow

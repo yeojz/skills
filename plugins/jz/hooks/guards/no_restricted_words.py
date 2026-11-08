@@ -45,7 +45,8 @@ def read_file(path, directory):
         raise Unseen()
     full = path if os.path.isabs(path) else os.path.join(directory, path)
     found = read_text(full)
-    if found is None:
+    if found is None or not found[1]:
+        # Missing, not a plain file, or longer than the guard reads.
         raise Unseen()
     return found[0]
 
@@ -212,17 +213,24 @@ def findings(text, restricted):
 
 def check(context):
     policies_by_directory = {}
-    try:
-        for argv, directory in context.calls:
-            for text, policy_directory in texts_from(argv, directory):
-                if not text:
-                    continue
-                found = findings(text, restricted_words(policy_directory, policies_by_directory))
-                if found:
-                    return Deny("Blocked: the text to be published contains " + ", ".join(found) + ".",
-                                "Rewrite it in plain words, then rerun.")
-    except Unseen:
-        return Ask("The text this command publishes comes from standard input or from a file that is not there yet, "
-                   "so it was not checked for emoji, attribution trailers, session links, model slugs or restricted "
-                   "words; confirm it, or pass the text inline or from an existing file.")
+    unseen = False
+    for argv, directory in context.calls:
+        try:
+            texts = list(texts_from(argv, directory))
+        except Unseen:
+            # The other calls on the line are still judged; a deny among them wins.
+            unseen = True
+            continue
+        for text, policy_directory in texts:
+            if not text:
+                continue
+            found = findings(text, restricted_words(policy_directory, policies_by_directory))
+            if found:
+                return Deny("Blocked: the text to be published contains " + ", ".join(found) + ".",
+                            "Rewrite it in plain words, then rerun.")
+    if unseen:
+        return Ask("The text this command publishes comes from standard input, or from a file that is not there yet, "
+                   "is not a plain file, or is longer than a megabyte, so it was not checked for emoji, attribution "
+                   "trailers, session links, model slugs or restricted words; confirm it, or pass the text inline or "
+                   "from an existing file.")
     return None

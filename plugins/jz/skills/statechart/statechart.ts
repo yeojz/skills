@@ -1,6 +1,6 @@
 // Explicit-state model checker and Mermaid statechart writer for small models.
-// Pure TypeScript with node: built-ins only, so it runs on Node 22.18+, Bun or
-// Deno without Java, TLC or a package install.
+// Pure TypeScript with node: built-ins only, so Node 22.18+ runs it directly,
+// without Java, TLC or a package install.
 //
 //   statechart MODEL.ts [--out DIR] [--max-states N] [--budget N]
 //
@@ -29,7 +29,7 @@ type Model = {
 };
 
 type Edge = { from: number; to: number; action: string };
-type Node = { s: S; key: string; parent: number; via: string; depth: number; expanded: boolean };
+type Node = { s: S; key: string; parent: number; via: string; depth: number; expanded: boolean; final: boolean };
 type Bug = { rule: string; kind: "invariant" | "deadlock" | "canReach"; state: number };
 
 const DEADLOCK = "No dead end: every state that is not an end state has a step out";
@@ -107,7 +107,9 @@ function guard<T>(what: string, s: unknown, run: () => T): T {
     } catch {
       state = inspect(s, { depth: 4, breakLength: Infinity });
     }
-    fail(`${what} threw on ${state}: ${(e as Error).message}`);
+    const message = (e as Error).message;
+    const hint = /could not be cloned/.test(message) ? "; build the next state with spreads, not structuredClone" : "";
+    fail(`${what} threw on ${state}: ${hint ? message.replace(/\.$/, "") : message}${hint}`);
   }
 }
 
@@ -170,6 +172,13 @@ function watch<T>(v: T, hook: string, at = ""): T {
 const view = (s: S, hook: string) => watch(copy(s), hook);
 
 const show = (s: S) => canon(s);
+
+// Appends to a list in a map without copying it, so grouping stays linear.
+function push<K, V>(map: Map<K, V[]>, key: K, value: V) {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
 const asList = <T>(x: T | T[] | null | undefined | false): T[] =>
   x === null || x === undefined || x === false ? [] : Array.isArray(x) ? x : [x];
 
@@ -213,13 +222,13 @@ function explore(model: Model) {
     if (seen !== undefined) return seen;
     const id = nodes.length;
     const stored = copy(s);
-    nodes.push({ s: stored, key, parent, via, depth, expanded: false });
+    nodes.push({ s: stored, key, parent, via, depth, expanded: false, final: false });
     index.set(key, id);
     collect(stored, "");
     for (const [rule, holds] of invariants) {
       if (!guard(`invariant "${rule}"`, stored, () => holds(view(stored, `invariant "${rule}"`)))) {
         if (!bugs.has(rule)) bugs.set(rule, { rule, kind: "invariant", state: id });
-        breaks.set(id, [...(breaks.get(id) ?? []), rule]);
+        push(breaks, id, rule);
       }
     }
     return id;
@@ -241,6 +250,7 @@ function explore(model: Model) {
       continue;
     }
     n.expanded = true;
+    n.final = Boolean(guard("final", n.s, () => model.final?.(view(n.s, "final")) ?? false));
     let out = 0;
     for (const [action, run] of Object.entries(model.actions)) {
       const next = guard(`action "${action}"`, n.s, () => asList(run(view(n.s, `action "${action}"`))));
@@ -252,9 +262,9 @@ function explore(model: Model) {
         edges.push({ from: i, to, action });
       }
     }
-    if (!out && !guard("final", n.s, () => model.final?.(view(n.s, "final")) ?? false)) {
+    if (!out && !n.final) {
       if (!bugs.has(DEADLOCK)) bugs.set(DEADLOCK, { rule: DEADLOCK, kind: "deadlock", state: i });
-      breaks.set(i, [...(breaks.get(i) ?? []), DEADLOCK]);
+      push(breaks, i, DEADLOCK);
     }
   }
 
@@ -298,7 +308,7 @@ function explore(model: Model) {
     nodes.forEach((_, i) => {
       if (ok.has(i) || unknown.has(i)) return;
       if (!bugs.has(rule)) bugs.set(rule, { rule, kind: "canReach", state: i });
-      breaks.set(i, [...(breaks.get(i) ?? []), rule]);
+      push(breaks, i, rule);
     });
     const blind = [...unknown].filter((i) => !ok.has(i)).length;
     if (blind && !bugs.has(rule)) {
@@ -347,7 +357,11 @@ function labeller(model: Model, r: Result) {
     const to = r.nodes[e.to].s;
     const stepOf = model.step;
     const hook = `step for "${e.action}"`;
-    stepLabel.set(e, stepOf ? guard(hook, from, () => stepOf(e.action, view(from, hook), view(to, hook))) : e.action);
+    const text = stepOf ? guard(hook, from, () => stepOf(e.action, view(from, hook), view(to, hook))) : e.action;
+    if (text !== null && (typeof text !== "string" || text.trim() === "")) {
+      fail(`step() returned ${inspect(text)} for action "${e.action}" from ${show(from)}; return a non-empty string, or null to hide the step`);
+    }
+    stepLabel.set(e, text);
   }
   const groups = r.nodes.map((n) => guard("group", n.s, () => model.group?.(view(n.s, "group")) ?? null));
   return { labels, kind, stepLabel, groups };
@@ -392,10 +406,13 @@ function mermaid(model: Model, r: Result, l: ReturnType<typeof labeller>, keep: 
       const rid = `r${ri}`;
       lines.push(`  state "${esc(k)}" as ${rid} {`);
       const members = new Map<string, number[]>();
-      for (const n of keep) members.set(at(n, k), [...(members.get(at(n, k)) ?? []), n]);
-      for (const [v, ms] of members) {
+      for (const n of keep) push(members, at(n, k), n);
+      // Marks judge every model state behind a chart state, not only the kept ones.
+      const all = new Map<string, number[]>();
+      r.nodes.forEach((_, n) => push(all, at(n, k), n));
+      for (const v of members.keys()) {
         lines.push(`    state "${esc(v)}" as ${id(`${k}\u0000${v}`)}`);
-        mark(id(`${k}\u0000${v}`), ms);
+        mark(id(`${k}\u0000${v}`), all.get(v) as number[]);
       }
       for (const v of new Set([...r.starts].filter((n) => keep.has(n)).map((n) => at(n, k)))) {
         lines.push(`    [*] --> ${id(`${k}\u0000${v}`)}`);
@@ -434,7 +451,9 @@ function mermaid(model: Model, r: Result, l: ReturnType<typeof labeller>, keep: 
     };
     const full = (n: number) => leaf(n).join("\u0000");
     const members = new Map<string, number[]>();
-    for (const n of keep) members.set(full(n), [...(members.get(full(n)) ?? []), n]);
+    for (const n of keep) push(members, full(n), n);
+    const all = new Map<string, number[]>();
+    r.nodes.forEach((_, n) => push(all, full(n), n));
     // Build the parent tree from the label paths.
     type Tree = { kids: Map<string, Tree>; key: string };
     const root: Tree = { kids: new Map(), key: "" };
@@ -460,7 +479,7 @@ function mermaid(model: Model, r: Result, l: ReturnType<typeof labeller>, keep: 
       }
     };
     emit(root, 0);
-    for (const [k, ms] of members) mark(id(k), ms);
+    for (const k of members.keys()) mark(id(k), all.get(k) as number[]);
     for (const k of new Set(r.starts.filter((n) => keep.has(n)).map(full))) lines.push(`[*] --> ${id(k)}`);
     const seen = new Set<string>();
     for (const e of drawn) {
@@ -474,7 +493,7 @@ function mermaid(model: Model, r: Result, l: ReturnType<typeof labeller>, keep: 
       arrows++;
     }
     const ends = new Set<string>();
-    for (const n of keep) if (guard("final", r.nodes[n].s, () => model.final?.(view(r.nodes[n].s, "final")))) ends.add(full(n));
+    for (const n of keep) if (r.nodes[n].final) ends.add(full(n));
     for (const k of ends) lines.push(`${id(k)} --> [*]`);
 
     // Hidden-step checks: each chart state reachable, and one arrow out where the model has a step out.
@@ -589,13 +608,16 @@ const result = explore(model);
 const labels = labeller(model, result);
 const chartStates = new Set(labels.labels.map((x) => canon(x))).size;
 const cut = chartStates > budget;
-const suspect = [
+const modelWarnings = () => [
   ...Object.keys(model.actions)
     .filter((a) => !result.fired.has(a))
     .map((a) => `action ${a} never fired; its guard is probably wrong`),
   ...[...misses]
     .filter(([p]) => !known.has(p))
-    .map(([p, hooks]) => `${[...hooks].join(", ")} read \`${p}\`, which no reachable state has; check the spelling`),
+    .map(
+      ([p, hooks]) =>
+        `${[...hooks].join(", ")} read \`${p}\`, which no reachable state has. Check the spelling; if the field is just never set, give it \`null\` instead of leaving it out, and use a Map for a dictionary keyed by data`,
+    ),
 ];
 let keep = new Set(result.nodes.map((_, i) => i));
 let keepEdges = new Set(result.edges);
@@ -611,10 +633,15 @@ if (cut) {
   }
 }
 const chart = keep.size ? mermaid(model, result, labels, keep, keepEdges) : null;
+// Collected after the chart, so reads from every hook are counted.
+const suspect = modelWarnings();
 const text = report(model, result, labels, chart, cut ? { states: chartStates } : null, suspect);
 await mkdir(outDir, { recursive: true });
 await writeFile(path.join(outDir, "report.md"), text);
 if (chart) await writeFile(path.join(outDir, "chart.mmd"), chart.text);
+process.stdout.on("error", (e: NodeJS.ErrnoException) => {
+  if (e.code !== "EPIPE") fail(`cannot write the report to stdout: ${e.message}`);
+});
 process.stdout.write(text);
 process.stdout.write(`\nWrote ${path.join(outDir, "report.md")}${chart ? ` and ${path.join(outDir, "chart.mmd")}` : ""}\n`);
 // A model that looks wrong is inconclusive whatever it found. Otherwise a found

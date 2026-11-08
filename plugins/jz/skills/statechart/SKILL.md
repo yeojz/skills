@@ -11,11 +11,12 @@ Models a system as a small TypeScript state machine, checks every reachable
 state against rules the reader agrees to, and draws a Mermaid statechart in
 the reader's words. The report gives the shortest path to each broken rule.
 The checker is `statechart.ts` beside this file: plain TypeScript with no
-dependencies, run by Node 22.18+, Bun or Deno. No Java and no TLC.
+dependencies, run directly by Node 22.18+. No Java and no TLC.
 
-Requirements: Node 22.18 or later, Bun 1.1.5 or later, or Deno 2.0 or later
-on `PATH`. The skill installs nothing. When none is found, stop and give the
-user the command to run themselves, such as `mise use -g node@22`.
+Requirements: Node 22.18 or later on `PATH`, and `tsc` for the type-check in
+Step 3. The skill installs nothing. When either is missing, stop and give the
+user the command to run themselves: `mise use -g node@22`, or
+`npm install -g typescript`.
 
 The reader is the person who decides whether the behaviour is right. The
 chart and the rules are written for them, not for the code.
@@ -33,7 +34,9 @@ the thing the chart proves or breaks, so never weaken one to make it hold.
 
 Work in a scratch folder outside the repository. One `.ts` module holds the
 model and the view. Use erasable TypeScript only (types, no `enum` or
-`namespace`), since Node strips types without compiling. A complete example:
+`namespace`), since Node strips types without compiling. Give every action
+its own return type, `(s: S): S | null`: only then does the type-check catch a
+misspelt field the action writes. A complete example:
 
 ```ts
 type S = { phase: "cart" | "paying" | "paid" | "failed"; charged: number; retried: boolean };
@@ -42,11 +45,11 @@ export const title = "Checkout";
 export const init: S = { phase: "cart", charged: 0, retried: false };
 
 export const actions = {
-  Pay: (s: S) => (s.phase === "cart" ? { ...s, phase: "paying" } : null),
-  BankOk: (s: S) => (s.phase === "paying" ? { ...s, phase: "paid", charged: s.charged + 1 } : null),
-  Timeout: (s: S) => (s.phase === "paying" && !s.retried ? { ...s, charged: s.charged + 1, retried: true } : null),
-  BankDeclines: (s: S) => (s.phase === "paying" ? { ...s, phase: "failed" } : null),
-  Retry: (s: S) => (s.phase === "failed" ? { ...s, phase: "cart" } : null),
+  Pay: (s: S): S | null => (s.phase === "cart" ? { ...s, phase: "paying" } : null),
+  BankOk: (s: S): S | null => (s.phase === "paying" ? { ...s, phase: "paid", charged: s.charged + 1 } : null),
+  Timeout: (s: S): S | null => (s.phase === "paying" && !s.retried ? { ...s, charged: s.charged + 1, retried: true } : null),
+  BankDeclines: (s: S): S | null => (s.phase === "paying" ? { ...s, phase: "failed" } : null),
+  Retry: (s: S): S | null => (s.phase === "failed" ? { ...s, phase: "cart" } : null),
 };
 
 export const invariants = { "You are charged at most once": (s: S) => s.charged <= 1 };
@@ -78,24 +81,26 @@ Model rules:
 - Keep only the data a rule or a label needs. Every extra field multiplies the states.
 - A state is a plain object of plain data: objects, arrays, strings, finite numbers, booleans, `null`, Sets and Maps. A `Date`, `NaN`, a bigint, a class instance or a top-level array stops the run.
 - Keep counters and queues bounded. Prefer a cap in the action guard: past a `constraint` nothing is searched, so a stuck loop there can hide.
-- Actions get a copy of the state, so mutating it is harmless, but return a new object.
+- Actions get a watched copy of the state. Build the next state with spreads, never `structuredClone`, which cannot copy it.
+- Give "not set" the value `null` rather than leaving the field out, and key data-dependent dictionaries with a Map; a read of a field no state has is reported as a likely misspelling.
 - Make every function depend only on its arguments. The checker calls each once per state or step.
 - A state with no step out breaks the built-in dead-end rule unless `final` covers it. A step back to the same state does not count as a way out.
 - `canReach` says a goal is still possible, not that it will happen; there is no fairness.
 
 ### Step 3: Run the checker
 
-Node runs the model without checking its types, so type-check it first when a
-checker is on `PATH`, and fix every error:
+Node runs the model without checking its types, so type-check it first and fix
+every error, then run the checker:
 
 ```bash
-deno check model.ts
+tsc --noEmit --strict model.ts
 <skill dir>/statechart model.ts --out out-1
 ```
 
-With no `deno`, use `tsc --noEmit --strict model.ts` if `tsc` is installed;
-otherwise skip the type-check. The checker also reports any field a hook
-reads that no reachable state has, which catches most misspellings.
+When `tsc` is not on `PATH`, stop and ask the user to run
+`npm install -g typescript`; never fetch it with `npx`. The checker also
+reports any field a hook reads that no reachable state has. That catches a
+misspelt read but not a misspelt write, which only the type-check catches.
 
 `<skill dir>` is the directory holding this SKILL.md. Flags: `--max-states N`
 stops the search (default 100000), `--budget N` is the chart limit (default

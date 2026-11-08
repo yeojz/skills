@@ -19,4 +19,4 @@ the marketplace and the plugin.
   title becomes the commit on `main`.
 - Open PRs as drafts.
 - Never commit plans or `.claude/`. The `.gitignore` covers them, and the
-  `no-claude-artifacts.sh` hook blocks staging them from an agent session.
+  `no-claude-artifacts` guard blocks staging them from an agent session.

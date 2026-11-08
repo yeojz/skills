@@ -30,9 +30,9 @@
 - Never pass `--no-verify`.
 - Fix what the hook reports instead of bypassing it.
 
-- Commit, push and open PRs through the `pr` skill, in the mode the request named. These rules summarise it and do not replace it; the `require-pr-skill.sh` hook denies `git commit`, `git push` and `gh pr create` until the skill has been loaded.
+- Commit, push and open PRs through the `pr` skill, in the mode the request named. These rules summarise it and do not replace it; the `require-pr-skill` guard denies `git commit`, `git push` and `gh pr create` until the skill has been loaded.
 - Push a branch and open a draft PR without asking; both can be withdrawn. Force-push only with `--force-with-lease=<branch>:<sha>`, which fails safe and needs no question. Ask before marking a PR ready and any other force push; one go-ahead that names them covers everything it names.
-- Never push to the default branch, `main`, `master` or `develop`, and never merge a PR or arm auto-merge, even when asked; the owner merges on GitHub. The `protect-default-branches.sh` hook denies both.
+- Never push to the default branch, `main`, `master` or `develop`, and never merge a PR or arm auto-merge, even when asked; the owner merges on GitHub. The `protect-default-branches` guard denies both.
 - Mark a PR ready only when the go-ahead or the brief named it, and only after `verify` passes on the pushed head and no check has failed.
 - Never force-push without first stating exactly which commits will be discarded.
 - Never rewrite history that is already on a shared branch without asking.

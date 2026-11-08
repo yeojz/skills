@@ -1,47 +1,30 @@
-#!/usr/bin/env bash
-# PreToolUse hook (matcher: Bash).
-#
-# Denies git commit, git push and gh pr create until the session has loaded
-# the pr skill. The skill holds the procedure around those commands: verify
-# before the commit, the body written from the diff, the ancestor check
-# before a rebase, the tip checks before a branch is deleted. Nothing routes a request
-# to it, since a skill description is a suggestion the model weighs, and in
-# every recent session where no one named the skill it stayed unloaded while
-# the house rules were in context. A hook runs whether or not anyone
-# remembers.
-#
-# The transcript the payload names is the evidence: a Skill tool call whose
-# skill is `pr` or `<plugin>:pr` and whose result did not report an
-# error, or a typed `/pr` command. A call that failed or has no result yet
-# unlocks nothing, since the procedure never reached the session. A typed
-# command reaches the transcript inside a `<command-name>` tag only when the
-# skill is installed; one that is not arrives as plain text and the skill body
-# never follows it, so the tag is the evidence on that path. A payload
-# without a transcript path, from another host, the test suite or a headless
-# run, is allowed through, so the gate holds on Claude Code only until another
-# host's payload is known to carry one. A subagent is judged on its own
-# transcript, since the parent's loaded steps are not in its context.
-#
-# Reads the PreToolUse event JSON on stdin. Exit 0 allows, exit 2 denies.
-set -uo pipefail
+"""Deny git commit, git push and gh pr create until the session has loaded the pr skill.
 
-payload="$(cat)"
+The skill holds the procedure around those commands: verify before the
+commit, the body written from the diff, the ancestor check before a rebase,
+the tip checks before a branch is deleted. A skill description is a
+suggestion the model weighs, and in every recent session where no one named
+the skill it stayed unloaded while the house rules were in context. A guard
+runs whether or not anyone remembers.
 
-case "$payload" in
-  *git*|*gh*) ;;
-  *) exit 0 ;;
-esac
+The transcript the payload names is the evidence: a Skill tool call whose
+skill is `pr` or `<plugin>:pr` and whose result did not report an error, or
+a typed `/pr` command. A call that failed or has no result yet unlocks
+nothing. A typed command reaches the transcript inside a `<command-name>`
+tag only when the skill is installed. A payload without a transcript path,
+from another host, the test suite or a headless run, is allowed through, so
+the gate holds on Claude Code only. A subagent is judged on its own
+transcript, since the parent's loaded steps are not in its context.
+"""
 
-command -v python3 >/dev/null 2>&1 || exit 0
-
-inspector="$(cat <<'PY'
 import json
 import os
 import re
-import sys
 
-sys.path.insert(0, sys.argv[1])
-from command_lines import commands_in, git_call  # noqa: E402
+from command_lines import git_call
+from guards import Deny
+
+NAME = "require-pr-skill"
 
 GATED_GIT = {"commit", "push"}
 PR = re.compile(r"(^|:)pr$")
@@ -118,36 +101,22 @@ def pr_loaded(path):
     return False
 
 
-try:
-    event = json.load(sys.stdin)
-    command = event.get("tool_input", {}).get("command", "")
-    transcript = event.get("transcript_path")
-except Exception:
-    sys.exit(0)
-if not isinstance(command, str):
-    sys.exit(0)
-
-try:
-    gated = any(gated_call(argv) for argv, _ in commands_in(command))
-except ValueError:
-    gated = bool(RAW_GATED.search(command))
-if not gated:
-    sys.exit(0)
-
-if not isinstance(transcript, str) or not os.path.isfile(transcript):
-    sys.exit(0)
-try:
-    if pr_loaded(transcript):
-        sys.exit(0)
-except OSError:
-    sys.exit(0)
-
-print("Blocked: git commit, git push and gh pr create run through the pr skill, "
-      "and this session has not loaded it.", file=sys.stderr)
-print("Load it first: call the Skill tool with skill \"jz:pr\", or type /jz:pr, "
-      "then run the command again in the mode the request asked for.", file=sys.stderr)
-sys.exit(2)
-PY
-)"
-
-printf '%s' "$payload" | python3 -B -c "$inspector" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+def check(context):
+    if context.calls is None:
+        gated = bool(RAW_GATED.search(context.command))
+    else:
+        gated = any(gated_call(argv) for argv, _, _ in context.calls)
+    if not gated:
+        return None
+    transcript = context.transcript_path
+    if not isinstance(transcript, str) or not os.path.isfile(transcript):
+        return None
+    try:
+        if pr_loaded(transcript):
+            return None
+    except OSError:
+        return None
+    return Deny("Blocked: git commit, git push and gh pr create run through the pr skill, "
+                "and this session has not loaded it.",
+                "Load it first: call the Skill tool with skill \"jz:pr\", or type /jz:pr, "
+                "then run the command again in the mode the request asked for.")

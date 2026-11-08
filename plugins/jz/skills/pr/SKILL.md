@@ -30,9 +30,9 @@ push, a push never becomes a PR, a PR never becomes ready.
 A push, a draft PR and a force push pinned with
 `--force-with-lease=<branch>:<sha>` need no question beyond the request.
 Ready and any other force push wait for a go-ahead that names them; the
-`confirm-remote-writes.sh` hook asks the host for those, so do not ask again
+`confirm-remote-writes` guard asks the host for those, so do not ask again
 in prose. Merging a PR and pushing to the default branch are the owner's;
-`protect-default-branches.sh` denies both.
+`protect-default-branches` guard denies both.
 
 ## Workflow
 
@@ -134,7 +134,7 @@ gh pr ready <n>
 
 ### Rebase
 
-Rebase, never merge; the `rebase-not-merge.sh` hook enforces it. First prove
+Rebase, never merge; the `rebase-not-merge` guard enforces it. First prove
 the local branch holds everything on the remote:
 
 ```bash

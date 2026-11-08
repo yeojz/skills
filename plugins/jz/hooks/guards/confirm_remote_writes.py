@@ -1,43 +1,22 @@
-#!/usr/bin/env bash
-# PreToolUse hook (matcher: Bash).
-#
-# Asks for confirmation before a remote write that is hard to take back or
-# that signals reviewers: opening a pull request ready for review, marking one
-# ready, and a force push that is not pinned to the sha it replaces. A branch
-# push, a draft pull request and a `--force-with-lease=<ref>:<sha>` push can
-# be withdrawn or fail safe, and pass without a prompt. Merging a pull request
-# and pushing to a default branch are denied outright by
-# protect-default-branches.sh. A plugin cannot add permissions.ask entries to
-# the host's settings, so the ask lives here instead.
-#
-# The command line is split by command_lines.py, the parser every hook shares,
-# so a line continuation, a quoted separator, a comment or a wrapper such as
-# `timeout 30` is read the way the shell will read it.
-#
-# Reads the PreToolUse event JSON on stdin. Prints an "ask" decision for a
-# matching call and nothing otherwise. Always exits 0: the decision is in the
-# output, and a hook failure must never block an ordinary Bash call.
-set -uo pipefail
+"""Ask before a remote write that is hard to take back or that signals reviewers.
 
-payload="$(cat)"
+Opening a pull request ready for review, marking one ready, and a force push
+that is not pinned to the sha it replaces. A branch push, a draft pull
+request and a `--force-with-lease=<ref>:<sha>` push can be withdrawn or fail
+safe, and pass without a prompt. Merging a pull request and pushing to a
+default branch are denied outright by protect_default_branches. A plugin
+cannot add permissions.ask entries to the host's settings, so the ask lives
+here instead.
+"""
 
-# Cheap pre-filter, so an ordinary shell call does not pay for a python start-up.
-case "$payload" in
-  *gh*|*git*) ;;
-  *) exit 0 ;;
-esac
-
-command -v python3 >/dev/null 2>&1 || exit 0
-
-inspector="$(cat <<'PY'
-import json
 import re
-import sys
 
-sys.path.insert(0, sys.argv[1])
-from command_lines import commands_in, git_call  # noqa: E402
-from git_push import resolve_push_long_option  # noqa: E402
-from gh_options import final_bool_option, gh_command  # noqa: E402
+from command_lines import git_call
+from gh_options import final_bool_option, gh_command
+from git_push import resolve_push_long_option
+from guards import Ask
+
+NAME = "confirm-remote-writes"
 
 SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 # A lease expectation git cannot re-resolve: a full object id, or empty for
@@ -124,35 +103,13 @@ def reason_for(argv):
     return None
 
 
-def ask(reason):
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
-            "permissionDecisionReason": reason,
-        }
-    }))
-
-
-try:
-    event = json.load(sys.stdin)
-    command = event.get("tool_input", {}).get("command", "")
-except Exception:
-    sys.exit(0)
-if not isinstance(command, str):
-    sys.exit(0)
-
-try:
-    for argv, _ in commands_in(command):
+def check(context):
+    if context.calls is None:
+        if RAW_REMOTE_WRITE.search(context.command):
+            return Ask("The command could not be parsed and looks like a remote write; confirm first.")
+        return None
+    for argv, _, _ in context.calls:
         reason = reason_for(argv)
         if reason:
-            ask(reason)
-            break
-except ValueError:
-    if RAW_REMOTE_WRITE.search(command):
-        ask("The command could not be parsed and looks like a remote write; confirm first.")
-PY
-)"
-
-printf '%s' "$payload" | python3 -B -c "$inspector" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exit 0
+            return Ask(reason)
+    return None

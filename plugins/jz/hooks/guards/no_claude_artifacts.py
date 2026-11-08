@@ -1,49 +1,21 @@
-#!/usr/bin/env bash
-# PreToolUse hook (matcher: Bash).
-#
-# Blocks any git call that would stage or commit Claude Code working artifacts.
-# These stay local and never reach a commit.
-#
-# The decision is delegated to git. The arguments of the command are replayed
-# through `git add --dry-run` and `git commit --dry-run --porcelain`, and the
-# paths git reports are matched against the forbidden pattern. Deciding what a
-# token means by how it is spelled cannot survive globs, pathspec magic, parent
-# directories or `-A`; asking git costs one process and resolves all of them.
-# A dry run touches neither the index nor the object store and runs no hooks.
-#
-# Reads the PreToolUse event JSON on stdin. Exit 0 allows, exit 2 denies.
-set -uo pipefail
+"""Deny any git call that would stage or commit a Claude Code working artifact.
 
-payload="$(cat)"
-
-# Cheap pre-filter, so an ordinary shell call does not pay for a python start-up.
-case "$payload" in
-  *git*) ;;
-  *) exit 0 ;;
-esac
-
-# Deny rather than fail open, but only for calls that mention git: a missing
-# interpreter must not block every Bash call in the session.
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "Blocked: no-claude-artifacts hook needs python3 on PATH to inspect git calls." >&2
-  exit 2
-fi
-
-inspector="$(cat <<'PY'
-"""Decide whether a Bash tool call would stage or commit a Claude working artifact.
-
-Reads the PreToolUse payload on stdin. Exits 2 with a reason on stderr to deny
-the call, exits 0 to allow it.
+The decision is delegated to git: the arguments are replayed through
+`git add --dry-run` and `git commit --dry-run --porcelain`, and the paths git
+reports are matched against the forbidden pattern. Deciding what a token
+means by how it is spelled cannot survive globs, pathspec magic, parent
+directories or `-A`; asking git costs one process and resolves all of them.
+A dry run touches neither the index nor the object store and runs no hooks.
 """
 
-import json
 import os
 import re
 import subprocess
-import sys
 
-sys.path.insert(0, sys.argv[1])
-from command_lines import commands_with_directory, git_call, start_directory  # noqa: E402
+from command_lines import git_call
+from guards import Deny
+
+NAME = "no-claude-artifacts"
 
 FORBIDDEN = re.compile(r"(^|/)(\.claude|docs/plans|\.plans)(/|$)")
 
@@ -74,7 +46,7 @@ class Unresolvable(Exception):
     """git could not answer for this call, so the working tree is all we have."""
 
 
-def plan_checks(command_line, directory):
+def plan_checks(calls):
     """Collect every git add, stage or commit the command line would run.
 
     The shared parser resolves each command's directory, so a leading `cd`,
@@ -82,7 +54,7 @@ def plan_checks(command_line, directory):
     they point.
     """
     checks = []
-    for argv, via_xargs, command_directory in commands_with_directory(command_line, directory):
+    for argv, via_xargs, command_directory in calls:
         call = git_call(argv, command_directory)
         if call is None:
             continue
@@ -185,79 +157,46 @@ def unquote(path):
 
 def deny(offenders, unparsed):
     report = sorted(set(offenders))[:MAX_REPORTED]
-    print("Blocked: this would stage or commit Claude Code working artifacts.", file=sys.stderr)
-    print(file=sys.stderr)
-    for path in report:
-        print("  " + path, file=sys.stderr)
-    print(file=sys.stderr)
+    lines = ["Blocked: this would stage or commit Claude Code working artifacts.", ""]
+    lines += ["  " + path for path in report]
+    lines.append("")
     if unparsed:
-        print("The command could not be parsed, so the working tree was checked instead.",
-              file=sys.stderr)
-    print("These paths are never committed. Unstage them first:", file=sys.stderr)
-    print("  git reset HEAD -- .claude docs/plans .plans", file=sys.stderr)
-    print("and add them to .gitignore if they are not there already.", file=sys.stderr)
-    sys.exit(2)
+        lines.append("The command could not be parsed, so the working tree was checked instead.")
+    lines += ["These paths are never committed. Unstage them first:",
+              "  git reset HEAD -- .claude docs/plans .plans",
+              "and add them to .gitignore if they are not there already."]
+    return Deny(*lines)
 
 
 def forbidden(paths):
     return [path for path in paths if FORBIDDEN.search(path)]
 
-
-def read_payload():
+def check(context):
+    if "git" not in context.command:
+        return None
+    directory = context.start
     try:
-        payload = json.load(sys.stdin)
-    except ValueError:
-        return "", ""
-    if not isinstance(payload, dict):
-        return "", ""
-    tool_input = payload.get("tool_input")
-    command = tool_input.get("command") if isinstance(tool_input, dict) else None
-    cwd = payload.get("cwd")
-    return (command if isinstance(command, str) else "",
-            cwd if isinstance(cwd, str) else "")
-
-
-def deny_if_any(offenders, unparsed):
-    if offenders:
-        deny(offenders, unparsed)
-
-
-def main():
-    command_line, cwd = read_payload()
-    if "git" not in command_line:
-        return
-    directory = start_directory(cwd)
-
-    try:
-        checks = plan_checks(command_line, directory)
-    except ValueError:
-        # Unbalanced quotes. Fall back to the tree, and deny only a real offender.
-        if is_repository(directory):
-            deny_if_any(forbidden(dirty_paths(directory)), unparsed=True)
-        return
-
-    offenders = []
-    unparsed = False
-    for kind, check_directory, args, via_xargs in checks:
-        if not is_repository(check_directory):
-            continue
-        resolve = staged_by_add if kind == "add" else committed_by_commit
-        try:
-            offenders.extend(forbidden(resolve(check_directory, args, via_xargs)))
-        except Unresolvable:
-            unparsed = True
-            offenders.extend(forbidden(dirty_paths(check_directory)))
-    deny_if_any(offenders, unparsed)
-
-
-try:
-    main()
-except GitMissing:
-    pass
-except Unresolvable:
-    # Even the fallback could not run. Nothing observed, nothing to block.
-    pass
-PY
-)"
-
-printf '%s' "$payload" | python3 -B -c "$inspector" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        if context.calls is None:
+            # Unbalanced quotes. Fall back to the tree, and deny only a real offender.
+            if is_repository(directory):
+                offenders = forbidden(dirty_paths(directory))
+                if offenders:
+                    return deny(offenders, unparsed=True)
+            return None
+        offenders = []
+        unparsed = False
+        for kind, check_directory, args, via_xargs in plan_checks(context.calls):
+            if not is_repository(check_directory):
+                continue
+            resolve = staged_by_add if kind == "add" else committed_by_commit
+            try:
+                offenders.extend(forbidden(resolve(check_directory, args, via_xargs)))
+            except Unresolvable:
+                unparsed = True
+                offenders.extend(forbidden(dirty_paths(check_directory)))
+        if offenders:
+            return deny(offenders, unparsed)
+    except (GitMissing, Unresolvable):
+        # No git, or even the fallback could not run. Nothing observed, nothing to block.
+        pass
+    return None

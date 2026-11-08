@@ -1,67 +1,34 @@
-#!/usr/bin/env bash
-# PreToolUse hook (matcher: Bash).
-#
-# Scans the commits a `git push` would publish for secrets before they leave
-# the machine. A branch push no longer waits for the owner, and a pushed commit
-# cannot be scrubbed: GitHub keeps it retrievable by sha after the branch is
-# deleted. This scan is the last look before content goes public.
-#
-# Which refs the push would update is read from the repository alone, by
-# git_push.py: the operands, else remote.<name>.push, else push.default for
-# the current branch, with --all, --mirror and wildcards expanded over the
-# local refs. The commits scanned are the ones reachable from the pushed refs
-# but not from that remote's tracking refs; another remote having a commit
-# does not make it public here. When the destination is a URL, or the remote
-# has a pushurl, no tracking ref describes it and every remote's refs are
-# excluded instead. A tracking ref can be behind the remote, so this scans a
-# little more than git would publish, never less. Merge commits are rendered
-# against their first parent, so a secret introduced in a conflict resolution
-# is in the stream. The patches and messages are piped to betterleaks when it
-# is on PATH, else to gitleaks, since both read stdin and share their config
-# files; with neither installed a small builtin set of token shapes runs
-# instead. Nothing is installed by this hook. A finding produces an "ask"
-# decision that names the rule, the commit and the file, so a fixture that
-# looks like a key is a question for the owner, never a wall. When the push
-# cannot be resolved, the hook asks rather than guessing.
-#
-# Nothing is asked of the remote and nothing the caller named is run: a push
-# dry run would spawn receive-pack and the ssh command the caller chooses
-# with --receive-pack, --exec or -c core.sshCommand, before the owner has
-# approved the call. A -c or --config-env override of remote.*, push.*,
-# branch.* or url.* cannot be followed and asks; the setting belongs in the
-# repository's configuration. The patch is rendered with external diff
-# drivers and textconv off, so no configured helper runs either.
-#
-# The command line is split by command_lines.py, the parser every hook shares,
-# and each push is scanned in the repository it targets, after any `cd` or
-# `git -C`.
-#
-# Reads the PreToolUse event JSON on stdin. Prints an "ask" decision for a
-# push with findings and nothing otherwise. Always exits 0: the decision is in
-# the output, and a hook failure must never block an ordinary Bash call.
-set -uo pipefail
+"""Ask before a push whose commits carry something that looks like a secret.
 
-payload="$(cat)"
+A branch push no longer waits for the owner, and a pushed commit cannot be
+scrubbed: GitHub keeps it retrievable by sha after the branch is deleted.
+This scan is the last look before content goes public.
 
-# Cheap pre-filter, so an ordinary shell call does not pay for a python start-up.
-case "$payload" in
-  *push*) ;;
-  *) exit 0 ;;
-esac
+Which refs the push would update is read from the repository alone, by
+git_push.resolve_push. The commits scanned are the ones reachable from the
+pushed refs but not from that remote's tracking refs; when the destination
+is a URL, or the remote has a pushurl, every remote's refs are excluded
+instead. Merge commits are rendered against their first parent, with
+external diff drivers and textconv off. The patches and messages go to
+betterleaks when it is on PATH, else to gitleaks, since both read stdin and
+share their config files; with neither installed a small builtin set of
+token shapes runs instead. Nothing is installed. A finding asks, naming the
+rule, the commit and the file, so a fixture that looks like a key is a
+question for the owner, never a wall. When the push cannot be resolved, the
+guard asks rather than guessing.
+"""
 
-command -v python3 >/dev/null 2>&1 || exit 0
-
-inspector="$(cat <<'PY'
 import json
 import os
 import re
 import shutil
 import subprocess
-import sys
 
-sys.path.insert(0, sys.argv[1])
-from command_lines import commands_with_directory, git_call, git_config_overrides, git_location_options, start_directory  # noqa: E402
-from git_push import resolve_commit, resolve_push, run_git, unfollowed_config_override  # noqa: E402
+from command_lines import git_call, git_config_overrides, git_location_options
+from git_push import resolve_commit, resolve_push, run_git, unfollowed_config_override
+from guards import Ask
+
+NAME = "scan-secrets-before-push"
 
 SCANNERS = ("betterleaks", "gitleaks")
 SCANNER_FINDINGS_EXIT = 3
@@ -188,16 +155,6 @@ def scan_builtin(patch):
     return findings
 
 
-def ask(reason):
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
-            "permissionDecisionReason": reason,
-        }
-    }))
-
-
 def scan_incomplete(error):
     return ("The secret scan did not complete (" + error + "), so the commits this push would "
             "publish are unscanned. Confirm the push or fix the cause.")
@@ -241,30 +198,18 @@ def reason_for_push(directory, options, args, config_overrides):
             "Confirm only if these are not credentials." % (source, named, more))
 
 
-try:
-    event = json.load(sys.stdin)
-    command = event.get("tool_input", {}).get("command", "")
-    cwd = event.get("cwd", "")
-except Exception:
-    sys.exit(0)
-if not isinstance(command, str):
-    sys.exit(0)
-start = start_directory(cwd)
-
-try:
-    for argv, _, directory in commands_with_directory(command, start):
+def check(context):
+    if "push" not in context.command:
+        return None
+    if context.calls is None:
+        if RAW_PUSH.search(context.command):
+            return Ask("The command could not be parsed and looks like a push, so its commits were not scanned for secrets; confirm first.")
+        return None
+    for argv, _, directory in context.calls:
         call = git_call(argv, directory)
         if call is None or call[0] != "push":
             continue
         reason = reason_for_push(call[2], git_location_options(argv), call[1], git_config_overrides(argv))
         if reason:
-            ask(reason)
-            break
-except ValueError:
-    if RAW_PUSH.search(command):
-        ask("The command could not be parsed and looks like a push, so its commits were not scanned for secrets; confirm first.")
-PY
-)"
-
-printf '%s' "$payload" | python3 -B -c "$inspector" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exit 0
+            return Ask(reason)
+    return None

@@ -1,60 +1,34 @@
-#!/usr/bin/env bash
-# PreToolUse hook (matcher: Bash).
-#
-# Denies the two ways an agent could move a default branch itself: a push
-# that updates or deletes one, and merging a pull request. The default branch
-# moves only when the owner merges a reviewed pull request on GitHub, so both
-# are the owner's to run, never an agent's, whatever the go-ahead says. A
-# command the owner types with `!` does not pass through this hook.
-#
-# A protected branch is main, master, develop or trunk, and whatever
-# refs/remotes/origin/HEAD names. Which refs a push updates is read from the
-# repository alone, by git_push.py: the operands, else remote.<name>.push,
-# else push.default for the current branch, with --all, --mirror and
-# --delete, and a branch whose tracking ref already holds the pushed commit
-# is left alone. Nothing is asked of the remote and nothing the caller named
-# is run: a dry run would spawn receive-pack and the ssh command the caller
-# chooses, before the owner has approved the call. A -c or --config-env
-# override of remote.*, push.*, branch.* or url.* cannot be followed and is
-# denied; the setting belongs in the repository's configuration.
-#
-# A merge is `gh pr merge`, which arms auto-merge too, unless its final
-# --disable-auto is true; `gh api` with a write to pulls/<n>/merge or to the
-# repository merges endpoint; and a GraphQL call carrying mergePullRequest,
-# enablePullRequestAutoMerge or mergeBranch, inline, in an --input file or in
-# a typed `-F key=@file` field. A query read from standard input cannot be
-# inspected and is denied. This is a guardrail against a
-# mistake, not a wall: branch protection on GitHub is what holds.
-#
-# The command line is split by command_lines.py, the parser every hook shares,
-# and each command is judged in the directory it runs in.
-#
-# Reads the PreToolUse event JSON on stdin. Exit 0 allows, exit 2 denies.
-set -uo pipefail
+"""Deny the two ways an agent could move a default branch itself: a push that updates or deletes one, and merging a pull request.
 
-payload="$(cat)"
+The default branch moves only when the owner merges a reviewed pull request
+on GitHub, so both are the owner's to run, never an agent's, whatever the
+go-ahead says. A command the owner types with `!` does not pass through the
+hook.
 
-# Cheap pre-filter, so an ordinary shell call does not pay for a python start-up.
-case "$payload" in
-  *push*|*merge*|*Merge*|*graphql*) ;;
-  *) exit 0 ;;
-esac
+A protected branch is main, master, develop or trunk, and whatever
+refs/remotes/origin/HEAD names. Which refs a push updates is read from the
+repository alone, by git_push.resolve_push; nothing is asked of the remote
+and nothing the caller named is run. A -c or --config-env override of
+remote.*, push.*, branch.* or url.* cannot be followed and is denied.
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "Blocked: protect-default-branches hook needs python3 on PATH to inspect git and gh calls." >&2
-  exit 2
-fi
+A merge is `gh pr merge`, which arms auto-merge too, unless its final
+--disable-auto is true; `gh api` with a write to pulls/<n>/merge or to the
+repository merges endpoint; and a GraphQL call carrying mergePullRequest,
+enablePullRequestAutoMerge or mergeBranch, inline, in an --input file or in
+a typed `-F key=@file` field. A query read from standard input cannot be
+inspected and is denied. This is a guardrail against a mistake, not a wall:
+branch protection on GitHub is what holds.
+"""
 
-inspector="$(cat <<'PY'
-import json
 import os
 import re
-import sys
 
-sys.path.insert(0, sys.argv[1])
-from command_lines import commands_with_directory, git_call, git_config_overrides, git_location_options, start_directory  # noqa: E402
-from git_push import HEADS, resolve_commit, resolve_push, run_git, unfollowed_config_override  # noqa: E402
-from gh_options import final_bool_option, gh_command  # noqa: E402
+from command_lines import git_call, git_config_overrides, git_location_options
+from gh_options import final_bool_option, gh_command
+from git_push import HEADS, resolve_commit, resolve_push, run_git, unfollowed_config_override
+from guards import Deny
+
+NAME = "protect-default-branches"
 
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 
@@ -85,10 +59,7 @@ GH_API_TYPED_FIELD_OPTIONS = {"-F", "--field"}
 RAW_MERGE = re.compile(r"\bgh\b.*\bpr\s+merge\b")
 RAW_PUSH = re.compile(r"\bgit\b.*\bpush\b.*(\s|:|\+|/)(main|master|develop|trunk)\b|\bgit\b.*\bpush\b.*\s--(all|mirror|branches)\b")
 
-protected_by_directory = {}
-
-
-def protected_branches(directory, options):
+def protected_branches(directory, options, protected_by_directory):
     if directory not in protected_by_directory:
         names = set(COMMON_DEFAULTS)
         out = run_git(directory, options, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"])
@@ -102,12 +73,12 @@ def branch_name(ref):
     return ref[len(HEADS):] if ref.startswith(HEADS) else ref
 
 
-def reason_for_push(directory, options, args, config_overrides):
+def reason_for_push(directory, options, args, config_overrides, cache):
     override = unfollowed_config_override(config_overrides)
     if override:
         return ("This push carries %s, which changes where or what it publishes, and a command-line "
                 "configuration override is not followed; put the setting in the repository's configuration." % override)
-    protected = protected_branches(directory, options)
+    protected = protected_branches(directory, options, cache)
     push, error = resolve_push(directory, options, args)
     if error:
         # Unresolved is not safe: a token naming a protected branch is enough to deny.
@@ -213,42 +184,32 @@ def reason_for_gh(words, args, directory):
     return None
 
 
-def reason_for(argv, directory):
+def reason_for(argv, directory, cache):
     gh = gh_command(argv)
     if gh is not None:
         return reason_for_gh(gh[0], gh[1], directory)
     call = git_call(argv, directory)
     if call is not None and call[0] == "push":
-        return reason_for_push(call[2], git_location_options(argv), call[1], git_config_overrides(argv))
+        return reason_for_push(call[2], git_location_options(argv), call[1], git_config_overrides(argv), cache)
     return None
 
 
 def deny(reason):
-    print("Blocked: " + reason, file=sys.stderr)
-    print("Push the work to its own branch and open a pull request; the owner merges it.", file=sys.stderr)
-    sys.exit(2)
+    return Deny("Blocked: " + reason,
+                "Push the work to its own branch and open a pull request; the owner merges it.")
 
 
-try:
-    event = json.load(sys.stdin)
-    command = event.get("tool_input", {}).get("command", "")
-    cwd = event.get("cwd", "")
-except Exception:
-    sys.exit(0)
-if not isinstance(command, str):
-    sys.exit(0)
-start = start_directory(cwd)
-
-try:
-    for argv, _, directory in commands_with_directory(command, start):
-        reason = reason_for(argv, directory)
+def check(context):
+    command = context.command
+    if not re.search(r"push|merge|Merge|graphql", command):
+        return None
+    if context.calls is None:
+        if RAW_MERGE.search(command) or MERGE_MUTATIONS.search(command) or RAW_PUSH.search(command):
+            return deny("The command could not be parsed and looks like a merge or a push to a default branch.")
+        return None
+    cache = {}
+    for argv, _, directory in context.calls:
+        reason = reason_for(argv, directory, cache)
         if reason:
-            deny(reason)
-except ValueError:
-    if RAW_MERGE.search(command) or MERGE_MUTATIONS.search(command) or RAW_PUSH.search(command):
-        deny("The command could not be parsed and looks like a merge or a push to a default branch.")
-sys.exit(0)
-PY
-)"
-
-printf '%s' "$payload" | python3 -B -c "$inspector" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            return deny(reason)
+    return None

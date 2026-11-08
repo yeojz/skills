@@ -154,7 +154,7 @@ plugins/jz/                       the agent-agnostic plugin
 
 ### Skills
 
-Twelve skills, in three groups. The workflow runs in this order:
+Thirteen skills, in three groups. The workflow runs in this order:
 
 ```
 grill  ->  criteria  ->  implement  ->  verify  ->  pr  ->  review
@@ -191,6 +191,7 @@ out.
 |---|---|
 | `debug` | Reproduce, instrument, trace to the root cause, a failing test first, one fix at a time |
 | `guard-deps` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
+| `statechart` | Model a flow or protocol as a small TypeScript state machine, check every reachable state against the reader's rules, and draw a Mermaid statechart with the shortest path to each broken rule; no Java |
 | `sync-docs` | Bring READMEs, guides and doc comments back in line with the code |
 
 #### Self-improvement

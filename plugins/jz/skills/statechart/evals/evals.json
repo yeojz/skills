@@ -1,0 +1,57 @@
+{
+  "skill_name": "statechart",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/statechart Our checkout retries the charge when the bank call times out. Can a customer ever be charged twice? Draw it for the product manager.",
+      "expected_output": "States the rules in the reader's words and asks the reader to confirm them before modelling, writes a small TypeScript model in a scratch folder outside the repo, runs the bundled statechart checker, reads the report, shapes labels in the product manager's words, and hands off the Mermaid chart with one line per broken rule and its numbered path, plus what the model leaves out.",
+      "files": [],
+      "expectations": [
+        "Lists the rules in plain language, such as 'you are charged at most once', and asks the user to confirm them before writing the model",
+        "Writes the model as a TypeScript module in a scratch folder outside the repository, not as TLA+",
+        "Runs the statechart script from the skill directory with an --out folder and does not install or invoke Java or TLC",
+        "Quotes the report's BREAKS line and the numbered path for the double-charge rule",
+        "Shows chart.mmd as a mermaid code block whose state and arrow labels contain no variable or action names",
+        "Says what the model leaves out"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Model the upload job queue: a job can be queued, running, retrying or done, and workers can crash mid-job. Is there any state a job can get stuck in?",
+      "expected_output": "Models the queue with a bounded number of jobs and retries, exports final for the done state so it is not a dead end, uses canReach to check that done is always still reachable, runs the checker, and reports either the stuck path or that both rules hold, noting the check is reachability without fairness.",
+      "files": [],
+      "expectations": [
+        "Bounds retries or jobs in the action guards or with a constraint export",
+        "Exports final so that a finished job is not reported as a dead end",
+        "Uses canReach for 'a job can always still finish' rather than only an invariant",
+        "Reports the dead-end and canReach rule results from the report, with the path when one breaks",
+        "States that canReach shows finishing is still possible, not that it is guaranteed under fairness"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The statechart for the media player has 34 arrows and nobody can read it. Make it readable.",
+      "expected_output": "Coarsens state labels first, keeps states that break different rules apart and keeps bug path states visible, only then hides steps with step returning null, reruns with a new --out folder, checks Chart warnings, and lists the hidden steps in the hand-off.",
+      "files": [],
+      "expectations": [
+        "Changes state() to merge labels before hiding any step",
+        "Does not merge chart states that break different rules and keeps every bug path state",
+        "Hides steps only by returning null from step(), for every step of that arrow",
+        "Reruns with a new --out folder and reads the Chart warnings section",
+        "Lists the hidden steps in the hand-off"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The statechart run exited 2. The report says the order-sync rule holds, but its Model warnings section says 'action ShipmentArrives never fired'. Can we ship the chart?",
+      "expected_output": "Does not accept the holds result, explains that an action that never fired usually means a wrong guard that hides behaviour, fixes the guard and reruns before claiming anything holds.",
+      "files": [],
+      "expectations": [
+        "Says the holds result cannot be trusted while ShipmentArrives never fires",
+        "Reads the ShipmentArrives guard in the model and identifies why it is never true",
+        "Reruns the checker after the fix and quotes the new rule results",
+        "Does not claim the rule holds before the rerun"
+      ]
+    }
+  ]
+}

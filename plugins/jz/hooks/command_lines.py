@@ -338,7 +338,9 @@ def commands_with_directory(command_line, directory, depth=0):
     runs in a subshell of its own and moves nothing. A variable assigned on the
     line, such as `m=/repo; git -C "$m" ...`, is expanded in the commands after
     it under the same scoping. The lexer has already dropped the quotes, so a
-    `$m` inside single quotes is expanded too. `git -C` is not applied here;
+    `$m` inside single quotes is expanded too. Like a `cd`, an assignment
+    behind `&&` or `||` is taken to run, since dropping it would leave the
+    path unresolved and the command judged nowhere. `git -C` is not applied here;
     git_call resolves it per call. Raises ValueError on unbalanced quotes.
     """
     scopes = [directory]

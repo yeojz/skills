@@ -425,6 +425,7 @@ deny "\"m=$FIXTURE && cd \\\"\${m}\\\" && git merge --ff-only origin/main\"" "ff
 deny "\"export m=child; git -C \\\"\$m\\\" merge origin/stable\"" "merge stable behind -C \"\$m\" child" 2 rebase-not-merge.sh
 deny '"m=child; (m=.); cd \"$m\" && git merge origin/stable"' "a subshell assignment does not leak" 2 rebase-not-merge.sh
 deny '"m=child | true; cd \"$m\" && git merge origin/stable"' "a piped assignment does not leak" 0 rebase-not-merge.sh
+deny '"true | m=child; cd \"$m\" && git merge origin/stable"' "an assignment after a pipe does not leak" 0 rebase-not-merge.sh
 deny '"git merge --ff-only origin/main && git switch topic"' "ff-only then switch, on main" 0 rebase-not-merge.sh
 # Without origin/HEAD every common default name counts, and a branch with one
 # of those names merging a different one is still a merge of the default.

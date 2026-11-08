@@ -17,7 +17,8 @@ with the plugin.
 
 Requirements: `bash`, `git` and `python3` on the machine that runs the hooks,
 and an authenticated `gh` for the skills that push, open or review pull
-requests.
+requests. `statechart` also needs Node 22.18 or later, and Java plus TLC
+installed once through mise; it prints the command when they are missing.
 
 ### Claude Code
 
@@ -154,7 +155,7 @@ plugins/jz/                       the agent-agnostic plugin
 
 ### Skills
 
-Twelve skills, in three groups. The workflow runs in this order:
+Thirteen skills, in three groups. The workflow runs in this order:
 
 ```
 grill  ->  criteria  ->  implement  ->  verify  ->  pr  ->  review
@@ -191,6 +192,7 @@ out.
 |---|---|
 | `debug` | Reproduce, instrument, trace to the root cause, a failing test first, one fix at a time |
 | `guard-deps` | Advisories, action pinning, supply-chain settings, vetting a new dependency |
+| `statechart` | Check a TLA+ model of a flow or protocol with TLC and draw it as a Mermaid statechart, with the shortest path to each broken rule; vendored from pstack, needs Node 22.18+ and Java plus TLC installed once through mise |
 | `sync-docs` | Bring READMEs, guides and doc comments back in line with the code |
 
 #### Self-improvement

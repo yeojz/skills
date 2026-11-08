@@ -1,7 +1,6 @@
 ---
 name: statechart
-description: "Check a TLA+ model of a system that moves between states, such as a product flow, a protocol, or a service, and draw it as a Mermaid statechart. The report gives the shortest path to each state that breaks a rule. Use for /statechart, or to show a bug as a path through states."
-disable-model-invocation: true
+description: Use when a system that moves between states, such as a product flow, a protocol, a job queue, a retry loop or a UI with modes, needs its behaviour checked against rules or drawn as a statechart, or a bug shown as a path through states. Triggers on requests like "/statechart", "model this flow in TLA+", "draw the state machine", "can this ever double charge", "is there a state we cannot get out of", "show me how this bug happens step by step", "check the protocol for deadlocks".
 ---
 
 # Statechart
@@ -16,9 +15,16 @@ Work in a scratch folder outside the repo. Write a TLA+ spec and its config. The
 <skill dir>/scripts/statechart SPEC.tla [--config FILE] [--view FILE] [--out DIR]
 ```
 
-`scripts/statechart.ts` is TypeScript, so run it with a runtime that can execute TypeScript.
+`scripts/statechart` runs `scripts/statechart.ts` with Node 22.18 or later, which runs TypeScript directly.
 
-The first run installs TLC and Java with mise and needs the network.
+## Requirements
+
+The skill installs nothing. Before the first run, check for Node 22.18 or later, and for Java and TLC through mise (or `TLA2TOOLS` and `JAVA` set). When one is missing, stop and give the user the command to run themselves; the command prints the exact one when it cannot find TLC:
+
+```sh
+mise use -g node@22
+mise install java@temurin-25 'http:tla2tools[url=https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar,checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88]@1.7.4'
+```
 
 ## Write the spec
 
@@ -80,3 +86,17 @@ Render charts with Pele. When the user asks for an image, or a chart is too larg
 Give each chart and its Mermaid text to the person who must decide. Add one line for each bug: the rule, the reader's sentence for that rule, and the path as the report numbers it. Say what the model leaves out. Give the command that makes the files again, with a new `--out` folder.
 
 When the model describes code, replay each bug path against the real code, as a test or a live repro, one step for each action. If a bug does not occur, think that the model is wrong until you show that it is not.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---|---|
+| Installing Java, TLC, Node or Pele for the user | Stop and give the user the install command |
+| Weakening a rule until it holds | Keep the reader's rule; add the variable it needs |
+| `Next` written as one action | Write it as a disjunction of named actions, so each arrow has a name |
+| A correct end state reported under `NoDeadlock` | Add a `Done` action true only in end states that changes nothing |
+| Variable names in state or step labels | Use the reader's words: what they see or what happens |
+| Trusting a rule listed under "Rules not checked" | Remove the rules that break from the config, or make the model smaller |
+| Claiming the code has the bug from the model alone | Replay the path against the real code first |
+
+Vendored from pstack; see `UPSTREAM.md` for the source commit and local edits.

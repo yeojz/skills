@@ -197,14 +197,19 @@ async function findTlc(cwd: string) {
     runChild("mise", args, { cwd, env: { ...process.env, MISE_CEILING_PATHS: cwd } });
   const where = () =>
     Promise.all([mise("where", TLC_TOOL), mise("which", "java", "--tool", JAVA_TOOL)]);
-  let found = await where();
+  // jz edit: never install. When the tools are missing, print the one-time
+  // command for the user to run themselves.
+  const found = await where();
   if (found.some((r) => r.status !== 0)) {
-    const r = await mise("install", JAVA_TOOL, TLC_TOOL);
-    if (r.status !== 0)
-      throw new Error(
-        `Cannot find TLC: mise install failed: ${r.error?.message ?? r.stderr.trim()}\nOr set TLA2TOOLS to the path of tla2tools.jar, and JAVA to a java binary (Java 11 or later).`,
-      );
-    found = await where();
+    const cause = found.find((r) => r.status !== 0);
+    throw new Error(
+      [
+        `Cannot find TLC and Java through mise (${cause?.error?.message ?? cause?.stderr.trim().split("\n")[0] ?? "not installed"}).`,
+        "statechart installs nothing itself. Install them once with:",
+        `  mise install ${JAVA_TOOL} '${TLC_TOOL}'`,
+        "Or set TLA2TOOLS to the path of tla2tools.jar, and JAVA to a java binary (Java 11 or later).",
+      ].join("\n"),
+    );
   }
   return {
     jar: path.join(found[0].stdout.trim(), "tla2tools.jar"),

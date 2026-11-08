@@ -6,38 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/no-claude-artifacts.sh\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/require-pr-skill.sh\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/confirm-remote-writes.sh\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/protect-default-branches.sh\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/guard-bash.sh\"",
             "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/scan-secrets-before-push.sh\"",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/rebase-not-merge.sh\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/no-restricted-words.sh\"",
-            "timeout": 10
           }
         ]
       }

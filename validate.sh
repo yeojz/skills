@@ -239,6 +239,10 @@ for f in "$PLUGIN"/hooks/*.sh; do
   [ -x "$f" ] || bad "$(basename "$f"): not executable"
   note "$(basename "$f")"
 done
+for f in "$PLUGIN"/hooks/*.py "$PLUGIN"/hooks/guards/*.py; do
+  python3 -m py_compile "$f" 2>/dev/null || bad "$(basename "$f"): does not compile"
+  note "$(basename "$f")"
+done
 
 printf '\nHook behaviour\n'
 if "$PLUGIN/hooks/test-hooks.sh" >/dev/null 2>&1; then

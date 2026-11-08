@@ -20,7 +20,7 @@ commits.
 A plugin cannot ship always-on instruction files or permission entries. The
 rules reach a session through the `load-house-rules.sh` SessionStart hook,
 and the confirmations for remote writes come from the
-`confirm-remote-writes.sh` PreToolUse hook. Anything that must hold on every
+`confirm-remote-writes` guard. Anything that must hold on every
 run belongs in a hook, not in prose.
 
 ## Skill format
@@ -177,14 +177,14 @@ check that fails, then a test, with prose last.
 
 | Rule | Enforced by |
 |---|---|
-| Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts.sh`, PreToolUse |
-| Ask before a `gh pr create` without `--draft`, `gh pr ready` and any force push not pinned with `--force-with-lease=<branch>:<sha>` | `confirm-remote-writes.sh`, PreToolUse |
-| Never push to a default branch and never merge a pull request; the owner merges on GitHub | `protect-default-branches.sh`, PreToolUse |
-| Commit, push and open PRs through the `pr` skill | `require-pr-skill.sh`, PreToolUse, from the transcript the payload names; a host whose payload carries no transcript path is not gated |
-| Rebase onto the default branch, never merge it in; the default branch's own checkout may fast-forward | `rebase-not-merge.sh`, PreToolUse |
-| No secret, token or credential reaches a remote | `scan-secrets-before-push.sh`, PreToolUse, through betterleaks or gitleaks when installed |
-| No emoji, attribution trailer, session link or model slug in commit or PR text | `no-restricted-words.sh`, PreToolUse |
-| A repository's own restricted words stay out of its PR text | `no-restricted-words.sh`, reading `## Restricted words` in `AGENTS.md` or `CLAUDE.md` |
+| Never stage `.claude/`, `docs/plans/` or `.plans/` | `no-claude-artifacts` guard, PreToolUse |
+| Ask before a `gh pr create` without `--draft`, `gh pr ready` and any force push not pinned with `--force-with-lease=<branch>:<sha>` | `confirm-remote-writes` guard, PreToolUse |
+| Never push to a default branch and never merge a pull request; the owner merges on GitHub | `protect-default-branches` guard, PreToolUse |
+| Commit, push and open PRs through the `pr` skill | `require-pr-skill` guard, PreToolUse, from the transcript the payload names; a host whose payload carries no transcript path is not gated |
+| Rebase onto the default branch, never merge it in; the default branch's own checkout may fast-forward | `rebase-not-merge` guard, PreToolUse |
+| No secret, token or credential reaches a remote | `scan-secrets-before-push` guard, PreToolUse, through betterleaks or gitleaks when installed |
+| No emoji, attribution trailer, session link or model slug in commit or PR text | `no-restricted-words` guard, PreToolUse |
+| A repository's own restricted words stay out of its PR text | `no-restricted-words` guard, reading `## Restricted words` in `AGENTS.md` or `CLAUDE.md` |
 | Rules are read in every session | `load-house-rules.sh`, SessionStart |
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
@@ -195,8 +195,8 @@ check that fails, then a test, with prose last.
 | A throwaway worktree is removed only after the last step that runs in it | `validate.sh`: a skill or template that names the directory variable after its `git worktree remove` fails |
 | A skill or template carries no `$ARGUMENTS` or `$<digits>` placeholder that Claude Code would fill with the skill's arguments | `validate.sh`: a SKILL.md or template with one fails, naming the line |
 | Every requirement has an acceptance criterion whose check proves it, seen failing before the build, and every criterion has a row in the verify block | nothing; `criteria` Step 3 asks for the check or sends the requirement back to `grill`, `criteria` Step 4 runs each check before sign-off, `implement` stops a step whose requirement has no criterion, `coordinate` Step 3 holds back a step whose requirement has no criterion and Step 5 sends a missing row back, `verify` Step 7 reads `not run` for a criterion without a run, and the review brief re-runs each command |
-| Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes.sh` for the remote writes; nothing for the rest, `parallelism.md` states it |
-| Prose rules 7 and 8, no emoji or model name in commit or PR text | `no-restricted-words.sh`, PreToolUse; `validate.sh` for emoji in this repo's files |
+| Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes` guard for the remote writes; nothing for the rest, `parallelism.md` states it |
+| Prose rules 7 and 8, no emoji or model name in commit or PR text | `no-restricted-words` guard, PreToolUse; `validate.sh` for emoji in this repo's files |
 | Prose rules 1 to 6 and 9 to 14 | nothing; `prose.md` numbers them so a steer cites one, and `improve` turns a repeated steer into the next check |
 
 A repository lists its restricted words as bullets under a `## Restricted
@@ -229,7 +229,7 @@ upward from the changed paths and cites its Drive section on the `behaviour`
 row. A criterion whose check drives the system cites one of its Drive steps,
 and the step that adds the criterion adds the Drive step, so the recipe stays the one place the drive commands live. It is a
 plain file a person or Codex runs the same way, never a skill
-under `.claude/`, which the `no-claude-artifacts.sh` hook keeps out of git. A
+under `.claude/`, which the `no-claude-artifacts` guard keeps out of git. A
 recipe drives the system locally, against mocks or fixtures for anything
 external, and carries no step that deploys to, logs in to or writes to a live
 or shared environment; such a step is the owner's, taken when they ask.

@@ -1,59 +1,33 @@
-#!/usr/bin/env bash
-# PreToolUse hook (matcher: Bash).
-#
-# Denies merging the default branch into a feature branch. The house workflow
-# rebases a branch onto the default branch and never merges it in, and the
-# correction had to be typed in three repositories before this hook existed.
-# The desktop app's own "merge the base branch in" prompt lands here too.
-#
-# A checkout that is on the default branch itself is the one place a merge of
-# the default is the house workflow: after a PR lands on GitHub, the main
-# checkout is brought level with `git merge --ff-only origin/<default>`, as
-# the pr skill's cleanup step runs it. That call is allowed. A merge of the
-# default into any other branch, default-named or not, is still denied, and so
-# is one that follows a checkout or switch on the same line, since the branch
-# the hook can read is not the one the merge will run on.
-#
-# The command line is split by command_lines.py, the parser every hook shares,
-# and each command is judged in the directory it runs in, so a leading `cd` or
-# a `git -C` resolves the default branch of the repository it targets, also
-# when the target is a shell variable assigned earlier on the line. The advice
-# names the branch the command tried to merge, since without origin/HEAD the
-# default is only known to be one of the common names.
-#
-# Reads the PreToolUse event JSON on stdin. Exit 0 allows, exit 2 denies.
-set -uo pipefail
+"""Deny merging the default branch into a feature branch.
 
-payload="$(cat)"
+The house workflow rebases a branch onto the default branch and never merges
+it in, and the correction had to be typed in three repositories before this
+guard existed. The desktop app's own "merge the base branch in" prompt lands
+here too.
 
-# Cheap pre-filter, so an ordinary shell call does not pay for a python start-up.
-case "$payload" in
-  *git*) ;;
-  *) exit 0 ;;
-esac
+A checkout that is on the default branch itself is the one place a merge of
+the default is the house workflow: after a PR lands on GitHub, the main
+checkout is brought level with `git merge --ff-only origin/<default>`, as the
+pr skill's cleanup step runs it. That call is allowed. A merge of the default
+into any other branch is denied, and so is one that follows a checkout or
+switch on the same line, since the branch the guard can read is not the one
+the merge will run on. The advice names the branch the command tried to
+merge, since without origin/HEAD the default is only known to be one of the
+common names.
+"""
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "Blocked: rebase-not-merge hook needs python3 on PATH to inspect git calls." >&2
-  exit 2
-fi
-
-inspector="$(cat <<'PY'
-import json
-import os
 import re
 import subprocess
-import sys
 
-sys.path.insert(0, sys.argv[1])
-from command_lines import commands_with_directory, git_call, git_config_overrides, start_directory  # noqa: E402
+from command_lines import git_call, git_config_overrides
+from guards import Deny
+
+NAME = "rebase-not-merge"
 
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 REBASE_VALUES_THAT_REBASE = {"true", "merges", "interactive", "preserve", "i"}
 # When the line cannot be lexed at all, lean towards denying a merge of a default name.
 RAW_MERGE = re.compile(r"\bgit\b.*\bmerge\s+(?:--\S+\s+)*(?:origin/|upstream/)?(main|master|develop|trunk)\b")
-
-defaults_by_directory = {}
-
 
 def run_git(directory, args):
     try:
@@ -63,7 +37,7 @@ def run_git(directory, args):
         return None
 
 
-def default_branch(directory):
+def default_branch(directory, defaults_by_directory):
     if directory in defaults_by_directory:
         return defaults_by_directory[directory]
     names = COMMON_DEFAULTS
@@ -129,7 +103,7 @@ def pull_rebases(args, directory, config_overrides):
     return False
 
 
-def reason_for(argv, directory, switched):
+def reason_for(argv, directory, switched, defaults_by_directory):
     """The reason to deny this call and the branch it names, or (None, None).
 
     `switched` holds the git directories where an earlier command on the same
@@ -145,7 +119,7 @@ def reason_for(argv, directory, switched):
     if sub in {"checkout", "switch"}:
         switched.add(git_directory)
         return None, None
-    defaults = default_branch(git_directory)
+    defaults = default_branch(git_directory, defaults_by_directory)
     current = None if git_directory in switched else current_branch(git_directory)
     if sub == "merge":
         if any(a in {"--abort", "--continue", "--quit"} for a in args):
@@ -167,38 +141,23 @@ def reason_for(argv, directory, switched):
 
 
 def deny(reason, branch):
-    """Deny with advice to rebase onto the branch the command names.
-
-    Without origin/HEAD the default is one of several common names, and the
-    branch the command tried to merge is the one to rebase onto.
-    """
-    print("Blocked: " + reason, file=sys.stderr)
-    print("Rebase instead: git fetch origin " + branch + " && git rebase origin/" + branch, file=sys.stderr)
-    sys.exit(2)
+    """Deny with advice to rebase onto the branch the command names."""
+    return Deny("Blocked: " + reason,
+                "Rebase instead: git fetch origin " + branch + " && git rebase origin/" + branch)
 
 
-try:
-    event = json.load(sys.stdin)
-    command = event.get("tool_input", {}).get("command", "")
-    cwd = event.get("cwd", "")
-except Exception:
-    sys.exit(0)
-if not isinstance(command, str):
-    sys.exit(0)
-start = start_directory(cwd)
-
-switched = set()
-try:
-    for argv, _, directory in commands_with_directory(command, start):
-        reason, branch = reason_for(argv, directory, switched)
+def check(context):
+    if "git" not in context.command:
+        return None
+    if context.calls is None:
+        match = RAW_MERGE.search(context.command)
+        if match:
+            return deny("The command could not be parsed and looks like a merge of the default branch.", match.group(1))
+        return None
+    switched = set()
+    defaults_by_directory = {}
+    for argv, _, directory in context.calls:
+        reason, branch = reason_for(argv, directory, switched, defaults_by_directory)
         if reason:
-            deny(reason, branch)
-except ValueError:
-    match = RAW_MERGE.search(command)
-    if match:
-        deny("The command could not be parsed and looks like a merge of the default branch.", match.group(1))
-sys.exit(0)
-PY
-)"
-
-printf '%s' "$payload" | python3 -B -c "$inspector" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            return deny(reason, branch)
+    return None

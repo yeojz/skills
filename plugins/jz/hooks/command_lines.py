@@ -243,7 +243,7 @@ def git_call(argv, directory):
 
 
 GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
-GIT_REPOSITORY_OPTIONS = GIT_CONFIG_OPTIONS | {"--git-dir", "--work-tree", "--namespace"}
+GIT_LOCATION_OPTIONS = {"--git-dir", "--work-tree", "--namespace"}
 
 
 def git_options_named(argv, names):
@@ -259,21 +259,24 @@ def git_options_named(argv, names):
 
 
 def git_config_overrides(argv):
-    """The `-c` and `--config-env` options of a git call.
+    """The `-c` and `--config-env` options of a git call, as a flat token list.
 
-    Passing them to a `git config` query makes git itself resolve the one-off
-    override over the stored value, the way the inspected command will.
+    A hook that queries a plain value, such as pull.rebase, may pass them to
+    `git config` so git resolves the one-off override the way the inspected
+    command will. A hook that runs anything heavier never passes them: a -c
+    can name a command for git to run, such as core.sshCommand.
     """
     return git_options_named(argv, GIT_CONFIG_OPTIONS)
 
 
-def git_repository_options(argv):
-    """The options that pick the repository and its configuration: `-c`, `--config-env`, `--git-dir`, `--work-tree`, `--namespace`.
+def git_location_options(argv):
+    """The options that pick the repository: `--git-dir`, `--work-tree`, `--namespace`.
 
-    A hook that runs git on the caller's behalf passes them through, so its
-    queries see the repository and the settings the inspected command will.
+    A hook that runs git on the caller's behalf passes these through, so its
+    queries see the repository the inspected command will. Configuration
+    overrides are not among them; see git_config_overrides.
     """
-    return git_options_named(argv, GIT_REPOSITORY_OPTIONS)
+    return git_options_named(argv, GIT_LOCATION_OPTIONS)
 
 
 def start_directory(cwd):

@@ -663,8 +663,8 @@ pushgit add value && pushgit commit -q --no-edit
 scan '"git push origin main"'                   "token in a merge resolution"    ask
 pushgit push -q origin main
 scan '"git push origin main"'                   "merge published"                allow
-# Git decides which refs a push publishes: configured refspecs, push.default
-# and wildcards select branches other than HEAD.
+# The repository's configuration decides which refs a push publishes:
+# configured refspecs, push.default and wildcards select branches other than HEAD.
 pushgit branch -q leaky
 pushgit push -q origin leaky
 pushgit checkout -q leaky
@@ -681,8 +681,8 @@ pushgit config --unset push.default
 scan '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec publishes leaky" ask
 scan '"git push --all origin"'                  "--all publishes leaky"          ask
 scan '"git push origin leaky"'                  "leaky named directly"           ask
-# The preview is a dry run whatever the caller asked for, and running the hook
-# must never move the remote.
+# The hook never pushes, whatever the caller asked for, and never runs the
+# receive-pack or ssh command the caller names.
 before_tip="$(git -C "$FIXTURE/remote.git" rev-parse refs/heads/leaky)"
 scan '"git push --no-dry-run origin leaky"'     "--no-dry-run cannot make the preview push" ask
 scan '"git push -n --no-dry-run origin leaky"'  "-n reset by a later --no-dry-run" ask
@@ -701,6 +701,10 @@ scan '"git push -on origin leaky"'              "n attached to -o"              
 scan '"git push origin leaky -o"'               "dangling -o asks"               ask
 scan '"git push --bogus origin leaky"'          "option outside the table asks"  ask
 scan '"git push origin -- leaky -n"'            "-n after the terminator is an operand" ask
+scan "\"git push --receive-pack=\\\"touch $FIXTURE/scanmarker; git-receive-pack\\\" origin leaky\"" "receive-pack named on a push" ask
+scan "\"git -c core.sshCommand=\\\"touch $FIXTURE/sshmarker\\\" push git@example.invalid:x/y.git leaky\"" "ssh command named on a push to a URL" ask
+printf '  %-52s' "neither named command was run"
+if [ -e "$FIXTURE/scanmarker" ] || [ -e "$FIXTURE/sshmarker" ]; then echo "FAIL, the hook ran one"; fail=1; else echo "PASS"; fi
 printf '  %-52s' "remote tip unchanged by the previews"
 if [ "$(git -C "$FIXTURE/remote.git" rev-parse refs/heads/leaky)" = "$before_tip" ]; then
   echo "PASS"
@@ -708,16 +712,17 @@ else
   echo "FAIL, a preview pushed"
   fail=1
 fi
-# The caller's -c and --config-env options travel into the preview, since they
-# can move the destination or the refspec; a pushurl is another repository, so
-# tracking refs of the named remote do not count as published there.
+# A -c or --config-env that touches remote.*, push.*, branch.* or url.* can
+# move the destination or the refspec and is not followed, so the push asks;
+# an unrelated override passes.
 git init -q --bare "$FIXTURE/target2.git"
 scan "\"git -c remote.origin.pushurl=$FIXTURE/target2.git push origin main\"" "pushurl override to an empty target" ask
 scan '"git -c remote.origin.push=leaky:leaky push origin"' "refspec override selects leaky" ask
 PUSHSPEC=leaky:leaky scan '"git --config-env=remote.origin.push=PUSHSPEC push origin"' "refspec override via --config-env" ask
 scan '"git -c push.default=matching push origin"' "push.default override selects leaky" ask
 scan '"git -c user.name=dev push origin main"'  "unrelated -c on a clean HEAD"   allow
-# When git cannot say what the push publishes, the hook asks.
+# A remote with no tracking refs publishes everything; a ref that does not
+# resolve cannot be scanned, so the hook asks.
 pushgit remote add dead "$FIXTURE/no-such-remote.git"
 scan '"git push dead main"'                     "unreachable remote asks"        ask
 scan '"git push origin nosuchbranch"'           "unknown ref asks"               ask
@@ -785,7 +790,7 @@ protect '"git push --all origin"'                "--all with main up to date"   
 protgit symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/release
 protect '"git push origin feature:release"'      "onto the default origin/HEAD names" 2
 protgit symbolic-ref -d refs/remotes/origin/HEAD
-# When the dry run cannot answer, the arguments are read by hand.
+# A remote with no tracking refs: every protected destination counts as an update.
 protgit remote add dead "$FIXTURE/no-such-remote.git"
 protect '"git push dead feature"'                "unreachable remote, feature"    0
 protect '"git push dead main"'                   "unreachable remote, main"       2
@@ -795,6 +800,9 @@ protgit checkout -q main
 protect '"git push dead"'                        "unreachable remote from main"   2
 protgit checkout -q feature
 protect '"git push origin main \"unterminated"'  "unparseable push of main"       2
+protect "\"git push --receive-pack=\\\"touch $FIXTURE/protmarker; git-receive-pack\\\" origin feature:main\"" "receive-pack named on a push onto main" 2
+printf '  %-52s' "the named receive-pack was not run"
+if [ -e "$FIXTURE/protmarker" ]; then echo "FAIL, the hook ran it"; fail=1; else echo "PASS"; fi
 
 protect '"gh pr view 5"'                         "gh pr view"                     0
 protect '"gh pr merge 5 --squash"'               "gh pr merge"                    2

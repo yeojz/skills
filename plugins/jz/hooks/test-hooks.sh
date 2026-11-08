@@ -490,6 +490,9 @@ deny '"gh pr create --title t --body \"the oracle says\""'        "restricted wo
 deny '"gh pr comment 5 --body \"matches the predecessor repo\""'  "restricted word in a comment"   2 no-restricted-words
 deny '"gh pr create --draft --body-file body-emoji.md"'           "emoji in a body file"           2 no-restricted-words
 deny '"gh pr create --draft -F body-trailer.md"'                  "trailer in a body file via -F"  2 no-restricted-words
+deny '"git commit -F /dev/zero -m \"feat: the oracle\""'       "inline restricted word beside an unseen file" 2 no-restricted-words
+deny '"gh pr create --draft --title \"ship ✅\" --body-file -"'  "emoji in a title beside a stdin body" 2 no-restricted-words
+deny '"git commit -m \"feat: the oracle\" -F missing.txt"'       "inline word before a missing file" 2 no-restricted-words
 # A body file that is not a regular file is not read: a device would never
 # end and a FIFO would block, and the guard runs before the owner has approved
 # the command that names it.

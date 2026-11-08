@@ -30,24 +30,20 @@ COMMIT_VALUE_LETTERS = "mFCct"
 COMMIT_PROSE_LETTERS = "mF"
 JSON_PROSE_KEYS = {"body", "title", "message", "text", "commit_title", "commit_message"}
 
-class Unseen(Exception):
-    """The text comes from standard input or a file that is not there yet, so it cannot be judged."""
-
-
 def read_file(path, directory):
-    """The text of a body or message file. Raises Unseen for stdin or a path the guard cannot read.
+    """The text of a body or message file, or None for text the guard cannot see.
 
-    A `-F -` fed by a here-document or a pipe, and a file a command earlier
-    on the line will write, are text the guard never sees; the dispatcher
-    asks instead of letting it pass.
+    A `-F -` fed by a here-document or a pipe, a file a command earlier on
+    the line will write, a device or FIFO, and a file longer than the guard
+    reads are all None; the dispatcher asks about them once the visible texts
+    have been judged.
     """
     if path == "-":
-        raise Unseen()
+        return None
     full = path if os.path.isabs(path) else os.path.join(directory, path)
     found = read_text(full)
     if found is None or not found[1]:
-        # Missing, not a plain file, or longer than the guard reads.
-        raise Unseen()
+        return None
     return found[0]
 
 
@@ -122,8 +118,12 @@ def gh_texts(rest, directory):
         elif t.startswith("--body-file="):
             yield read_file(t.split("=", 1)[1], directory)
         elif t == "--input":
-            for text in json_prose(read_file(value_after(rest, i), directory)):
-                yield text
+            body = read_file(value_after(rest, i), directory)
+            if body is None:
+                yield None
+            else:
+                for text in json_prose(body):
+                    yield text
         elif t in {"-f", "-F", "--field", "--raw-field"} and rest[0] == "api":
             field = value_after(rest, i)
             if "=" in field:
@@ -215,13 +215,11 @@ def check(context):
     policies_by_directory = {}
     unseen = False
     for argv, directory in context.calls:
-        try:
-            texts = list(texts_from(argv, directory))
-        except Unseen:
-            # The other calls on the line are still judged; a deny among them wins.
-            unseen = True
-            continue
-        for text, policy_directory in texts:
+        for text, policy_directory in texts_from(argv, directory):
+            if text is None:
+                # Every other text on the line is still judged; a deny wins.
+                unseen = True
+                continue
             if not text:
                 continue
             found = findings(text, restricted_words(policy_directory, policies_by_directory))

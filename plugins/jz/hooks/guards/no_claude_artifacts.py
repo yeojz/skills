@@ -41,6 +41,15 @@ class Unresolvable(Exception):
     """git could not answer for this call, so the working tree is all we have."""
 
 
+# The dry runs and the modified-file listing would run a clean filter from
+# .gitattributes, such as git-lfs, over a file that changed. With the empty
+# tree as the attribute source and no attributes file, no filter applies;
+# only $GIT_DIR/info/attributes still does. Needs git 2.40 or later, and an
+# older git fails the call, which is then Unresolvable.
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+NO_ATTRIBUTES = ["--attr-source=" + EMPTY_TREE, "-c", "core.attributesFile=/dev/null"]
+
+
 def plan_checks(calls):
     """Collect every git add, stage or commit the command line would run, each with the options that pick its repository."""
     checks = []
@@ -83,7 +92,7 @@ def on_scratch_index(directory, options, args, accepted=(0,)):
         else:
             # No index yet. An empty file is not a valid index; a missing one is.
             os.remove(scratch)
-        return git_answer(directory, options, args, {"GIT_INDEX_FILE": scratch}, accepted)
+        return git_answer(directory, options + NO_ATTRIBUTES, args, {"GIT_INDEX_FILE": scratch}, accepted)
     finally:
         for leftover in (scratch, scratch + ".lock"):
             try:
@@ -142,16 +151,12 @@ def committed_by_commit(directory, options, args):
 
 
 def dirty_paths(directory, options):
-    """Everything the working tree could contribute to a commit right now.
-
-    Read with ls-files rather than status, since status may run a clean
-    filter from the repository's own config to compare a file.
-    """
+    """Everything the working tree could contribute to a commit right now, read with no attributes so no filter runs."""
     paths = []
     for args in (["diff", "--cached", "--name-only"],
                  ["ls-files", "--full-name", "--others", "--exclude-standard"],
                  ["ls-files", "--full-name", "--modified"]):
-        paths.extend(unquote(line) for line in git_answer(directory, options, args).stdout.splitlines())
+        paths.extend(unquote(line) for line in git_answer(directory, options + NO_ATTRIBUTES, args).stdout.splitlines())
     return paths
 
 

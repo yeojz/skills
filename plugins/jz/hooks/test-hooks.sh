@@ -85,7 +85,8 @@ check '"git a .claude"'                        "add through a git alias"       2
 git -C "$FIXTURE" config --unset alias.a
 # A dry run that never finishes is killed at its timeout; the lock it held
 # must be on a scratch copy of the index, never on the repository's own.
-check '"git add --pathspec-from-file=/dev/zero"' "pathspec file that never ends, tree checked instead" 2
+JZ_GIT_TIMEOUT_SECONDS=2 check '"git add --pathspec-from-file=/dev/zero"' "pathspec file that never ends, tree checked instead" 2
+check '"git add README.md nosuchfile"'          "failing dry run, tree checked instead" 2
 printf '  %-52s' "no index.lock left behind"
 if [ -e "$FIXTURE/.git/index.lock" ]; then echo "FAIL"; fail=1; else echo "PASS"; fi
 
@@ -511,7 +512,7 @@ else
 fi
 
 printf '\nno-restricted-words\n'
-git -C "$FIXTURE/child" rev-parse --git-dir >/dev/null 2>&1 || git init -q "$FIXTURE/child"
+[ -e "$FIXTURE/child/.git" ] || git init -q "$FIXTURE/child"
 printf '## Restricted words\n\n- oracle\n- predecessor\n' > "$FIXTURE/AGENTS.md"
 printf 'Summary with a tick \342\234\223 mark\n' > "$FIXTURE/body-emoji.md"
 printf 'Plain summary.\n\nCo-Authored-By: Claude <noreply@example.com>\n' > "$FIXTURE/body-trailer.md"
@@ -973,7 +974,8 @@ echo settings > "$GATEREPO/.claude/settings.json"
 git init -q -b stable "$GATEREPO/child"
 all_guards '"git add .claude"'                          "visible add of .claude denies"           deny
 all_guards '"bash -c \"git add .claude\""'              "nested shell asks"                       ask
-all_guards '"env -u X git add README.md"'               "wrapper with an option asks"             ask
+all_guards '"env -u X git add README.md"'               "wrapper option reported, add still judged" deny
+all_guards '"env -u X git push origin feature"'         "wrapper option before an unresolvable push asks" ask
 all_guards '"xargs -L 2 git push"'                      "xargs asks"                              ask
 all_guards '"m=.claude; git -C \"$m\" add settings.json"' "variable asks"                         ask
 all_guards '"echo $HOME && git commit -m x"'            "variable beside a commit asks"           ask
@@ -989,21 +991,51 @@ all_guards '"(cd child && git merge origin/stable)"'    "cd inside a subshell, m
 all_guards '"{ cd child; git add .claude; }"'           "cd inside a brace group is not applied"  deny
 all_guards '"cd -P child && git add .claude"'           "cd with an option is not followed"       deny
 all_guards '"cd /tmp &\ngit push origin main"'         "background cd before a newline moves nothing" deny
-all_guards '"GIT_DIR=.git git push origin main"'        "GIT_* assignment asks"                   ask
-all_guards '"git --bogus push origin main"'             "unknown git option asks"                 ask
+all_guards '"GIT_DIR=.git git push origin feature"'     "GIT_* assignment asks"                   ask
+all_guards '"git --bogus push origin main"'             "unknown git option, push still denied"   deny
+all_guards '"git --bogus push origin feature"'          "unknown git option asks"                 ask
 all_guards '"bash -c '"'"'git pu\"\"sh origin main'"'"'"' "split word inside a nested shell asks" ask
 all_guards '"git commit -F - <<'"'"'EOF'"'"'\nfeat: the oracle\nEOF"' "here-document asks"      ask
 all_guards '"gh pr create --draft --body-file - <<<\"ship it\""' "here-string asks"               ask
 all_guards '"git commit -m \"`id`\""'                 "backtick in double quotes asks"          ask
 all_guards '"echo `date` && git status"'                "backtick on a read-only line is silent"  allow
-all_guards '"timeout --signal TERM 30 git push --force"' "wrapper option before a push asks"     ask
-all_guards '"sudo -u root git push -f"'                 "sudo with an option asks"                ask
+all_guards '"timeout --signal TERM 30 git push --force"' "wrapper option, forced push of main denied" deny
+all_guards '"sudo -u root git push -f origin feature"'  "sudo with an option asks"                ask
 git -C "$GATEREPO" config alias.p push
 all_guards '"git p origin main"'                        "alias for push is judged as a push"      deny
+git -C "$GATEREPO" config alias.p2 p
+all_guards '"git p2 origin main"'                       "alias of an alias for push"              deny
+all_guards '"git -C gaterepo p origin main"'            "alias looked up behind git -C"           deny "$FIXTURE"
+all_guards '"git -c alias.q=p q origin main"'           "alias override chaining to an alias"     deny
 git -C "$GATEREPO" config alias.x '!echo'
 all_guards '"git x"'                                    "shell alias asks"                        ask
+git -C "$GATEREPO" config alias.loop1 loop2
+git -C "$GATEREPO" config alias.loop2 loop1
+all_guards '"git loop1"'                                "alias loop asks"                         ask
 git -C "$GATEREPO" config --unset alias.p
+git -C "$GATEREPO" config --unset alias.p2
 git -C "$GATEREPO" config --unset alias.x
+git -C "$GATEREPO" config --unset alias.loop1
+git -C "$GATEREPO" config --unset alias.loop2
+all_guards "\"export GIT_DIR=$GATEREPO/.git GIT_WORK_TREE=$GATEREPO; git add .claude\"" "exported GIT_DIR asks" ask "$FIXTURE/src"
+all_guards '"nice -n 5 git push origin main"'           "wrapper option still lets the push be denied" deny
+all_guards '"GIT_TRACE=1 git push origin main"'         "GIT_* prefix still lets the push be denied" deny
+all_guards '"HOME=/tmp git push origin feature"'        "HOME prefix asks"                        ask
+all_guards '"cat > f <<EOF\nbody\nEOF\ngit add .claude"' "command after a here-document is judged" deny
+all_guards '"cat <<EOF\ngit push origin main\nEOF\ngit status"' "here-document body is not a command" allow
+all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow
+printf 'a\n' > "$GATEREPO/a.txt"
+printf '*.txt filter=x\n' > "$GATEREPO/.gitattributes"
+git -C "$GATEREPO" config filter.x.clean "touch $FIXTURE/filtermarker; cat"
+all_guards '"git add a.txt"'                            "add with a clean filter configured"      allow
+printf '  %-52s' "the clean filter was not run"
+if [ -e "$FIXTURE/filtermarker" ]; then echo "FAIL"; fail=1; else echo "PASS"; fi
+rm -f "$GATEREPO/a.txt" "$GATEREPO/.gitattributes"
+git -C "$GATEREPO" config --unset filter.x.clean
+printf '  %-52s' "a run past its deadline asks"
+out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"%s"}' "$GATEREPO" \
+  | JZ_DEADLINE_SECONDS=0.001 "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+if printf '%s' "$out" | grep -q 'ran out of time'; then echo "PASS"; else echo "FAIL"; fail=1; fi
 all_guards '"echo x | cd child; git add .claude"'       "cd after a pipe moves nothing"           deny
 all_guards '"cd child & git add .claude"'               "cd as a background job moves nothing"    deny
 all_guards '"{ git status; }"'                          "brace group on a read-only line is silent" allow

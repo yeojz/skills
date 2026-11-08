@@ -23,8 +23,14 @@ import shlex
 
 SEPARATOR_CHARS = set("();<>|&\n")
 GROUPING_CHARS = set("()")
-REDIRECTIONS = {"<", ">", ">>", "<&", ">&", "&>", "<<<", ">|", "&>>", ">>&"}
+REDIRECTIONS = {"<", ">", ">>", "<&", ">&", "&>", "<<", "<<<", ">|", "&>>", ">>&"}
 HERE_DOCUMENTS = {"<<", "<<<"}
+# Environment variables that change what git reads: its own GIT_* family, and
+# the two that move the global configuration file.
+ENVIRONMENT_GIT_READS = re.compile(r"^(GIT_[A-Za-z_0-9]*|HOME|XDG_CONFIG_HOME)=")
+EXPORTERS = {"export", "declare", "typeset"}
+JUDGED_PROGRAMS = {"git", "gh"}
+MENTIONS_GIT = re.compile(r"\b(git|gh)\b")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
 DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
 SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
@@ -124,12 +130,56 @@ def strip_comments(line, parsed):
     return "".join(kept)
 
 
+def strip_heredocs(line, parsed):
+    """Remove the bodies of here-documents, so their lines are not read as commands.
+
+    An unquoted `<<` or `<<-` names a delimiter; the lines after the current
+    one up to the line that equals it are the body and are dropped. The
+    operator and the delimiter word stay, so the lexer sees `cmd <<EOF` and
+    the segment reader can tell which command the body feeds.
+    """
+    lines = line.split("\n")
+    kept = []
+    index = 0
+    while index < len(lines):
+        text = lines[index]
+        index += 1
+        kept.append(text)
+        quote = ""
+        position = 0
+        delimiters = []
+        while position < len(text):
+            char = text[position]
+            if quote:
+                if char == quote:
+                    quote = ""
+                elif char == "\\" and quote == '"':
+                    position += 1
+            elif char == "\\":
+                position += 1
+            elif char in "'\"":
+                quote = char
+            elif text.startswith("<<", position) and not text.startswith("<<<", position) and not (position and text[position - 1] == "<"):
+                match = re.match(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s<>|&;()]+))", text[position:])
+                if match:
+                    delimiters.append((match.group(1) == "-", match.group(2) or match.group(3) or match.group(4) or ""))
+                    position += len(match.group(0)) - 1
+            position += 1
+        for strip_tabs, delimiter in delimiters:
+            while index < len(lines):
+                body = lines[index]
+                index += 1
+                if (body.lstrip("\t") if strip_tabs else body) == delimiter:
+                    break
+    return "\n".join(kept)
+
+
 def lex(line, parsed):
     """Tokenise a command line, keeping newlines as command separators.
 
     Raises ValueError on unbalanced quotes, as shlex does.
     """
-    lexer = shlex.shlex(strip_comments(line, parsed), posix=True,
+    lexer = shlex.shlex(strip_comments(strip_heredocs(line, parsed), parsed), posix=True,
                         punctuation_chars="();<>|&\n")
     lexer.whitespace_split = True
     lexer.whitespace = " \t\r"
@@ -151,15 +201,9 @@ def command_segments(tokens, parsed):
         if drop_next:
             drop_next = False
             continue
-        if token in HERE_DOCUMENTS:
-            # The body of a here-document is text the parser cannot tell from
-            # commands, so nothing after it is read.
-            parsed.skip("a here-document")
-            if current and current[-1].isdigit():
-                current.pop()
-            if current:
-                yield current
-            return
+        if token in HERE_DOCUMENTS and current and os.path.basename(current[0]) in JUDGED_PROGRAMS:
+            # A body fed to git or gh is text the guards never see.
+            parsed.skip("a here-document fed to %s" % os.path.basename(current[0]))
         if token in REDIRECTIONS:
             # `2>&1`: the descriptor number in front of a redirection is not an operand.
             if current and current[-1].isdigit():
@@ -198,16 +242,19 @@ def group_depth_change(separator):
 
 
 def peel_wrappers(argv, parsed):
-    """Drop leading assignments and bare wrapper programs. Returns the program's argv, or None when the wrapper has options."""
+    """Drop leading assignments and wrapper programs, reporting what the guards cannot account for.
+
+    A GIT_*, HOME or XDG_CONFIG_HOME assignment changes what git reads as
+    much as -c does, and a wrapper given options hides where the program
+    starts. Both are reported; the program is still returned, best effort
+    from the first git or gh token, so the denying guards see the call.
+    """
     rest = list(argv)
     while rest:
         name = os.path.basename(rest[0])
         if ASSIGNMENT.match(rest[0]):
-            if rest[0].startswith("GIT_"):
-                # GIT_DIR, GIT_INDEX_FILE and GIT_CONFIG_* change what git
-                # reads as much as -c does, and nothing local records them.
-                parsed.skip("a GIT_* environment variable")
-                return None
+            if ENVIRONMENT_GIT_READS.match(rest[0]):
+                parsed.skip("a %s environment variable" % ("GIT_*" if rest[0].startswith("GIT_") else rest[0].partition("=")[0]))
             rest.pop(0)
             continue
         if name not in WRAPPERS:
@@ -217,8 +264,16 @@ def peel_wrappers(argv, parsed):
             rest.pop(0)
         if rest and rest[0].startswith("-"):
             parsed.skip("a %s option" % name)
+            for index, token in enumerate(rest):
+                if os.path.basename(token) in JUDGED_PROGRAMS:
+                    return rest[index:]
             return None
     return rest
+
+
+def exports_git_reads(argv):
+    """Whether an `export`, `declare` or `typeset` sets a variable git reads."""
+    return os.path.basename(argv[0]) in EXPORTERS and any(ENVIRONMENT_GIT_READS.match(word) for word in argv[1:])
 
 
 def git_global_options(argv):
@@ -354,8 +409,12 @@ def parse(command_line, directory):
         name = os.path.basename(argv[0])
         if name in NESTED_SHELLS:
             parsed.skip("a nested shell (%s)" % argv[0])
-            if any("git" in token.lower() or "gh" in token.lower() for token in argv[1:]):
+            if any(MENTIONS_GIT.search(token) for token in argv[1:]):
                 parsed.hidden = True
+            continue
+        if exports_git_reads(argv):
+            parsed.skip("an exported variable git reads")
+            parsed.hidden = True
             continue
         if argv[0] == "cd":
             before = segments[index - 1] if index > 0 and isinstance(segments[index - 1], str) else ""
@@ -372,8 +431,9 @@ def parse(command_line, directory):
         if name == "git":
             unknown = unknown_git_option(argv)
             if unknown is not None:
+                # Reported, and still judged: git_global_options reads an
+                # unknown option as a flag, which is right for most of them.
                 parsed.skip("a git option (%s)" % unknown)
                 parsed.hidden = True
-                continue
         parsed.calls.append((argv, directory))
     return parsed

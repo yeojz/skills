@@ -36,7 +36,7 @@ PUSH_LONG_OPTIONS = {
 PUSH_LONG_OPTIONS_WITH_VALUE = {"repo", "receive-pack", "exec", "push-option", "recurse-submodules"}
 PUSH_SHORT_OPTIONS_WITH_VALUE = "o"
 SHORT_FLAGS = {"d": "delete", "n": "dry-run"}
-GIT_TIMEOUT_SECONDS = 10
+GIT_TIMEOUT_SECONDS = float(os.environ.get("JZ_GIT_TIMEOUT_SECONDS") or 10)
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 
 

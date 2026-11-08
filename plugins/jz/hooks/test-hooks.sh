@@ -984,6 +984,20 @@ all_guards '"git rebase --exec=\"git push origin main\" HEAD~1"' "rebase --exec=
 all_guards '"git rebase -x\"git push origin main\" HEAD~1"' "attached -x asks"                  ask
 all_guards '"find . -exec sh -c '"'"'cd . && git push origin main'"'"' \\;"' "sh -c under find asks" ask
 all_guards '"find . -exec sh -c '"'"'git status'"'"' \\;"' "sh -c under find asks without a judged word" ask
+all_guards '"git status; find . -exec sh -c '"'"'g\"\"it push origin main'"'"' \\;"' "quote-split git under a nested shell asks" ask
+all_guards '"git rebase -x '"'"'g\"\"it push origin main'"'"' HEAD~1"' "quote-split rebase -x asks"         ask
+all_guards '"git submodule foreach '"'"'g\"\"it push origin HEAD:main'"'"'"' "quote-split submodule foreach asks" ask
+all_guards '"git -c core.fsmonitor=\"git push origin main\" status"' "fsmonitor command asks"            ask
+all_guards '"git -c core.pager=\"git push origin main\" log -1"' "pager command asks"                   ask
+all_guards '"git -c core.sshCommand=\"touch x\" status"'  "sshCommand override asks"                  ask
+all_guards '"git -c user.name=dev -c color.ui=never status"' "plain settings are followed"               allow
+all_guards '"git fetch --upload-pack=\"git push origin main\" origin"' "upload-pack command asks"      ask
+all_guards '"git grep -O\"git push origin main\" hi"'   "grep -O command asks"                      ask
+all_guards '"git clean -fdx"'                           "clean -x is not a command option"        allow
+all_guards '"git for-each-repo --config=x status"'      "for-each-repo always runs a command, asks" ask
+all_guards '"gh pm 5"'                                  "unknown gh command asks"                 ask
+all_guards '"gh pr view 5"'                             "known gh command is followed"            allow
+all_guards '"git send-email --to x HEAD~1"'             "optional git script asks"                ask
 all_guards '"/usr/libexec/git-core/git-push origin main"' "dashed git-push asks"                 ask
 all_guards '"git-lfs pull"'                             "dashed add-on asks"                      ask
 all_guards '"echo git push origin main"'                "git as an argument of echo asks"         ask
@@ -996,6 +1010,10 @@ all_guards '"git -C git push origin main"'              "git as a directory name
 all_guards '"git status&&>/dev/null git push origin main"' "glued separator and redirection is split" deny
 all_guards '"git status;>/dev/null git add .claude"'    "glued ;> is split"                       deny
 all_guards '"diff <(git log) x && git commit -m x"'     "process substitution asks"               ask
+printf '  %-52s' "the ask names the process substitution"
+out="$(printf '{"tool_name":"Bash","tool_input":{"command":"diff <(git log) x && git commit -m x"},"cwd":"%s"}' "$GATEREPO" \
+  | "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+if printf '%s' "$out" | grep -q 'a process substitution'; then echo "PASS"; else echo "FAIL"; fail=1; fi
 all_guards '"diff <(git status) x && git add .claude"'  "process substitution beside a plain offender denies" deny
 all_guards '"nohup git add .claude"'                    "bare wrapper asks"                       ask
 all_guards '"timeout 30 git add .claude"'               "timeout asks"                            ask
@@ -1034,7 +1052,7 @@ all_guards '"git --bogus status"'                       "unknown git option asks
 all_guards '"git p origin main"'                        "unknown git subcommand asks"             ask
 all_guards '"git lfs pull"'                             "add-on subcommand asks"                  ask
 all_guards '"git -c alias.x=push x origin main"'        "alias override asks"                     ask
-all_guards '"git -c alias.status=push status origin main"' "alias on a builtin name is ignored by git, followed" allow
+all_guards '"git -c alias.status=push status origin main"' "alias key is outside the plain settings, asks" ask
 all_guards '"git -c user.name=dev status"'              "known option with a value is followed"   allow
 all_guards '"git commit -F - <<'"'"'EOF'"'"'\nfeat: the oracle\nEOF"' "here-document asks"      ask
 all_guards '"gh pr create --draft --body-file - <<<\"ship it\""' "here-string asks"               ask

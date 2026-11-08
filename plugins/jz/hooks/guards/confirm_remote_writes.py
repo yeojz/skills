@@ -37,7 +37,8 @@ def push_is_forced(args):
     as does an empty expectation, which requires the ref not to exist. A bare
     lease, or one whose expectation is a ref name such as
     `refs/remotes/origin/x`, checks against a ref a background fetch can move,
-    so it is treated like --force. --force-if-includes only refines a lease
+    so it is treated like --force, as are --mirror and --prune, which delete
+    remote refs. --force-if-includes only refines a lease
     and asks on its own. Long options resolve by unambiguous prefix, as git
     resolves them.
     """
@@ -48,7 +49,8 @@ def push_is_forced(args):
         if token.startswith("--") and token != "--":
             name, has_value, value = token[2:].partition("=")
             resolved = resolve_push_long_option(name)
-            if resolved == "force":
+            if resolved in {"force", "mirror", "prune"}:
+                # --mirror is an implicit +refs/*:refs/* that also deletes; --prune deletes too.
                 forced = True
             elif resolved == "force-with-lease":
                 if has_value and ":" in value and PINNED_EXPECTATION.match(value.split(":", 1)[1]):

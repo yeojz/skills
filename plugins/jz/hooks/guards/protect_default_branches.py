@@ -32,8 +32,9 @@ NAME = "protect-default-branches"
 
 
 MERGE_MUTATIONS = re.compile(r"\b(mergePullRequest|enablePullRequestAutoMerge|mergeBranch)\b")
-PULL_MERGE_ENDPOINT = re.compile(r"(^|/)pulls/[^/]+/merge/?$")
-REPO_MERGES_ENDPOINT = re.compile(r"(^|/)merges/?$")
+# An endpoint may carry a query string or a fragment after the path.
+PULL_MERGE_ENDPOINT = re.compile(r"(^|/)pulls/[^/?#]+/merge/?(?:[?#]|$)")
+REPO_MERGES_ENDPOINT = re.compile(r"(^|/)merges/?(?:[?#]|$)")
 # A gh api write is one with a method other than GET, or one that sends a
 # field or an input body. The tokens are read by their surface: a merge
 # endpoint among them, a merge mutation in them or in a file a typed field
@@ -42,7 +43,7 @@ REPO_MERGES_ENDPOINT = re.compile(r"(^|/)merges/?$")
 GH_API_METHOD_OPTIONS = {"-X", "--method"}
 GH_API_BODY_OPTIONS = {"-f", "-F", "--raw-field", "--field", "--input"}
 GH_API_FILE_OPTIONS = {"-F", "--field", "--input"}
-GRAPHQL = "graphql"
+GRAPHQL_ENDPOINT = re.compile(r"(^|/)graphql(?:[?#]|$)")
 
 
 def protected_branches(directory, options, protected_by_directory):
@@ -139,19 +140,23 @@ def reason_for_gh(words, args, directory):
                 return "gh api on %s merges a pull request, and merging is the owner's click on GitHub." % token
             if REPO_MERGES_ENDPOINT.search(token):
                 return "gh api on %s merges one branch into another on the remote." % token
-        if GRAPHQL in tokens:
-            text = " ".join(tokens)
-            for path in files:
-                if path == "-":
+        # The GraphQL endpoint is spelled graphql, /graphql or a full URL, so
+        # every write's text and body files are scanned for a merge mutation.
+        text = " ".join(tokens)
+        graphql = any(GRAPHQL_ENDPOINT.search(token) for token in tokens)
+        for path in files:
+            if path == "-":
+                if graphql:
                     return ("This GraphQL call reads its query from standard input, which the guard cannot inspect "
                             "for a merge; pass the query inline or from a file.")
-                try:
-                    with open(os.path.join(directory, path), encoding="utf-8", errors="replace") as handle:
-                        text += " " + handle.read()
-                except OSError:
-                    pass
-            if MERGE_MUTATIONS.search(text):
-                return "This GraphQL call merges a pull request or arms auto-merge, and merging is the owner's click on GitHub."
+                continue
+            try:
+                with open(os.path.join(directory, path), encoding="utf-8", errors="replace") as handle:
+                    text += " " + handle.read()
+            except OSError:
+                pass
+        if MERGE_MUTATIONS.search(text):
+            return "This GraphQL call merges a pull request or arms auto-merge, and merging is the owner's click on GitHub."
     return None
 
 

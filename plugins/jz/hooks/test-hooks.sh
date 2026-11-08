@@ -178,6 +178,8 @@ ask '"ls -la"'                                  "benign command"                
 ask '"git status"'                              "git status"                     allow
 ask '"git push"'                                "plain push"                     allow
 ask '"git push --set-upstream origin x"'        "push with upstream"             allow
+ask '"git push --mirror origin"'                "--mirror deletes remote refs"   ask
+ask '"git push --prune origin refs/heads/*:refs/heads/*"' "--prune deletes remote refs" ask
 ask '"gh pr view 5"'                            "gh pr view"                     allow
 ask '"gh pr checks 5"'                          "gh pr checks"                   allow
 ask '"echo gh pr create"'                       "gh pr create inside echo"       allow
@@ -842,6 +844,9 @@ protect '"gh api repos/o/r/pulls/5/merge"'       "GET on the merge endpoint"    
 protect '"gh api -X PUT repos/o/r/pulls/5/merge"' "PUT on the merge endpoint"     2
 protect '"gh api -XPUT repos/o/r/pulls/5/merge"' "attached -XPUT"                 2
 protect '"gh api --method=PUT /repos/o/r/pulls/5/merge"' "--method=PUT"           2
+protect '"gh api -X PUT repos/o/r/pulls/5/merge?merge_method=squash"' "merge endpoint with a query string" 2
+protect '"gh api /graphql -f query=\"mutation { mergePullRequest(input: {}) { clientMutationId } }\""' "GraphQL by its /graphql path" 2
+protect '"gh api https://api.github.com/graphql -f query=\"mutation { mergePullRequest(input: {}) { clientMutationId } }\""' "GraphQL by its full URL" 2
 protect '"gh api repos/o/r/pulls/5/merge -f merge_method=squash"' "fields imply a write" 2
 protect '"gh api repos/o/r/merges -f base=main -f head=x"' "repository merges endpoint" 2
 protect '"gh api repos/o/r/pulls/5"'             "read a pull request"            0

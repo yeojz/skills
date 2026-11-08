@@ -1032,6 +1032,14 @@ all_guards '"cat <<E\"O\"F\nbody\nEOF\ngit push origin main"' "partly quoted del
 all_guards '"git status # see <<EOF\ngit push origin main"' "<< inside a comment is not a here-document" deny
 all_guards '"git commit -m \"first\nuse <<Z\" ; git push origin main\nZ"' "<< inside a multi-line string is text" deny
 all_guards '"cat <<EOF\nbody without an end\ngit push origin main"' "here-document never closed, later lines judged" deny
+all_guards '"cat <<\"E O F\"\nx\nE O F\ngit push origin main\nE"' "delimiter with a quoted space"           deny
+all_guards '"cat <<'"'"'E\\F'"'"'\nbody\nE\\F\ngit push origin main\nEF"' "backslash kept inside a single-quoted delimiter" deny
+all_guards '"x=$((1<<2)); git push origin main\n2"'   "a shift inside arithmetic is not a here-document" deny
+all_guards '"sudo -E git push origin main"'             "wrapper flag without a value"            deny
+all_guards '"env -i git push origin main"'              "env -i before a push of main"            deny
+all_guards '"time -p git push origin main"'             "time -p before a push of main"           deny
+all_guards '"nice -n5 git push origin main"'            "attached wrapper value"                  deny
+all_guards '"git add .claude; git --work-tree=/nonexistent add y"' "unresolvable call beside a visible offender" deny
 all_guards '"sudo -u gh git push origin main"'          "option value spelled gh is not the program" deny
 all_guards '"env -C child git status"'                  "env -C asks"                             ask
 all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow

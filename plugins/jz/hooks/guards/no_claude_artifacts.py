@@ -187,6 +187,7 @@ def check(context):
         return None
     offenders = []
     unparsed = False
+    unseen = False
     for kind, check_directory, options, args in plan_checks(context.calls):
         if not is_repository(check_directory, options):
             continue
@@ -199,11 +200,13 @@ def check(context):
                 offenders.extend(forbidden(dirty_paths(check_directory, options)))
             except Unresolvable:
                 # Even the fallback could not run: git is missing, too old for
-                # --attr-source, or the repository would not answer. Asking
-                # keeps a guard that cannot see from passing everything.
-                return Ask("The artifact guard could not get git to say which paths this command stages or commits "
-                           "(git missing, older than 2.40, or the repository did not answer), so nothing was checked "
-                           "for .claude, docs/plans or .plans; confirm it, or run git status yourself first.")
+                # --attr-source, or the repository would not answer. The other
+                # calls on the line are still judged; a deny among them wins.
+                unseen = True
     if offenders:
         return deny(offenders, unparsed)
+    if unseen:
+        return Ask("The artifact guard could not get git to say which paths this command stages or commits "
+                   "(git missing, older than 2.40, or the repository did not answer), so nothing was checked "
+                   "for .claude, docs/plans or .plans; confirm it, or run git status yourself first.")
     return None

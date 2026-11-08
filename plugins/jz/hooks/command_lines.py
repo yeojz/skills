@@ -130,9 +130,23 @@ def strip_comments(line, parsed):
     return "".join(kept)
 
 
-def heredoc_delimiter(word):
-    """The delimiter a here-document word names, with its quoting removed, as bash reads it."""
-    return re.sub(r"[\\'\"]", "", word)
+def heredoc_delimiter(rest):
+    """(delimiter, characters consumed) for the word after a `<<`, read with shell quoting, or None when the word cannot be read.
+
+    bash removes the quoting from the word: `"E O F"` names `E O F`, `E"O"F`
+    and `\\EOF` name `EOF`, and a backslash inside single quotes stays.
+    """
+    lexer = shlex.shlex(rest, posix=True)
+    lexer.whitespace_split = True
+    lexer.whitespace = " \t"
+    lexer.commenters = ""
+    try:
+        word = lexer.get_token()
+    except ValueError:
+        return None
+    if not word:
+        return None
+    return word, lexer.instream.tell()
 
 
 def strip_heredocs(line, parsed):
@@ -151,6 +165,7 @@ def strip_heredocs(line, parsed):
     kept = []
     index = 0
     quote = ""
+    substitution = 0
     while index < len(lines):
         text = lines[index]
         index += 1
@@ -158,6 +173,7 @@ def strip_heredocs(line, parsed):
         position = 0
         at_word_start = True
         delimiters = []
+        unreadable = False
         while position < len(text):
             char = text[position]
             if quote:
@@ -173,15 +189,31 @@ def strip_heredocs(line, parsed):
                 at_word_start = False
             elif char == "#" and at_word_start:
                 break
-            elif text.startswith("<<", position) and not text.startswith("<<<", position) and not (position and text[position - 1] == "<"):
-                match = re.match(r"<<(-?)\s*([^\s<>|&;()]+)", text[position:])
-                if match:
-                    delimiters.append((match.group(1) == "-", heredoc_delimiter(match.group(2))))
-                    position += len(match.group(0)) - 1
-                    at_word_start = False
+            elif char == "$" and text.startswith("$(", position):
+                # Inside $(...) or $((...)) a << is a shift, not a here-document.
+                substitution += 1
+                position += 1
+                at_word_start = False
+            elif substitution and char == "(":
+                substitution += 1
+            elif substitution and char == ")":
+                substitution -= 1
+            elif not substitution and text.startswith("<<", position) and not text.startswith("<<<", position) and not (position and text[position - 1] == "<"):
+                match = re.match(r"<<(-?)\s*", text[position:])
+                read = heredoc_delimiter(text[position + len(match.group(0)):])
+                if read is None:
+                    unreadable = True
+                    break
+                delimiters.append((match.group(1) == "-", read[0]))
+                position += len(match.group(0)) + read[1] - 1
+                at_word_start = False
             else:
                 at_word_start = char in " \t;|&()"
             position += 1
+        if unreadable:
+            parsed.skip("a here-document whose delimiter cannot be read")
+            parsed.hidden = True
+            break
         for strip_tabs, delimiter in delimiters:
             closing = None
             for later in range(index, len(lines)):
@@ -290,18 +322,16 @@ def peel_wrappers(argv, parsed):
                 # env -C runs the program elsewhere; the recorded call would be judged in the wrong directory.
                 parsed.hidden = True
                 return None
-            # The token after an option may be its value, so a value spelled
-            # git or gh is not the program.
-            index = 0
-            while index < len(rest):
-                token = rest[index]
-                if token.startswith("-") and "=" not in token:
-                    index += 2
-                    continue
+            # Without the wrapper's option table, a token may be a flag or a
+            # value, so the program is the last of the first run of git or gh
+            # tokens: `sudo -u gh git push` is git, `sudo -E git push` is git.
+            start = None
+            for index, token in enumerate(rest):
                 if os.path.basename(token) in JUDGED_PROGRAMS:
-                    return rest[index:]
-                index += 1
-            return None
+                    start = index
+                elif start is not None:
+                    return rest[start:]
+            return rest[start:] if start is not None else None
     return rest
 
 

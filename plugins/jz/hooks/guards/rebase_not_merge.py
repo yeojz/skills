@@ -26,8 +26,6 @@ NAME = "rebase-not-merge"
 
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 REBASE_VALUES_THAT_REBASE = {"true", "merges", "interactive", "preserve", "i"}
-# When the line cannot be lexed at all, lean towards denying a merge of a default name.
-RAW_MERGE = re.compile(r"\bgit\b.*\bmerge\s+(?:--\S+\s+)*(?:origin/|upstream/)?(main|master|develop|trunk)\b")
 
 def run_git(directory, args):
     try:
@@ -149,14 +147,9 @@ def deny(reason, branch):
 def check(context):
     if "git" not in context.command:
         return None
-    if context.calls is None:
-        match = RAW_MERGE.search(context.command)
-        if match:
-            return deny("The command could not be parsed and looks like a merge of the default branch.", match.group(1))
-        return None
     switched = set()
     defaults_by_directory = {}
-    for argv, _, directory in context.calls:
+    for argv, directory in context.calls:
         reason, branch = reason_for(argv, directory, switched, defaults_by_directory)
         if reason:
             return deny(reason, branch)

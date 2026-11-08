@@ -247,9 +247,17 @@ The guards, each a module in `hooks/guards/` with a `NAME` and a
 | `rebase-not-merge` guard | Blocks merging the default branch into a feature branch, or pulling it without `--rebase`; rebase instead. A checkout on the default branch may fast-forward itself |
 | `no-restricted-words` guard | Blocks a commit message, PR body, review or comment that carries an emoji, an agent attribution trailer, a session link, a model version slug, or a word listed under a `## Restricted words` heading in the repo's `AGENTS.md` or `CLAUDE.md` |
 
-The guards share one parser, `command_lines.py`, so a line continuation, a
-quoted separator, a trailing comment, a `timeout 30` wrapper or a `bash -c`
-script is read the way the shell will read it, once per call. The guards that
+The guards share one parser, `command_lines.py`, which reads a line once:
+commands joined by `;`, `&&`, `||`, `|` or a newline, quoted arguments, a
+trailing comment, a line continuation, a `cd` that moves the commands after
+it, a `git -C` and a bare wrapper such as `nohup` or `timeout 30`. It does not
+follow a subshell, a brace group, a variable or command substitution, a
+backtick, a wrapper given options, or a nested shell such as `bash -c`,
+`eval` or `xargs`. A line with one of those is judged on the commands that
+were visible, and when it also names something a guard judges, the owner is
+asked about the rest; a read-only `git -C "$repo" status` passes in silence.
+Every construct the parser does not follow is one that cannot be used to slip
+a call past it. The guards that
 judge a push share `git_push.py`, which reads the push options the way git
 does and works out from the repository's configuration and tracking refs
 which refs the push would update. It never contacts the remote and never

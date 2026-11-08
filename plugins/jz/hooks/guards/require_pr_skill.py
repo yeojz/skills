@@ -29,7 +29,6 @@ NAME = "require-pr-skill"
 GATED_GIT = {"commit", "push"}
 PR = re.compile(r"(^|:)pr$")
 TYPED = re.compile(r"<command-name>/(?:[^<>/]*:)?pr</command-name>")
-RAW_GATED = re.compile(r"\bgit\b.*\b(commit|push)\b|\bgh\b.*\bpr\s+create\b")
 
 
 def gated_call(argv):
@@ -102,11 +101,7 @@ def pr_loaded(path):
 
 
 def check(context):
-    if context.calls is None:
-        gated = bool(RAW_GATED.search(context.command))
-    else:
-        gated = any(gated_call(argv) for argv, _, _ in context.calls)
-    if not gated:
+    if not any(gated_call(argv) for argv, _ in context.calls):
         return None
     transcript = context.transcript_path
     if not isinstance(transcript, str) or not os.path.isfile(transcript):

@@ -51,8 +51,6 @@ BUILTIN_RULES = [
     ("generic-credential", re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*['\"][A-Za-z0-9_\-/+=]{20,}['\"]")),
 ]
 ALLOW_COMMENT = re.compile(r"(?:betterleaks|gitleaks):allow")
-# When the line cannot be lexed at all, lean towards asking.
-RAW_PUSH = re.compile(r"\bgit\b.*\bpush\b")
 
 
 def published_revisions(directory, options, push):
@@ -201,11 +199,7 @@ def reason_for_push(directory, options, args, config_overrides):
 def check(context):
     if "push" not in context.command:
         return None
-    if context.calls is None:
-        if RAW_PUSH.search(context.command):
-            return Ask("The command could not be parsed and looks like a push, so its commits were not scanned for secrets; confirm first.")
-        return None
-    for argv, _, directory in context.calls:
+    for argv, directory in context.calls:
         call = git_call(argv, directory)
         if call is None or call[0] != "push":
             continue

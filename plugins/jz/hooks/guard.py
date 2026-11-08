@@ -8,12 +8,19 @@ rule never blocks an ordinary Bash call; the exit code stays 0 in that case
 because a non-zero code other than 2 is shown to the user as a hook error and
 allows the call anyway.
 
+A construct the parser does not follow (a subshell, a variable, a nested
+shell, a wrapper with options, unbalanced quotes) is judged on what was
+visible and asked about for the rest, when the line also names a command a
+guard judges.
+
 JZ_GUARDS, a comma-separated list of guard names, restricts the run to those
-guards. The test suite uses it to exercise one guard at a time.
+guards. The test suite uses it to exercise one guard at a time; the ask for
+an unfollowed construct is the dispatcher's and is not restricted by it.
 """
 
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -28,6 +35,11 @@ from guards import (  # noqa: E402
     require_pr_skill,
     scan_secrets_before_push,
 )
+
+# A line with a construct the parser does not follow is asked about only when
+# it also names something a guard judges; a read-only `git -C "$repo" status`
+# passes in silence.
+JUDGED = re.compile(r"\b(add|stage|commit|push|merge|pull|pr|api)\b")
 
 # Denying guards first, cheapest first, so a blocked call never pays for the
 # secret scan; the asking guards last.
@@ -71,6 +83,10 @@ def main():
             return 2
         if isinstance(decision, Ask):
             asks.append(decision.reason)
+    if context.unfollowed and JUDGED.search(context.command):
+        asks.append("The command uses %s, which the guards do not follow, so part of it was not checked. "
+                    "Write plain git and gh commands joined by && or ;, run from the repository directory "
+                    "or with git -C <path>, or confirm it as written." % " and ".join(context.unfollowed))
     if asks:
         print(json.dumps({
             "hookSpecificOutput": {

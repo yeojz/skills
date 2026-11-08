@@ -38,8 +38,6 @@ PR_CREATE_VALUE_OPTIONS = {
 }
 PR_READY_BOOL_OPTIONS = {"undo": None, "help": "h"}
 PR_READY_VALUE_OPTIONS = {"repo": "R"}
-# When the line cannot be lexed at all, lean towards asking.
-RAW_REMOTE_WRITE = re.compile(r"\bgh\b.*\bpr\s+(create|ready)\b|\bgit\s+push\b.*(--force|\s-f\b|\s\+\S)")
 
 
 def push_is_forced(args):
@@ -104,11 +102,7 @@ def reason_for(argv):
 
 
 def check(context):
-    if context.calls is None:
-        if RAW_REMOTE_WRITE.search(context.command):
-            return Ask("The command could not be parsed and looks like a remote write; confirm first.")
-        return None
-    for argv, _, _ in context.calls:
+    for argv, _ in context.calls:
         reason = reason_for(argv)
         if reason:
             return Ask(reason)

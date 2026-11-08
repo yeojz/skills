@@ -55,9 +55,6 @@ GH_API_VALUE_LONGS = {"method", "raw-field", "field", "header", "preview", "jq",
                       "template", "input", "hostname", "cache"}
 GH_API_FIELD_OPTIONS = {"-f", "-F", "--raw-field", "--field", "--input"}
 GH_API_TYPED_FIELD_OPTIONS = {"-F", "--field"}
-# When the line cannot be lexed at all, lean towards denying.
-RAW_MERGE = re.compile(r"\bgh\b.*\bpr\s+merge\b")
-RAW_PUSH = re.compile(r"\bgit\b.*\bpush\b.*(\s|:|\+|/)(main|master|develop|trunk)\b|\bgit\b.*\bpush\b.*\s--(all|mirror|branches)\b")
 
 def protected_branches(directory, options, protected_by_directory):
     if directory not in protected_by_directory:
@@ -203,12 +200,8 @@ def check(context):
     command = context.command
     if not re.search(r"push|merge|Merge|graphql", command):
         return None
-    if context.calls is None:
-        if RAW_MERGE.search(command) or MERGE_MUTATIONS.search(command) or RAW_PUSH.search(command):
-            return deny("The command could not be parsed and looks like a merge or a push to a default branch.")
-        return None
     cache = {}
-    for argv, _, directory in context.calls:
+    for argv, directory in context.calls:
         reason = reason_for(argv, directory, cache)
         if reason:
             return deny(reason)

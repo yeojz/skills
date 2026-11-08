@@ -1,57 +1,68 @@
-"""Split a Bash tool call into the simple commands it would run.
+"""Split a Bash tool call into the simple commands it would run, and say what it could not follow.
 
-Shared by every PreToolUse hook that has to decide something about a command
-line. One parser, so a line continuation, a quoted separator, a trailing
-comment or a wrapper such as `timeout 30` is handled the same way everywhere.
+Shared by every guard that has to decide something about a command line. The
+parser follows what an agent writes when it is doing ordinary work: commands
+joined by `;`, `&&`, `||`, `|` or a newline, a quoted argument, a trailing
+comment, a line continuation, a `cd` that moves the commands after it, a
+`git -C`, and a bare wrapper such as `nohup`, `sudo`, `command`, `env`,
+`time` or `timeout 30` in front of the program.
+
+It does not follow a subshell, a brace group, a command substitution, a
+variable, a backtick, a wrapper given options, or a nested shell such as
+`bash -c`, `eval`, `exec`, `xargs` or `source`. Each of those is reported as
+an unfollowed construct instead, and the dispatcher asks the owner about the
+line when it also names a command a guard judges. Following them exactly
+would mean reimplementing the shell, and every construct the parser does not
+follow is one that cannot be used to slip a call past it.
 """
 
 import os
 import re
 import shlex
 
-MAX_SHELL_DEPTH = 3
-
 SEPARATOR_CHARS = set("();<>|&\n")
+GROUPING_CHARS = set("()")
 REDIRECTIONS = {"<", ">", ">>", "<<", "<&", ">&", "&>", "<<<", ">|"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
 DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
-VARIABLE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z_0-9]*)\}|([A-Za-z_][A-Za-z_0-9]*))")
 
-WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "stdbuf",
-            "nice", "ionice", "xargs"}
-# Wrapper options whose value is always the next token, checked against each
-# program's option table (GNU coreutils env, timeout, nice and stdbuf, GNU
-# findutils xargs, GNU time, util-linux ionice, sudo 1.9). An `--option=value`
-# form is a single token and needs no entry. An option whose argument is
-# optional, such as env's --default-signal[=SIG] or xargs' --eof[=EOF], stays
-# out: its bare form is followed by the executable, which must not be consumed.
-# getopt_long also accepts any unambiguous abbreviation of a long option, so a
-# token is matched as a prefix of these names, never only as an exact name.
-WRAPPER_OPTIONS_WITH_VALUE = {
-    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "--quoting-style"},
-    "sudo": {"-u", "--user", "-g", "--group", "-C", "--close-from", "-D", "--chdir",
-             "-h", "--host", "-p", "--prompt", "-r", "--role", "-t", "--type",
-             "-U", "--other-user", "-T", "--command-timeout", "-R", "--chroot"},
-    "timeout": {"-s", "--signal", "-k", "--kill-after"},
-    "nice": {"-n", "--adjustment"},
-    "ionice": {"-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid",
-               "-u", "--uid"},
-    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
-    "time": {"-f", "--format", "-o", "--output-file"},
-    "xargs": {"-I", "-n", "--max-args", "-L", "-P", "--max-procs", "-s", "--max-chars",
-              "-d", "--delimiter", "-E", "-a", "--arg-file", "--process-slot-var"},
-}
-SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+# Wrappers that run the program after them unchanged. A wrapper given an
+# option, such as `env -u X` or `timeout -s KILL 30`, is not followed: its
+# option table would have to be known to tell an option's value from the
+# program.
+WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "nice", "stdbuf", "ionice"}
+# Programs that run a command line of their own, which the parser cannot see.
+NESTED_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "eval", "exec", "xargs", "source", "."}
 
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
                           "--exec-path", "--config-env"}
+GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
+GIT_LOCATION_OPTIONS = {"--git-dir", "--work-tree", "--namespace"}
 
 
-def strip_comments(line):
-    """Drop unquoted `# ...` runs and line continuations, the way a shell does.
+class Parsed:
+    """The simple commands of a line and the constructs the parser did not follow.
 
-    The lexer cannot do this itself: its commenter would swallow the newline and
-    with it every command on the following lines.
+    `calls` holds (argv, directory) for each command it could read; `unfollowed`
+    names each construct it could not, in the order found, so a line with any
+    of them is judged on what was visible and asked about for the rest.
+    """
+
+    def __init__(self):
+        self.calls = []
+        self.unfollowed = []
+
+    def skip(self, construct):
+        if construct not in self.unfollowed:
+            self.unfollowed.append(construct)
+
+
+def strip_comments(line, parsed):
+    """Drop unquoted `# ...` runs and line continuations, the way a shell does, and note expansions.
+
+    A `$` or a backtick outside single quotes expands in the shell, inside
+    double quotes too, so the text the parser sees is not the text that will
+    run. Those are reported, not expanded.
     """
     kept = []
     quote = ""
@@ -61,10 +72,14 @@ def strip_comments(line):
         char = line[index]
         index += 1
         if quote:
-            if quote == '"' and char == "\\" and index < len(line) and line[index] == "\n":
-                # A backslash-newline inside double quotes joins the lines.
+            if quote == '"' and char == "\\" and index < len(line):
+                # An escape inside double quotes; keep both characters.
+                kept.append(char)
+                kept.append(line[index])
                 index += 1
                 continue
+            if quote == '"' and char in "$`":
+                parsed.skip("a command substitution or variable" if char == "$" else "a backtick")
             kept.append(char)
             if char == quote:
                 quote = ""
@@ -89,17 +104,19 @@ def strip_comments(line):
             while index < len(line) and line[index] != "\n":
                 index += 1
             continue
+        if char in "$`":
+            parsed.skip("a command substitution or variable" if char == "$" else "a backtick")
         kept.append(char)
         at_word_start = char in " \t\n;|&()"
     return "".join(kept)
 
 
-def lex(line):
+def lex(line, parsed):
     """Tokenise a command line, keeping newlines as command separators.
 
     Raises ValueError on unbalanced quotes, as shlex does.
     """
-    lexer = shlex.shlex(strip_comments(line), posix=True,
+    lexer = shlex.shlex(strip_comments(line, parsed), posix=True,
                         punctuation_chars="();<>|&\n")
     lexer.whitespace_split = True
     lexer.whitespace = " \t\r"
@@ -107,12 +124,13 @@ def lex(line):
     return list(lexer)
 
 
-def command_segments(tokens):
+def command_segments(tokens, parsed):
     """Yield each simple command as a list and each separator run as a string.
 
-    A separator run is a token made only of `;`, `|`, `&`, newlines and
-    parentheses, such as `&&`, `|` or `);`. The braces of a `{ ...; }` group
-    are dropped: they group commands without changing where they run.
+    `;`, `&&`, `||`, `|`, `&` and a newline all end a command. Parentheses and
+    braces group commands in a subshell or in the current shell, with their
+    own working directory in the subshell case; the parser does not model
+    that and reports them.
     """
     current = []
     drop_next = False
@@ -124,57 +142,29 @@ def command_segments(tokens):
             drop_next = True
             continue
         if token and set(token) <= SEPARATOR_CHARS:
+            if set(token) & GROUPING_CHARS:
+                parsed.skip("a subshell")
             if current:
                 yield current
             current = []
             yield token
             continue
-        if token in {"{", "}"} and not current:
+        if token in {"{", "}"}:
+            parsed.skip("a brace group")
             continue
         current.append(token)
     if current:
         yield current
 
 
-def simple_commands(tokens):
-    """Split a token stream on separators, newlines and subshell parentheses."""
-    for segment in command_segments(tokens):
-        if isinstance(segment, list):
-            yield segment
+def runs_apart(separator):
+    """Whether a command beside this separator runs in a process of its own: a pipeline element or a background job."""
+    return ("|" in separator and separator != "||") or separator == "&"
 
 
-def is_pipe(separator):
-    return "|" in separator and separator != "||"
-
-
-def is_background(separator):
-    return separator == "&"
-
-
-def takes_separate_value(option, takes_value):
-    """Whether a wrapper option consumes the next token as its value.
-
-    A short option matches exactly. A long option matches as getopt_long does,
-    as an unambiguous prefix of one known name; an ambiguous prefix makes the
-    program itself refuse to run, so nothing is consumed for it.
-    """
-    if not option.startswith("--"):
-        return option in takes_value
-    if "=" in option:
-        return False
-    matches = [name for name in takes_value
-               if name.startswith("--") and name.startswith(option)]
-    return len(matches) == 1 or option in matches
-
-
-def peel_wrappers(argv):
-    """Drop leading assignments and wrapper programs such as env, sudo or nohup.
-
-    Also reports whether the command was reached through xargs, whose arguments
-    arrive on a pipe a hook cannot see.
-    """
+def peel_wrappers(argv, parsed):
+    """Drop leading assignments and bare wrapper programs. Returns the program's argv, or None when the wrapper has options."""
     rest = list(argv)
-    via_xargs = False
     while rest:
         name = os.path.basename(rest[0])
         if ASSIGNMENT.match(rest[0]):
@@ -182,29 +172,13 @@ def peel_wrappers(argv):
             continue
         if name not in WRAPPERS:
             break
-        via_xargs = via_xargs or name == "xargs"
         rest.pop(0)
-        takes_value = WRAPPER_OPTIONS_WITH_VALUE.get(name, set())
-        while rest and (rest[0].startswith("-") or DURATION.match(rest[0])
-                        or ASSIGNMENT.match(rest[0])):
-            option = rest.pop(0)
-            if option == "--":
-                break
-            if rest and takes_separate_value(option, takes_value):
-                rest.pop(0)
-    return rest, via_xargs
-
-
-def shell_script_argument(argv):
-    """Return the script string of an `sh -c` or `bash -c` call, else None."""
-    if not argv or os.path.basename(argv[0]) not in SHELLS:
-        return None
-    for index, token in enumerate(argv[1:], start=1):
-        if not token.startswith("-") or token.startswith("--"):
-            continue
-        if "c" in token[1:] and index + 1 < len(argv):
-            return argv[index + 1]
-    return None
+        if name == "timeout" and rest and DURATION.match(rest[0]):
+            rest.pop(0)
+        if rest and rest[0].startswith("-"):
+            parsed.skip("a %s option" % name)
+            return None
+    return rest
 
 
 def git_global_options(argv):
@@ -242,10 +216,6 @@ def git_call(argv, directory):
     return rest[0], rest[1:], os.path.normpath(directory)
 
 
-GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
-GIT_LOCATION_OPTIONS = {"--git-dir", "--work-tree", "--namespace"}
-
-
 def git_options_named(argv, names):
     """The global options of a git call whose names are in `names`, as tokens for another git call."""
     split = git_global_options(argv)
@@ -261,33 +231,28 @@ def git_options_named(argv, names):
 def git_config_overrides(argv):
     """The `-c` and `--config-env` options of a git call, as a flat token list.
 
-    A hook that queries a plain value, such as pull.rebase, may pass them to
+    A guard that queries a plain value, such as pull.rebase, may pass them to
     `git config` so git resolves the one-off override the way the inspected
-    command will. A hook that runs anything heavier never passes them: a -c
+    command will. A guard that runs anything heavier never passes them: a -c
     can name a command for git to run, such as core.sshCommand.
     """
     return git_options_named(argv, GIT_CONFIG_OPTIONS)
 
 
 def git_location_options(argv):
-    """The options that pick the repository: `--git-dir`, `--work-tree`, `--namespace`.
-
-    A hook that runs git on the caller's behalf passes these through, so its
-    queries see the repository the inspected command will. Configuration
-    overrides are not among them; see git_config_overrides.
-    """
+    """The options that pick the repository: `--git-dir`, `--work-tree`, `--namespace`."""
     return git_options_named(argv, GIT_LOCATION_OPTIONS)
 
 
 def start_directory(cwd):
-    """The directory a hook judges a command line from.
+    """The directory a guard judges a command line from.
 
     The event's cwd when it exists. A session whose own worktree was removed
     keeps sending that path, so a missing cwd falls back to its nearest
     existing ancestor: a command that names its repository with `git -C` or
     an absolute path is judged where it points, and one that relies on the
     cwd is still judged somewhere real rather than nowhere. Without a cwd,
-    the hook's own directory, or the root when even that was removed.
+    the process's own directory, or the root when even that was removed.
     """
     if isinstance(cwd, str) and cwd:
         try:
@@ -306,97 +271,38 @@ def start_directory(cwd):
         return os.sep
 
 
-def expand_variables(token, variables):
-    """Replace `$name` and `${name}` with values assigned earlier on the line.
+def parse(command_line, directory):
+    """Read a command line into a Parsed: its simple commands with their directories, and what was not followed.
 
-    A name the line never assigned is left as written, so the hook sees the
-    same unresolved text it would have seen without expansion.
+    A `cd` moves the directory of every command after it on the line, unless
+    it is a pipeline element or a background job, which runs in a process of
+    its own and moves nothing; that is reported. A `git -C` is resolved per
+    call by git_call. Unbalanced quotes leave no commands and are reported.
     """
-    def replace(match):
-        name = match.group(1) or match.group(2)
-        return variables.get(name, match.group(0))
-    return VARIABLE.sub(replace, token)
-
-
-def assignments(segment):
-    """The (name, value) pairs of a command made only of assignments, else None.
-
-    `m=/repo` and `export m=/repo` set a shell variable for the commands after
-    them. A prefix assignment such as `m=/repo git ...` only sets the
-    environment of that one command, and is not reported here.
-    """
-    words = segment[1:] if segment and segment[0] == "export" else segment
-    if not words or not all(ASSIGNMENT.match(word) for word in words):
-        return None
-    return [tuple(word.split("=", 1)) for word in words]
-
-
-def commands_with_directory(command_line, directory, depth=0):
-    """Yield (argv, via_xargs, directory) for every simple command.
-
-    Wrappers are peeled, a `bash -c "..."` script is expanded in place up to
-    MAX_SHELL_DEPTH, and a `cd` moves the directory the commands after it run
-    in, within its own shell scope: a `( ... )` subshell restores the outer
-    directory at `)`, and a `cd` that is a pipeline element or a background job
-    runs in a subshell of its own and moves nothing. A variable assigned on the
-    line, such as `m=/repo; git -C "$m" ...`, is expanded in the commands after
-    it under the same scoping. The lexer has already dropped the quotes, so a
-    `$m` inside single quotes is expanded too. Like a `cd`, an assignment
-    behind `&&` or `||` is taken to run, since dropping it would leave the
-    path unresolved and the command judged nowhere. `git -C` is not applied here;
-    git_call resolves it per call. Raises ValueError on unbalanced quotes.
-    """
-    scopes = [directory]
-    variable_scopes = [{}]
-    moved_to = None
-    assigned = None
-    previous_separator = ""
-    for segment in command_segments(lex(command_line)):
+    parsed = Parsed()
+    try:
+        tokens = lex(command_line, parsed)
+    except ValueError:
+        parsed.skip("unbalanced quotes")
+        return parsed
+    segments = list(command_segments(tokens, parsed))
+    for index, segment in enumerate(segments):
         if isinstance(segment, str):
-            in_this_shell = not is_pipe(segment) and not is_background(segment)
-            if is_pipe(previous_separator):
-                in_this_shell = False
-            if moved_to is not None and in_this_shell:
-                scopes[-1] = moved_to
-            if assigned is not None and in_this_shell:
-                variable_scopes[-1].update(assigned)
-            moved_to = None
-            assigned = None
-            for char in segment:
-                if char == "(":
-                    scopes.append(scopes[-1])
-                    variable_scopes.append(dict(variable_scopes[-1]))
-                elif char == ")" and len(scopes) > 1:
-                    scopes.pop()
-                    variable_scopes.pop()
-            previous_separator = segment
             continue
-        variables = variable_scopes[-1]
-        if variables:
-            segment = [expand_variables(token, variables) for token in segment]
-        pairs = assignments(segment)
-        if pairs is not None:
-            assigned = dict(assigned or {})
-            for name, value in pairs:
-                assigned[name] = expand_variables(value, dict(variables, **assigned))
-            continue
-        argv, via_xargs = peel_wrappers(segment)
+        argv = peel_wrappers(segment, parsed)
         if not argv:
             continue
-        script = shell_script_argument(argv)
-        if script is not None:
-            if depth < MAX_SHELL_DEPTH:
-                for inner in commands_with_directory(script, scopes[-1], depth + 1):
-                    yield inner
+        name = os.path.basename(argv[0])
+        if name in NESTED_SHELLS:
+            parsed.skip("a nested shell (%s)" % argv[0])
             continue
-        if argv[0] == "cd" and len(argv) > 1:
-            if not is_pipe(previous_separator):
-                moved_to = os.path.normpath(os.path.join(scopes[-1], argv[1]))
+        if argv[0] == "cd":
+            before = segments[index - 1] if index > 0 and isinstance(segments[index - 1], str) else ""
+            after = segments[index + 1] if index + 1 < len(segments) and isinstance(segments[index + 1], str) else ""
+            if runs_apart(before) or runs_apart(after):
+                parsed.skip("a cd in a pipeline or background job")
+            elif len(argv) > 1:
+                directory = os.path.normpath(os.path.join(directory, argv[1]))
             continue
-        yield argv, via_xargs, scopes[-1]
-
-
-def commands_in(command_line, depth=0):
-    """Yield (argv, via_xargs) for every simple command, directory ignored."""
-    for argv, via_xargs, _ in commands_with_directory(command_line, ".", depth):
-        yield argv, via_xargs
+        parsed.calls.append((argv, directory))
+    return parsed

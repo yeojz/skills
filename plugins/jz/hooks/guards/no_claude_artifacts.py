@@ -49,20 +49,19 @@ class Unresolvable(Exception):
 def plan_checks(calls):
     """Collect every git add, stage or commit the command line would run.
 
-    The shared parser resolves each command's directory, so a leading `cd`,
-    a `bash -c` script and a `-C` held in a shell variable are judged where
-    they point.
+    The shared parser resolves each command's directory, so a leading `cd`
+    and a `git -C` are judged where they point.
     """
     checks = []
-    for argv, via_xargs, command_directory in calls:
+    for argv, command_directory in calls:
         call = git_call(argv, command_directory)
         if call is None:
             continue
         subcommand, args, git_directory = call
         if subcommand in STAGING_SUBCOMMANDS:
-            checks.append(("add", git_directory, args, via_xargs))
+            checks.append(("add", git_directory, args))
         elif subcommand == "commit":
-            checks.append(("commit", git_directory, args, via_xargs))
+            checks.append(("commit", git_directory, args))
     return checks
 
 
@@ -106,14 +105,8 @@ def is_repository(directory):
     return run_git(directory, ["rev-parse", "--git-dir"]).returncode == 0
 
 
-def has_pathspec(args):
-    return any(not token.startswith("-") for token in args if token != "--")
-
-
-def staged_by_add(directory, args, via_xargs):
+def staged_by_add(directory, args):
     """Ask git which paths `git add` with these arguments would put in the index."""
-    if via_xargs and not has_pathspec(args):
-        raise Unresolvable()
     result = run_git(directory, ["add", "--dry-run"]
                      + drop_flags(args, ADD_FLAGS_DROPPED, ADD_LETTERS_DROPPED))
     return [match.group(1) for match in
@@ -125,10 +118,8 @@ def patch_mode(args):
                or (SHORT_CLUSTER.match(token) and "p" in token[1:]) for token in args)
 
 
-def committed_by_commit(directory, args, via_xargs):
+def committed_by_commit(directory, args):
     """Ask git which paths `git commit` with these arguments would record."""
-    if via_xargs and not has_pathspec(args):
-        raise Unresolvable()
     result = run_git(directory, ["commit", "--dry-run", "--porcelain"]
                      + drop_flags(args, COMMIT_FLAGS_DROPPED, COMMIT_LETTERS_DROPPED))
     # Column one is the index status. An untracked (??) or worktree-only ( M)
@@ -161,7 +152,7 @@ def deny(offenders, unparsed):
     lines += ["  " + path for path in report]
     lines.append("")
     if unparsed:
-        lines.append("The command could not be parsed, so the working tree was checked instead.")
+        lines.append("git could not say which paths the command puts in play, so the working tree was checked instead.")
     lines += ["These paths are never committed. Unstage them first:",
               "  git reset HEAD -- .claude docs/plans .plans",
               "and add them to .gitignore if they are not there already."]
@@ -174,23 +165,15 @@ def forbidden(paths):
 def check(context):
     if "git" not in context.command:
         return None
-    directory = context.start
     try:
-        if context.calls is None:
-            # Unbalanced quotes. Fall back to the tree, and deny only a real offender.
-            if is_repository(directory):
-                offenders = forbidden(dirty_paths(directory))
-                if offenders:
-                    return deny(offenders, unparsed=True)
-            return None
         offenders = []
         unparsed = False
-        for kind, check_directory, args, via_xargs in plan_checks(context.calls):
+        for kind, check_directory, args in plan_checks(context.calls):
             if not is_repository(check_directory):
                 continue
             resolve = staged_by_add if kind == "add" else committed_by_commit
             try:
-                offenders.extend(forbidden(resolve(check_directory, args, via_xargs)))
+                offenders.extend(forbidden(resolve(check_directory, args)))
             except Unresolvable:
                 unparsed = True
                 offenders.extend(forbidden(dirty_paths(check_directory)))

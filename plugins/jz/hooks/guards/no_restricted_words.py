@@ -200,11 +200,8 @@ def findings(text, restricted):
 
 
 def check(context):
-    if context.calls is None:
-        # Unbalanced quotes: there is no text to judge.
-        return None
     policies_by_directory = {}
-    for argv, _, directory in context.calls:
+    for argv, directory in context.calls:
         for text, policy_directory in texts_from(argv, directory):
             if not text:
                 continue

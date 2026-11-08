@@ -3,7 +3,9 @@
 A guard is a module with a NAME and a check(context) function that returns
 None to allow the call, Deny(lines) to block it, or Ask(reason) to have the
 host confirm it. The dispatcher in ../guard.py parses the payload once and
-hands every guard the same Context.
+hands every guard the same Context. A guard judges the commands the parser
+could read; the dispatcher itself asks about anything it could not follow,
+so no guard needs a fallback of its own for an unreadable line.
 """
 
 import os
@@ -11,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from command_lines import commands_with_directory, start_directory  # noqa: E402
+from command_lines import parse, start_directory  # noqa: E402
 
 
 class Deny:
@@ -40,16 +42,20 @@ class Context:
         self.cwd = cwd if isinstance(cwd, str) else ""
         self.transcript_path = self.event.get("transcript_path")
         self.start = start_directory(self.cwd)
-        self._calls = None
-        self._parsed = False
+        self._parsed = None
+
+    @property
+    def parsed(self):
+        if self._parsed is None:
+            self._parsed = parse(self.command, self.start)
+        return self._parsed
 
     @property
     def calls(self):
-        """(argv, via_xargs, directory) for every simple command, or None when the line cannot be lexed."""
-        if not self._parsed:
-            self._parsed = True
-            try:
-                self._calls = list(commands_with_directory(self.command, self.start))
-            except ValueError:
-                self._calls = None
-        return self._calls
+        """(argv, directory) for every simple command the parser could read."""
+        return self.parsed.calls
+
+    @property
+    def unfollowed(self):
+        """The constructs on the line the parser did not follow, each named once."""
+        return self.parsed.unfollowed

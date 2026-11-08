@@ -21,7 +21,8 @@ follows branch.<name>.pushRemote, remote.pushDefault, branch.<name>.remote,
 then origin, and push.default simple, current or upstream. Anything else,
 from --all and --mirror to a wildcard, a URL destination or an option
 outside the set, is an error; the guards turn an error into an ask, or into
-a deny when a protected name is visible in the arguments.
+a deny when a protected name, an every-branch option or a refspec pattern
+is visible in the arguments.
 """
 
 import os

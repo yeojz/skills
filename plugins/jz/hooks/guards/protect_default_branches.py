@@ -77,15 +77,16 @@ def reason_for_push(directory, options, args, config_overrides, cache):
     if error:
         # Unresolved is not safe: a token naming a protected branch, every branch, or a pattern of refs is enough to deny.
         for token in args:
-            if token in EVERY_BRANCH or (not token.startswith("-") and ("*" in token or token == ":")):
+            refspec = token.lstrip("+")
+            if token in EVERY_BRANCH or (not token.startswith("-") and ("*" in refspec or refspec == ":")):
                 return ("This push could not be resolved (%s) and %s selects branches by pattern, and the default "
                         "branch moves only through a merged pull request." % (safe_text(error), safe_text(token)))
             if token.startswith("-"):
                 continue
-            target = token.lstrip("+").partition(":")[2] or token
-            if branch_name(full_destination(target)) in protected:
+            name = branch_name(full_destination(refspec.partition(":")[2] or refspec))
+            if name in protected:
                 return ("This push could not be resolved (%s) and names %s, and the default branch moves only "
-                        "through a merged pull request." % (safe_text(error), safe_text(branch_name(target))))
+                        "through a merged pull request." % (safe_text(error), safe_text(name)))
         return None
     if push.dry_run:
         return None

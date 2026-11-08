@@ -18,13 +18,15 @@ substitution, a backtick, a here-document (nothing after it on the line is
 read), any other redirection, a subshell, a brace group, an environment
 assignment in front of a program, a wrapper such as `env`, `sudo`, `nohup`,
 `time` or `timeout`, a nested shell such as `bash -c`, `eval` or `xargs`,
-any command given git or gh as an argument (`! git push`, `find -exec git
-add`, `git submodule foreach "git ..."`), a git option or subcommand
-outside the known sets, an alias among them, and unbalanced quotes. The
-dispatcher asks the owner about such a line when it also names a command a
-guard judges, or when a nested shell's own text mentions git or gh, or when
-a git option or subcommand is unknown; the owner rewrites the line in the
-plain form or confirms it as written.
+any other program whose arguments mention git or gh (`! git push`,
+`find -exec git add`), a dashed `git-push` binary, a git subcommand that
+runs a command line of its own (`submodule foreach`, `bisect run`,
+`rebase -x`), a git option or subcommand outside the known sets, an alias
+among them, and unbalanced quotes. The dispatcher asks the owner about such
+a line when it also names a command a guard judges, or when a nested shell
+or a git subcommand runs text that mentions git or gh, or when a git option
+or subcommand is unknown; the owner rewrites the line in the plain form or
+confirms it as written.
 """
 
 import os
@@ -39,9 +41,8 @@ HERE_DOCUMENTS = {"<<", "<<<"}
 QUIET_REDIRECTIONS = {(">", "/dev/null"), ("&>", "/dev/null"), (">&", "1"), (">&", "2")}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
 MENTIONS_GIT = re.compile(r"\b(git|gh)\b")
-# An argument that is, or begins, a git or gh command line: the program it
-# is handed to may run it.
-GIT_ARGUMENT = re.compile(r"^(?:\S*/)?(?:git|gh)(?:\s|$)")
+# The same, glued to an option such as `-x"git push"`: the left boundary is not required.
+NAMES_GIT = re.compile(r"(git|gh)\b")
 SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 # A cd is followed when it stands between these separators, or at the start
 # or end of the line. One in a pipeline, a background job, a subshell or a
@@ -56,6 +57,8 @@ WRAPPERS = {"command", "env", "sudo", "doas", "nohup", "time", "timeout", "nice"
             "export", "declare", "typeset", "unset", "alias"}
 # Programs that run a command line of their own, which the parser cannot see.
 NESTED_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "eval", "exec", "xargs", "source", "."}
+# git subcommands that run a command line given in their arguments.
+GIT_RUNNERS = {"submodule", "bisect", "rebase", "filter-branch", "difftool", "for-each-repo"}
 
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
                           "--exec-path", "--config-env", "--attr-source"}
@@ -92,9 +95,10 @@ class Parsed:
     `unfollowed` names each construct that was not, in the order found, so a
     line with any of them is judged on what was followed and asked about for
     the rest. `hidden` is set when a construct could stand for a judged
-    command the line does not show: a nested shell whose text mentions git
-    or gh, or a git option or subcommand the guards do not know, so the
-    dispatcher asks even when the rest of the line names no judged command.
+    command the line does not show: a nested shell or a git subcommand
+    running text that mentions git or gh, a dashed git binary, or a git
+    option or subcommand the guards do not know, so the dispatcher asks even
+    when the rest of the line names no judged command.
     """
 
     def __init__(self):
@@ -165,15 +169,22 @@ def segments(tokens, parsed):
     """Yield each command's tokens as a list and each separator as a string, braces included.
 
     shlex glues neighbouring punctuation into one token, so `&&>` is a
-    separator and a redirection at once; such a token is reported and
-    read as a separator, so the command after it is not read as the
-    redirection's target.
+    separator and a redirection at once. Such a token is split back into
+    its separator and the redirection that opens the next command; one that
+    does not split that way, such as `<(`, is reported.
     """
     current = []
     for token in tokens:
         if token in {"{", "}"} or (token and set(token) <= SEPARATOR_CHARS and token not in REDIRECTIONS
                                     and token not in HERE_DOCUMENTS):
-            if set(token) & set("<>"):
+            cut = min((token.index(char) for char in "<>" if char in token), default=-1)
+            if cut > 0 and (token[cut:] in REDIRECTIONS or token[cut:] in HERE_DOCUMENTS):
+                if current:
+                    yield current
+                yield token[:cut]
+                current = [token[cut:]]
+                continue
+            if cut >= 0 and not set(token) & set("()"):
                 parsed.skip("a redirection (%s)" % token)
             if current:
                 yield current
@@ -234,15 +245,19 @@ def git_global_options(argv):
 
 
 def git_problem(argv):
-    """What puts a git call outside the grammar: an unknown option, an alias override, an unknown subcommand. None when it is plain."""
+    """What puts a git call outside the grammar: an unknown option, an unknown subcommand, a subcommand running text that mentions git. None when it is plain.
+
+    An alias cannot shadow a subcommand git ships, so an alias set with
+    `-c alias.x=...` is caught as the unknown subcommand `x`.
+    """
     options, rest = git_global_options(argv)
-    for name, value in options:
+    for name, _ in options:
         if name not in GIT_OPTIONS_WITH_VALUE and name not in GIT_GLOBAL_FLAGS:
             return "an unknown git option (%s)" % name
-        if name in GIT_CONFIG_OPTIONS and value.lower().startswith("alias."):
-            return "a git alias set on the command line"
     if rest and rest[0] not in GIT_COMMANDS:
         return "an unknown git subcommand (%s)" % rest[0]
+    if rest and rest[0] in GIT_RUNNERS and any(NAMES_GIT.search(token) for token in rest[1:]):
+        return "a git %s that runs a command naming git" % rest[0]
     return None
 
 
@@ -320,9 +335,10 @@ def parse(command_line, directory):
     command, and the parser would otherwise read that text as commands. A
     `cd` moves the directory only when it stands between separators and
     names one plain directory; any other cd is reported and moves nothing.
-    A command given git or gh as an argument, from `! git push` and
-    `find -exec git add` to `git bisect run git ...`, may run it, and is
-    reported rather than read.
+    A program other than git or gh whose arguments mention git or gh, from
+    `! git push` to `find -exec git add`, may run them, and is reported
+    rather than read; git's own command-running subcommands are caught in
+    git_problem.
     """
     parsed = Parsed()
     try:
@@ -351,7 +367,7 @@ def parse(command_line, directory):
             if before in CD_BEFORE and after in CD_AFTER and len(argv) == 2 and not argv[1].startswith("-"):
                 directory = os.path.normpath(os.path.join(directory, os.path.expanduser(argv[1])))
             else:
-                parsed.skip("a cd with options, or in a pipeline or group")
+                parsed.skip("a cd not between ; or && separators, or with options")
             continue
         if name in WRAPPERS:
             parsed.skip("a wrapper (%s)" % name)
@@ -361,8 +377,14 @@ def parse(command_line, directory):
             if any(MENTIONS_GIT.search(token) for token in argv[1:]):
                 parsed.hidden = True
             continue
-        if any(GIT_ARGUMENT.match(token) for token in argv[1:]):
-            parsed.skip("a command given git as an argument (%s)" % name)
+        if name.startswith("git-"):
+            parsed.skip("a dashed git command (%s)" % name)
+            parsed.hidden = True
+            continue
+        if name not in {"git", "gh"} and any(MENTIONS_GIT.search(token) for token in argv[1:]):
+            parsed.skip("a command whose arguments name git or gh (%s)" % name)
+            if any(os.path.basename(token) in NESTED_SHELLS for token in argv[1:]):
+                parsed.hidden = True
             continue
         if name == "git":
             problem = git_problem(argv)

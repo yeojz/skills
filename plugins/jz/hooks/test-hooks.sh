@@ -226,7 +226,7 @@ ask '"gh pr create \\\n  --draft \\\n  --title t"'  "draft create across lines" 
 ask '"gh pr create \\\n  --title t"'          "gh pr create across lines"      ask
 ask '"timeout 30 git push --force"'              "push behind timeout asks (the dispatcher's ask)" ask
 ask '"git push origin main # --force in a comment"' "force only in a trailing comment" allow
-ask '"echo '"'"'example;git push --force origin main'"'"'"' "separator inside quotes"       allow
+ask '"echo '"'"'example;git push --force origin main'"'"'"' "separator inside quotes, echo given git text asks" ask
 ask '"git log --oneline\ngit push -f"'           "push -f on a second line"       ask
 ask '"git push --force-with-lease \\\n origin x"' "lease then a continuation"     ask
 
@@ -622,6 +622,10 @@ pushgit checkout -q main
 scan '"git push origin"'                        "clean HEAD with the default refspec" allow
 pushgit config remote.origin.push refs/heads/leaky:refs/heads/leaky
 scan '"git push origin"'                        "configured refspec is not followed, asks" incomplete
+printf '  %-52s' "the configured-refspec ask is the resolver's, not the dispatcher's"
+out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git push origin"},"cwd":"%s"}' "$PUSHREPO" \
+  | JZ_GUARDS=scan-secrets-before-push "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+if printf '%s' "$out" | grep -q 'configures the refspecs' && ! printf '%s' "$out" | grep -q 'do not follow'; then echo "PASS"; else echo "FAIL"; fail=1; fi
 pushgit config --unset remote.origin.push
 pushgit config push.default matching
 scan '"git push origin"'                        "push.default matching is not followed, asks" incomplete
@@ -756,6 +760,8 @@ protect '"git push --recurse-submodules check origin main"' "option outside the 
 protect '"git push origin refs/heads/*:refs/heads/main"' "wildcard refspec naming main" 2
 protect '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec selects main"  2
 protect '"git push origin :"'                    "matching refspec selects main"  2
+protect '"git push origin +:"'                   "forced matching selects main"   2
+protect '"git push --recurse-submodules=check origin +main"' "unresolved plus main"   2
 protect '"git push origin feature:heads/main"'   "heads/main lands on main"       2
 protect '"git push origin HEAD:heads/main"'      "HEAD onto heads/main"           2
 protect '"git push --repo=origin main"'          "--repo with main named"         2
@@ -769,6 +775,10 @@ protect '"git push"'                             "push.default nothing names no 
 protgit config push.default upstream
 protgit config --unset branch.feature.merge
 protect '"git push"'                             "upstream mode without an upstream is left to the asking guards" 0
+printf '  %-52s' "upstream mode without an upstream makes the scan ask"
+out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":"%s"}' "$PROTREPO" \
+  | JZ_GUARDS=scan-secrets-before-push "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+if printf '%s' "$out" | grep -q 'no upstream'; then echo "PASS"; else echo "FAIL"; fail=1; fi
 protgit config branch.feature.merge refs/heads/feature
 protgit config --unset push.default
 protgit config remote.pushDefault origin
@@ -804,6 +814,8 @@ protgit config branch.main.remote elsewhere
 protect '"git push"'                             "branch.remote names another remote" 2
 protgit config branch.main.remote origin
 protect '"git push --force origin main"'         "forced push of a level main still denies" 2
+protect '"git push -f origin main"'              "-f on a level main still denies" 2
+protect '"git push --force-with-lease origin main"' "lease on a level main still denies" 2
 protect '"git push origin +main"'                "plus refspec onto a level main still denies" 2
 printf '[remote "origin"]\n\tmirror\n' >> "$PROTREPO/.git/config"
 protect '"git push origin main"'                 "valueless mirror key is a mirror" 2
@@ -963,14 +975,28 @@ all_guards '"for f in a; do git add .claude; done"'     "loop keyword asks"     
 all_guards '"caffeinate git push origin main"'          "unknown prefix program asks"             ask
 all_guards '"find .claude -type f -exec git add -f {} +"' "find -exec git asks"                   ask
 all_guards '"git submodule foreach \"git push origin HEAD:main\""' "submodule foreach asks"       ask
+all_guards '"git submodule foreach '"'"'cd . && git push origin HEAD:main'"'"'"' "submodule foreach, git not first, asks" ask
+all_guards '"git submodule foreach git status"'         "submodule foreach naming git asks without a judged word" ask
+all_guards '"git submodule update --init"'              "submodule without a command is followed" allow
 all_guards '"git bisect run git push origin main"'      "bisect run asks"                         ask
 all_guards '"git rebase -x \"git push origin main\" main"' "rebase -x asks"                     ask
+all_guards '"git rebase --exec=\"git push origin main\" HEAD~1"' "rebase --exec= asks"           ask
+all_guards '"git rebase -x\"git push origin main\" HEAD~1"' "attached -x asks"                  ask
+all_guards '"find . -exec sh -c '"'"'cd . && git push origin main'"'"' \\;"' "sh -c under find asks" ask
+all_guards '"find . -exec sh -c '"'"'git status'"'"' \\;"' "sh -c under find asks without a judged word" ask
+all_guards '"/usr/libexec/git-core/git-push origin main"' "dashed git-push asks"                 ask
+all_guards '"git-lfs pull"'                             "dashed add-on asks"                      ask
 all_guards '"echo git push origin main"'                "git as an argument of echo asks"         ask
 all_guards '"echo git status"'                          "git as an argument on a read-only line is silent" allow
 all_guards '"grep -n git README.md"'                    "git as a search word is silent"          allow
-all_guards '"git commit -m \"fix git push hook\""'      "git inside a message is not an argument"  allow
-all_guards '"git status&&>/dev/null git push origin main"' "glued separator and redirection asks" ask
-all_guards '"git status;>/dev/null git add .claude"'    "glued ;> asks"                           ask
+all_guards '"git commit -m \"fix git push hook\""'      "git inside a message is followed"        allow
+all_guards '"gh pr create --draft --title \"gh pr view broke\""' "gh inside a gh argument is followed" allow
+all_guards '"gh pr create --title \"gh pr view broke\""' "gh inside an argument does not hide the ready PR" ask
+all_guards '"git -C git push origin main"'              "git as a directory name is followed"     deny
+all_guards '"git status&&>/dev/null git push origin main"' "glued separator and redirection is split" deny
+all_guards '"git status;>/dev/null git add .claude"'    "glued ;> is split"                       deny
+all_guards '"diff <(git log) x && git commit -m x"'     "process substitution asks"               ask
+all_guards '"diff <(git status) x && git add .claude"'  "process substitution beside a plain offender denies" deny
 all_guards '"nohup git add .claude"'                    "bare wrapper asks"                       ask
 all_guards '"timeout 30 git add .claude"'               "timeout asks"                            ask
 all_guards '"command git add ."'                        "command asks"                            ask
@@ -1008,7 +1034,7 @@ all_guards '"git --bogus status"'                       "unknown git option asks
 all_guards '"git p origin main"'                        "unknown git subcommand asks"             ask
 all_guards '"git lfs pull"'                             "add-on subcommand asks"                  ask
 all_guards '"git -c alias.x=push x origin main"'        "alias override asks"                     ask
-all_guards '"git -c alias.status=push status origin main"' "alias override of a builtin name asks" ask
+all_guards '"git -c alias.status=push status origin main"' "alias on a builtin name is ignored by git, followed" allow
 all_guards '"git -c user.name=dev status"'              "known option with a value is followed"   allow
 all_guards '"git commit -F - <<'"'"'EOF'"'"'\nfeat: the oracle\nEOF"' "here-document asks"      ask
 all_guards '"gh pr create --draft --body-file - <<<\"ship it\""' "here-string asks"               ask

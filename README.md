@@ -264,12 +264,15 @@ Everything else asks: a variable or command substitution, a backtick, a
 here-document (nothing after it on the line is read), any other redirection,
 a subshell, a brace group, an environment assignment in front of a program, a
 wrapper such as `env`, `sudo`, `nohup`, `time` or `timeout`, a nested shell
-such as `bash -c`, `eval` or `xargs`, any command given git or gh as an
-argument (`! git push`, `find -exec git add`), a git option or subcommand the
-guards do not know, aliases included, and unbalanced quotes. A line with one
-of those is judged on the plain commands it does have, and when it also names
-something a guard judges, or a nested shell's own text mentions git or gh, or
-a git option or subcommand is unknown, the owner is asked about the rest; a
+such as `bash -c`, `eval` or `xargs`, any other program whose arguments
+mention git or gh (`! git push`, `find -exec git add`), a dashed `git-push`
+binary, a git subcommand that runs a command line of its own (`submodule
+foreach`, `bisect run`, `rebase -x`), a git option or subcommand the guards
+do not know, aliases included, and unbalanced quotes. A line with one of
+those is judged on the plain commands it does have, and when it also names
+something a guard judges, or a nested shell or git subcommand runs text that
+mentions git or gh, or a git option or subcommand is unknown, the owner is
+asked about the rest; a
 read-only `git -C "$repo" status` passes in silence.
 Every git call a guard makes runs with the repository's filesystem monitor,
 hooks and signature display off, on a scratch copy of the index where it

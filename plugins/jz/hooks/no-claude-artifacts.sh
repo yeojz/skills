@@ -43,8 +43,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, sys.argv[1])
-from command_lines import (MAX_SHELL_DEPTH, git_call, lex, peel_wrappers,  # noqa: E402
-                           shell_script_argument, simple_commands)
+from command_lines import commands_with_directory, git_call, start_directory  # noqa: E402
 
 FORBIDDEN = re.compile(r"(^|/)(\.claude|docs/plans|\.plans)(/|$)")
 
@@ -75,22 +74,16 @@ class Unresolvable(Exception):
     """git could not answer for this call, so the working tree is all we have."""
 
 
-def plan_checks(command_line, directory, depth=0):
-    """Collect every git add, stage or commit the command line would run."""
+def plan_checks(command_line, directory):
+    """Collect every git add, stage or commit the command line would run.
+
+    The shared parser resolves each command's directory, so a leading `cd`,
+    a `bash -c` script and a `-C` held in a shell variable are judged where
+    they point.
+    """
     checks = []
-    for words in simple_commands(lex(command_line)):
-        argv, via_xargs = peel_wrappers(words)
-        if not argv:
-            continue
-        script = shell_script_argument(argv)
-        if script is not None:
-            if depth < MAX_SHELL_DEPTH:
-                checks.extend(plan_checks(script, directory, depth + 1))
-            continue
-        if argv[0] == "cd" and len(argv) > 1:
-            directory = os.path.normpath(os.path.join(directory, argv[1]))
-            continue
-        call = git_call(argv, directory)
+    for argv, via_xargs, command_directory in commands_with_directory(command_line, directory):
+        call = git_call(argv, command_directory)
         if call is None:
             continue
         subcommand, args, git_directory = call
@@ -233,11 +226,7 @@ def main():
     command_line, cwd = read_payload()
     if "git" not in command_line:
         return
-    if cwd and not os.path.isdir(cwd):
-        print("Blocked: no-claude-artifacts hook was given cwd '%s', which does not exist."
-              % cwd, file=sys.stderr)
-        sys.exit(2)
-    directory = cwd or os.getcwd()
+    directory = start_directory(cwd)
 
     try:
         checks = plan_checks(command_line, directory)

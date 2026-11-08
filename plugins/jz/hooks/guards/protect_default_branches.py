@@ -9,8 +9,10 @@ A protected branch is main, master, develop or trunk, and whatever
 refs/remotes/origin/HEAD names. Which refs a push updates is read from the
 repository alone, by git_push.resolve_push; nothing is asked of the remote
 and nothing the caller named is run. A push the resolver does not follow is
-denied when a protected name, or an option that pushes every branch, is
-visible in its arguments, and left to the asking guards otherwise. A -c or
+denied when a protected name, an option that pushes every branch, or a
+refspec pattern is visible in its arguments, and left to the asking guards
+otherwise. A push whose tip already matches the tracking ref passes, unless
+it is forced, since a stale tracking ref would then hide a rewind. A -c or
 --config-env override of remote.*, push.*, branch.* or url.* cannot be
 followed and is denied.
 
@@ -28,7 +30,7 @@ import re
 
 from command_lines import git_call, git_config_overrides, git_location_options
 from gh_options import gh_command
-from git_push import COMMON_DEFAULTS, HEADS, origin_head, resolve_commit, resolve_push, unfollowed_config_override
+from git_push import COMMON_DEFAULTS, HEADS, full_destination, origin_head, resolve_commit, resolve_push, unfollowed_config_override
 from guards import Deny, read_text, safe_text
 
 NAME = "protect-default-branches"
@@ -73,15 +75,15 @@ def reason_for_push(directory, options, args, config_overrides, cache):
     protected = protected_branches(directory, options, cache)
     push, error = resolve_push(directory, options, args)
     if error:
-        # Unresolved is not safe: a token naming a protected branch, or every branch, is enough to deny.
+        # Unresolved is not safe: a token naming a protected branch, every branch, or a pattern of refs is enough to deny.
         for token in args:
-            if token in EVERY_BRANCH:
-                return ("This push could not be resolved (%s) and %s pushes every branch, and the default "
-                        "branch moves only through a merged pull request." % (safe_text(error), token))
+            if token in EVERY_BRANCH or (not token.startswith("-") and ("*" in token or token == ":")):
+                return ("This push could not be resolved (%s) and %s selects branches by pattern, and the default "
+                        "branch moves only through a merged pull request." % (safe_text(error), safe_text(token)))
             if token.startswith("-"):
                 continue
             target = token.lstrip("+").partition(":")[2] or token
-            if branch_name(target) in protected:
+            if branch_name(full_destination(target)) in protected:
                 return ("This push could not be resolved (%s) and names %s, and the default branch moves only "
                         "through a merged pull request." % (safe_text(error), safe_text(branch_name(target))))
         return None
@@ -95,7 +97,7 @@ def reason_for_push(directory, options, args, config_overrides, cache):
             return "This push would delete %s on %s, and the default branch moves only through a merged pull request." % (name, push.remote)
         pushed = resolve_commit(directory, options, source)
         held = resolve_commit(directory, options, push.tracking_ref(name))
-        if pushed is not None and pushed == held:
+        if not push.forced and pushed is not None and pushed == held:
             continue
         return "This push would update %s on %s, and the default branch moves only through a merged pull request." % (name, push.remote)
     return None

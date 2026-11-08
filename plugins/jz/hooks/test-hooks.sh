@@ -79,7 +79,7 @@ check '"git add -A 1>/dev/null"'               "add -A with stdout discarded"  2
 check "\"git --git-dir=$FIXTURE/.git --work-tree=$FIXTURE add .claude\"" "add .claude by --git-dir from outside" 2 /
 # A dry run that never finishes is killed at its timeout; the lock it held
 # must be on a scratch copy of the index, never on the repository's own.
-JZ_GIT_TIMEOUT_SECONDS=2 check '"git add --pathspec-from-file=/dev/zero"' "pathspec file that never ends, tree checked instead" 2
+JZ_GIT_TIMEOUT_SECONDS=0.5 check '"git add --pathspec-from-file=/dev/zero"' "pathspec file that never ends, tree checked instead" 2
 check '"git add README.md nosuchfile"'          "failing dry run, tree checked instead" 2
 printf '  %-52s' "no index.lock left behind"
 if [ -e "$FIXTURE/.git/index.lock" ]; then echo "FAIL"; fail=1; else echo "PASS"; fi
@@ -176,7 +176,7 @@ ask '"git push --mirror origin"'                "--mirror deletes remote refs"  
 ask '"git push --prune origin refs/heads/*:refs/heads/*"' "--prune deletes remote refs" ask
 ask '"gh pr view 5"'                            "gh pr view"                     allow
 ask '"gh pr checks 5"'                          "gh pr checks"                   allow
-ask '"echo gh pr create"'                       "gh pr create inside echo"       allow
+ask '"echo gh pr create"'                       "gh as an argument of echo asks"  ask
 ask '"gh pr create --draft --title t"'          "gh pr create --draft"           allow
 ask '"gh pr create --title t --body b"'         "gh pr create without draft"     ask
 ask '"gh pr create -df"'                        "draft inside a -df cluster"     allow
@@ -219,12 +219,12 @@ ask '"git push origin --force-with-lease"'      "push remote then lease"        
 ask '"git push --force-if-includes"'            "push --force-if-includes"       ask
 ask '"git push origin +main"'                   "push plus refspec"              ask
 ask '"git -C . push -f"'                        "push -f behind git -C"          ask
-ask '"nohup git push --force"'                  "push behind nohup"              ask
+ask '"nohup git push --force"'                  "push behind nohup asks (the dispatcher's ask)" ask
 ask '"/usr/bin/gh pr ready 5"'                  "gh through an absolute path"    ask
 ask '"git push origin \\\n  --force-with-lease"' "push with a line continuation"  ask
 ask '"gh pr create \\\n  --draft \\\n  --title t"'  "draft create across lines"      allow
 ask '"gh pr create \\\n  --title t"'          "gh pr create across lines"      ask
-ask '"timeout 30 git push --force"'              "push behind timeout with a duration" ask
+ask '"timeout 30 git push --force"'              "push behind timeout asks (the dispatcher's ask)" ask
 ask '"git push origin main # --force in a comment"' "force only in a trailing comment" allow
 ask '"echo '"'"'example;git push --force origin main'"'"'"' "separator inside quotes"       allow
 ask '"git log --oneline\ngit push -f"'           "push -f on a second line"       ask
@@ -484,13 +484,6 @@ deny '"gh pr create --draft -F body-trailer.md"'                  "trailer in a 
 deny '"git commit -F /dev/zero -m \"feat: the oracle\""'       "inline restricted word beside an unseen file" 2 no-restricted-words
 deny '"gh pr create --draft --title \"ship ✅\" --body-file -"'  "emoji in a title beside a stdin body" 2 no-restricted-words
 deny '"git commit -m \"feat: the oracle\" -F missing.txt"'       "inline word before a missing file" 2 no-restricted-words
-# A body file that is not a regular file is not read: a device would never
-# end and a FIFO would block, and the guard runs before the owner has approved
-# the command that names it.
-mkfifo "$FIXTURE/body.fifo"
-head -c 1100000 /dev/zero | tr '\0' 'a' > "$FIXTURE/body-huge.md"
-printf '\nthe oracle\n' >> "$FIXTURE/body-huge.md"
-rm -f "$FIXTURE/body.fifo" "$FIXTURE/body-huge.md"
 deny '"gh api repos/o/r/pulls/5/comments -f body=\"an Oracle again\""' "restricted word via gh api -f" 2 no-restricted-words
 deny '"gh api --method POST repos/o/r/issues/5/comments --input input-link.json"' "session link via gh api --input" 2 no-restricted-words
 deny '"gh pr review 5 --comment --body \"ok 👍\""'  "emoji in a review"              2 no-restricted-words
@@ -579,7 +572,7 @@ scan '"git push --force origin main"'           "forced push is scanned too"    
 scan '"git push -u origin main:main"'           "refspec with source and target" secret
 scan '"git -C pushrepo push origin main"'       "push behind git -C"             secret "$FIXTURE"
 scan '"cd pushrepo && git push"'                "push after cd"                  secret "$FIXTURE"
-scan '"echo git push origin main"'              "push inside echo"               allow
+scan '"echo git push origin main"'              "git as an argument of echo asks" incomplete
 scan '"git push origin --delete main"'          "branch deletion publishes nothing" allow
 scan '"git push origin :main"'                  "empty-source refspec"           allow
 pushgit push -q origin main
@@ -744,13 +737,13 @@ protect '"git push --all origin"'                "--all pushes every branch"    
 protect '"git push --branches origin"'           "--branches pushes every branch" 2
 protect '"git push --mirror origin"'             "--mirror pushes every branch"   2
 protect '"git push --dry-run origin main"'       "a dry run moves nothing"        0
+protect '"echo git push origin main"'            "git as an argument of echo is not a push" 0
 protect '"git push origin feature && git push origin main"' "main after a feature push" 2
 protect '"cd protrepo && git push origin main"'  "push main after cd"             2 "$FIXTURE"
 protect '"git -C protrepo push origin main"'     "push main behind git -C"        2 "$FIXTURE"
 protect "\"git -C $PROTREPO push origin feature\"" "missing cwd, push a feature by -C" 0 "$FIXTURE/gone/worktree"
 protect "\"git -C $PROTREPO push origin main\""  "missing cwd, push main by -C"   2 "$FIXTURE/gone/worktree"
 protect '"git -c remote.origin.push=refs/heads/feature:refs/heads/main push origin"' "configured refspec onto main" 2
-protect '"echo git push origin main"'            "push inside echo"               0
 protect '"git push origin main 2>&1"'            "push main with stderr redirected" 2
 protect '"git --attr-source HEAD push origin main"' "attr-source takes a value"    2
 protect '"git commit -m \"merge main notes\""'   "merge only in a commit message" 0
@@ -761,6 +754,10 @@ protect '"git push origin v1:v1"'                "tag pushed under its own name"
 protgit tag -d v1 >/dev/null
 protect '"git push --recurse-submodules check origin main"' "option outside the set, main named" 2
 protect '"git push origin refs/heads/*:refs/heads/main"' "wildcard refspec naming main" 2
+protect '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec selects main"  2
+protect '"git push origin :"'                    "matching refspec selects main"  2
+protect '"git push origin feature:heads/main"'   "heads/main lands on main"       2
+protect '"git push origin HEAD:heads/main"'      "HEAD onto heads/main"           2
 protect '"git push --repo=origin main"'          "--repo with main named"         2
 protect '"git push --repo=origin feature"'       "--repo with a feature named is left to the asking guards" 0
 protgit config push.default upstream
@@ -769,12 +766,21 @@ protect '"git push"'                             "upstream mode pushes feature o
 protgit config branch.feature.merge refs/heads/feature
 protgit config push.default nothing
 protect '"git push"'                             "push.default nothing names no branch" 0
+protgit config push.default upstream
+protgit config --unset branch.feature.merge
+protect '"git push"'                             "upstream mode without an upstream is left to the asking guards" 0
+protgit config branch.feature.merge refs/heads/feature
 protgit config --unset push.default
 protgit config remote.pushDefault origin
 protect '"git push"'                             "remote.pushDefault from feature" 0
 protgit config --unset remote.pushDefault
 protgit checkout -q main
 protect '"git push"'                             "bare push from main"            2
+protgit config push.default current
+protect '"git push"'                             "push.default current from main" 2
+protgit config push.default tracking
+protect '"git push"'                             "push.default tracking from main" 2
+protgit config --unset push.default
 protgit config branch.main.pushRemote origin
 protect '"git push"'                             "pushRemote from main"           2
 protgit config --unset branch.main.pushRemote
@@ -787,10 +793,21 @@ protgit remote add elsewhere "$FIXTURE/elsewhere.git"
 protgit checkout -q main
 protgit config branch.main.pushRemote elsewhere
 protect '"git push"'                             "pushRemote names another remote" 2
+protgit config remote.pushDefault origin
+protect '"git push"'                             "pushRemote outranks pushDefault" 2
+protgit config --unset remote.pushDefault
 protgit config --unset branch.main.pushRemote
 protgit config remote.pushDefault elsewhere
 protect '"git push"'                             "pushDefault names another remote" 2
 protgit config --unset remote.pushDefault
+protgit config branch.main.remote elsewhere
+protect '"git push"'                             "branch.remote names another remote" 2
+protgit config branch.main.remote origin
+protect '"git push --force origin main"'         "forced push of a level main still denies" 2
+protect '"git push origin +main"'                "plus refspec onto a level main still denies" 2
+printf '[remote "origin"]\n\tmirror\n' >> "$PROTREPO/.git/config"
+protect '"git push origin main"'                 "valueless mirror key is a mirror" 2
+protgit config --unset remote.origin.mirror
 protgit config --add remote.origin.url "$FIXTURE/elsewhere.git"
 protect '"git push origin main"'                 "second url sends main elsewhere" 2
 protgit config --unset remote.origin.url "$FIXTURE/elsewhere.git"
@@ -940,6 +957,20 @@ all_guards '"bash -c '"'"'git pu\"\"sh origin main'"'"'"' "split word inside a n
 all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow
 all_guards '"xargs -L 2 git push"'                      "xargs asks"                              ask
 all_guards '"echo x | xargs git status"'                "xargs naming git asks without a judged word" ask
+all_guards '"! git push origin main"'                   "negation asks"                           ask
+all_guards '"if true; then git push origin main; fi"'   "shell keyword asks"                      ask
+all_guards '"for f in a; do git add .claude; done"'     "loop keyword asks"                       ask
+all_guards '"caffeinate git push origin main"'          "unknown prefix program asks"             ask
+all_guards '"find .claude -type f -exec git add -f {} +"' "find -exec git asks"                   ask
+all_guards '"git submodule foreach \"git push origin HEAD:main\""' "submodule foreach asks"       ask
+all_guards '"git bisect run git push origin main"'      "bisect run asks"                         ask
+all_guards '"git rebase -x \"git push origin main\" main"' "rebase -x asks"                     ask
+all_guards '"echo git push origin main"'                "git as an argument of echo asks"         ask
+all_guards '"echo git status"'                          "git as an argument on a read-only line is silent" allow
+all_guards '"grep -n git README.md"'                    "git as a search word is silent"          allow
+all_guards '"git commit -m \"fix git push hook\""'      "git inside a message is not an argument"  allow
+all_guards '"git status&&>/dev/null git push origin main"' "glued separator and redirection asks" ask
+all_guards '"git status;>/dev/null git add .claude"'    "glued ;> asks"                           ask
 all_guards '"nohup git add .claude"'                    "bare wrapper asks"                       ask
 all_guards '"timeout 30 git add .claude"'               "timeout asks"                            ask
 all_guards '"command git add ."'                        "command asks"                            ask
@@ -971,13 +1002,13 @@ all_guards '"cd /tmp &\ngit push origin main"'         "background cd moves noth
 all_guards '"echo x | cd child; git add .claude"'       "cd after a pipe moves nothing"           deny
 all_guards '"cd child & git add .claude"'               "cd as a background job moves nothing"    deny
 all_guards '"cd child | git add .claude"'               "cd as a pipeline element moves nothing"  deny
+all_guards '"cd nosuch || git add .claude"'             "cd before || moves nothing"              deny
 all_guards '"git --bogus push origin main"'             "unknown git option asks"                 ask
 all_guards '"git --bogus status"'                       "unknown git option asks on a read-only line" ask
 all_guards '"git p origin main"'                        "unknown git subcommand asks"             ask
-git -C "$GATEREPO" config alias.p push
-all_guards '"git p origin main"'                        "alias is not followed, asks"             ask
-git -C "$GATEREPO" config --unset alias.p
+all_guards '"git lfs pull"'                             "add-on subcommand asks"                  ask
 all_guards '"git -c alias.x=push x origin main"'        "alias override asks"                     ask
+all_guards '"git -c alias.status=push status origin main"' "alias override of a builtin name asks" ask
 all_guards '"git -c user.name=dev status"'              "known option with a value is followed"   allow
 all_guards '"git commit -F - <<'"'"'EOF'"'"'\nfeat: the oracle\nEOF"' "here-document asks"      ask
 all_guards '"gh pr create --draft --body-file - <<<\"ship it\""' "here-string asks"               ask
@@ -990,10 +1021,12 @@ all_guards '"git add .claude; git --work-tree=/nonexistent add y"' "unresolvable
 all_guards '"git push --all origin"'                    "--all counts as a push of main"          deny
 all_guards '"git push --mirror origin"'                 "--mirror counts as a push of main"       deny
 all_guards '"git push --repo=origin"'                   "--repo asks"                             ask
-all_guards '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec asks"                  ask
+all_guards '"git push origin feature"'                  "push to an unconfigured remote asks"    ask
 git -C "$GATEREPO" remote add origin "$FIXTURE/no-such-remote.git"
+all_guards '"git push origin HEAD:topic"'               "push of HEAD to a plain remote passes"   allow
+all_guards '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec denies"                deny
 git -C "$GATEREPO" config remote.origin.mirror true
-all_guards '"git push origin feature"'                  "mirror remote asks"                      ask
+all_guards '"git push origin HEAD:topic"'               "mirror remote asks"                      ask
 git -C "$GATEREPO" remote remove origin
 mkfifo "$GATEREPO/body.fifo"
 head -c 1100000 /dev/zero | tr '\0' 'a' > "$GATEREPO/body-huge.md"

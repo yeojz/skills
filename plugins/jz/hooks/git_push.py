@@ -25,6 +25,7 @@ a deny when a protected name is visible in the arguments.
 """
 
 import os
+import re
 import subprocess
 import time
 
@@ -55,7 +56,9 @@ TAGS = "refs/tags/"
 # one-off override of one of these on the command line is not followed, so a
 # guard asks or denies instead of guessing.
 PUSH_CONFIG_PREFIXES = ("remote.", "push.", "branch.", "url.")
-TRUE_VALUES = {"true", "yes", "on", "1"}
+FALSE_VALUES = {"false", "no", "off", "0"}
+# Short destinations git completes against the remote's own refs; `heads/main` lands on refs/heads/main.
+REF_NAMESPACES = ("heads/", "tags/", "remotes/")
 
 
 class GuardTimeout(Exception):
@@ -167,12 +170,15 @@ class Push:
     describe the destination, since the resolver accepts no remote whose
     pushes go elsewhere. `updates` holds (source, destination ref) pairs,
     source None for a deletion; the destination is a full ref name.
+    `forced` says a force option or a `+refspec` was given, so a tip that
+    matches the tracking ref may still rewind the remote.
     """
 
-    def __init__(self, remote, updates, dry_run):
+    def __init__(self, remote, updates, dry_run, forced):
         self.remote = remote
         self.updates = updates
         self.dry_run = dry_run
+        self.forced = forced
 
     def tracking_ref(self, name):
         """The tracking ref for branch `name` at the destination."""
@@ -207,25 +213,39 @@ def walk_push_options(args):
 
 
 def remote_problem(directory, options, remote):
-    """Why refs/remotes/<remote>/* would not describe where a push to `remote` lands, or None."""
-    if remote not in git_lines(directory, options, ["remote"]):
+    """Why refs/remotes/<remote>/* would not describe where a push to `remote` lands, or None.
+
+    One `git config` call reads the remote's section and every pushInsteadOf
+    rewrite. A key with no value, such as a bare `mirror`, is true to git.
+    """
+    settings = {}
+    for line in git_lines(directory, options, ["config", "--get-regexp",
+                                                r"^(remote\.%s\..*|url\..*\.pushinsteadof)$" % re.escape(remote)]):
+        key, _, value = line.partition(" ")
+        settings.setdefault(key.lower(), []).append(value)
+    section = "remote.%s." % remote.lower()
+    if section + "url" not in settings:
         return "destination %s is not a configured remote" % remote
-    if config(directory, options, "remote.%s.pushurl" % remote) is not None:
+    if section + "pushurl" in settings:
         return "remote %s has a pushurl" % remote
-    if len(git_lines(directory, options, ["config", "--get-all", "remote.%s.url" % remote])) > 1:
+    if len(settings[section + "url"]) > 1:
         return "remote %s has more than one url" % remote
-    if git_lines(directory, options, ["config", "--get-regexp", r"^url\..*\.pushinsteadof$"]):
+    if any(key.startswith("url.") for key in settings):
         return "a url.<base>.pushInsteadOf rewrite is configured"
-    if (config(directory, options, "remote.%s.mirror" % remote) or "").lower() in TRUE_VALUES:
+    if any(value.lower() not in FALSE_VALUES for value in settings.get(section + "mirror", [])):
         return "remote %s is a mirror" % remote
-    if config(directory, options, "remote.%s.push" % remote) is not None:
+    if section + "push" in settings:
         return "remote.%s.push configures the refspecs" % remote
     return None
 
 
 def full_destination(name):
-    """A destination the stricter way: a short name is a branch, whatever the source."""
-    return name if name.startswith("refs/") else HEADS + name
+    """A destination the stricter way: a short name is a branch, whatever the source, and `heads/x` is refs/heads/x."""
+    if name.startswith("refs/"):
+        return name
+    if name.startswith(REF_NAMESPACES):
+        return "refs/" + name
+    return HEADS + name
 
 
 def resolve_push(directory, options, args):
@@ -244,8 +264,9 @@ def resolve_push(directory, options, args):
     error = remote_problem(directory, options, remote)
     if error:
         return None, error
-    push = Push(remote, [], "--dry-run" in flags)
     refspecs = operands[1:]
+    forced = bool(flags & {"--force", "--force-with-lease"}) or any(refspec.startswith("+") for refspec in refspecs)
+    push = Push(remote, [], "--dry-run" in flags, forced)
     if "--delete" in flags:
         if not refspecs:
             return None, "git push --delete names nothing"

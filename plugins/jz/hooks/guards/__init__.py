@@ -13,6 +13,7 @@ import stat
 
 from command_lines import parse, start_directory
 
+
 def safe_text(text, limit=120):
     """Text from a repository or a tool, made fit for a reason the model reads: printable ASCII, cut to `limit`."""
     cleaned = "".join(ch if 32 <= ord(ch) < 127 else "?" for ch in str(text))

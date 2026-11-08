@@ -11,8 +11,9 @@ allows the call anyway.
 The parser follows plain commands only (see command_lines.py). A line with
 anything else on it, a subshell, a variable, a here-document, a wrapper, a
 nested shell, is judged on the plain commands it does have and asked about
-for the rest, when the line also names a command a guard judges or a nested
-shell's own text mentions git or gh. The run has one deadline under the
+for the rest, when the line also names a command a guard judges, a nested
+shell's own text mentions git or gh, or a git option or subcommand is
+unknown. The run has one deadline under the
 host's 60 s hook timeout; when it passes, the owner is asked rather than the
 host failing open.
 
@@ -100,9 +101,9 @@ def main():
                     "confirm it, or split the line." % " and ".join(timed_out))
     if context.unfollowed and (context.parsed.hidden or JUDGED.search(context.command)):
         asks.append("The command uses %s, which the guards do not follow, so part of it was not checked. "
-                    "The guards follow plain commands joined by &&, ; or |, with a leading cd <dir> or a "
-                    "git -C <dir>, and at most a 2>&1 or >/dev/null; write it that way, or confirm it as "
-                    "written." % " and ".join(context.unfollowed))
+                    "The guards follow plain commands joined by separators, a cd <dir> or git -C <dir>, and "
+                    "at most a 2>&1 or >/dev/null; write it that way, or confirm it as written."
+                    % " and ".join(context.unfollowed))
     if asks:
         print(json.dumps({
             "hookSpecificOutput": {

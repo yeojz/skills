@@ -17,12 +17,14 @@ Everything else is reported, not followed: a variable or command
 substitution, a backtick, a here-document (nothing after it on the line is
 read), any other redirection, a subshell, a brace group, an environment
 assignment in front of a program, a wrapper such as `env`, `sudo`, `nohup`,
-`time` or `timeout`, a nested shell such as `bash -c`, `eval` or `xargs`, a
-git option or subcommand outside the known sets, an alias among them, and
-unbalanced quotes. The dispatcher asks the owner about such a line when it
-also names a command a guard judges, or when a nested shell's own text
-mentions git or gh; the owner rewrites the line in the plain form or
-confirms it as written.
+`time` or `timeout`, a nested shell such as `bash -c`, `eval` or `xargs`,
+any command given git or gh as an argument (`! git push`, `find -exec git
+add`, `git submodule foreach "git ..."`), a git option or subcommand
+outside the known sets, an alias among them, and unbalanced quotes. The
+dispatcher asks the owner about such a line when it also names a command a
+guard judges, or when a nested shell's own text mentions git or gh, or when
+a git option or subcommand is unknown; the owner rewrites the line in the
+plain form or confirms it as written.
 """
 
 import os
@@ -37,12 +39,15 @@ HERE_DOCUMENTS = {"<<", "<<<"}
 QUIET_REDIRECTIONS = {(">", "/dev/null"), ("&>", "/dev/null"), (">&", "1"), (">&", "2")}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
 MENTIONS_GIT = re.compile(r"\b(git|gh)\b")
+# An argument that is, or begins, a git or gh command line: the program it
+# is handed to may run it.
+GIT_ARGUMENT = re.compile(r"^(?:\S*/)?(?:git|gh)(?:\s|$)")
 SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 # A cd is followed when it stands between these separators, or at the start
 # or end of the line. One in a pipeline, a background job, a subshell or a
 # brace group runs where the next command does not.
 CD_BEFORE = {"", ";", "&&", "\n"}
-CD_AFTER = {"", ";", "&&", "||", "\n"}
+CD_AFTER = {"", ";", "&&", "\n"}
 
 # Programs that run the command after them changed: as another user, in
 # another environment, under a timer, or in the shell's own state. Which
@@ -60,9 +65,9 @@ GIT_GLOBAL_FLAGS = {"--no-pager", "--paginate", "-p", "-P", "--bare", "--no-repl
                     "--no-advice", "--version", "--help", "-h"}
 GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
 GIT_LOCATION_OPTIONS = {"--git-dir", "--work-tree", "--namespace"}
-# The subcommands git ships (`git --list-cmds=main`, git 2.54) and the
-# common add-ons. Any other word is an alias, whose expansion the guards do
-# not read, or a typo git will reject.
+# The subcommands git ships (`git --list-cmds=main`, git 2.54). Any other
+# word, an add-on such as `git lfs` included, may be an alias where the
+# add-on is not installed, and the guards do not read alias expansions.
 GIT_COMMANDS = set("""
 add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr
 check-ignore check-mailmap check-ref-format checkout checkout-index cherry cherry-pick clean clone
@@ -77,7 +82,6 @@ rerere reset restore rev-list rev-parse revert rm send-email send-pack shortlog 
 show-index show-ref sparse-checkout stage stash status stripspace submodule subtree switch
 symbolic-ref tag unpack-file unpack-objects update-index update-ref update-server-info upload-pack
 var verify-commit verify-pack verify-tag version whatchanged worktree write-tree
-absorb filter-repo flow lfs
 """.split())
 
 
@@ -87,9 +91,10 @@ class Parsed:
     `calls` holds (argv, directory) for each command that was followed;
     `unfollowed` names each construct that was not, in the order found, so a
     line with any of them is judged on what was followed and asked about for
-    the rest. `hidden` is set when a construct's own text mentions git or
-    gh, as `bash -c "git ..."` does, so the dispatcher asks even when the
-    rest of the line names no judged command.
+    the rest. `hidden` is set when a construct could stand for a judged
+    command the line does not show: a nested shell whose text mentions git
+    or gh, or a git option or subcommand the guards do not know, so the
+    dispatcher asks even when the rest of the line names no judged command.
     """
 
     def __init__(self):
@@ -116,20 +121,8 @@ def strip_comments(line, parsed):
     while index < len(line):
         char = line[index]
         index += 1
-        if quote:
-            if quote == '"' and char == "\\" and index < len(line):
-                kept.append(char)
-                kept.append(line[index])
-                index += 1
-                continue
-            if quote == '"' and char in "$`":
-                parsed.skip("a command substitution or variable" if char == "$" else "a backtick")
-            kept.append(char)
-            if char == quote:
-                quote = ""
-            continue
-        if char == "\\":
-            if index < len(line) and line[index] == "\n":
+        if char == "\\" and quote != "'":
+            if index < len(line) and line[index] == "\n" and not quote:
                 index += 1
                 continue
             kept.append(char)
@@ -137,6 +130,13 @@ def strip_comments(line, parsed):
                 kept.append(line[index])
                 index += 1
             at_word_start = False
+            continue
+        if quote != "'" and char in "$`":
+            parsed.skip("a command substitution or variable" if char == "$" else "a backtick")
+        if quote:
+            kept.append(char)
+            if char == quote:
+                quote = ""
             continue
         if char in "'\"":
             quote = char
@@ -147,8 +147,6 @@ def strip_comments(line, parsed):
             while index < len(line) and line[index] != "\n":
                 index += 1
             continue
-        if char in "$`":
-            parsed.skip("a command substitution or variable" if char == "$" else "a backtick")
         kept.append(char)
         at_word_start = char in " \t\n;|&()"
     return "".join(kept)
@@ -163,12 +161,20 @@ def lex(line, parsed):
     return list(lexer)
 
 
-def segments(tokens):
-    """Yield each command's tokens as a list and each separator as a string, braces included."""
+def segments(tokens, parsed):
+    """Yield each command's tokens as a list and each separator as a string, braces included.
+
+    shlex glues neighbouring punctuation into one token, so `&&>` is a
+    separator and a redirection at once; such a token is reported and
+    read as a separator, so the command after it is not read as the
+    redirection's target.
+    """
     current = []
     for token in tokens:
         if token in {"{", "}"} or (token and set(token) <= SEPARATOR_CHARS and token not in REDIRECTIONS
                                     and token not in HERE_DOCUMENTS):
+            if set(token) & set("<>"):
+                parsed.skip("a redirection (%s)" % token)
             if current:
                 yield current
             current = []
@@ -228,13 +234,15 @@ def git_global_options(argv):
 
 
 def git_problem(argv):
-    """What puts a git call outside the grammar: an option or a subcommand the guards do not know. None when it is plain."""
+    """What puts a git call outside the grammar: an unknown option, an alias override, an unknown subcommand. None when it is plain."""
     options, rest = git_global_options(argv)
-    for name, _ in options:
+    for name, value in options:
         if name not in GIT_OPTIONS_WITH_VALUE and name not in GIT_GLOBAL_FLAGS:
-            return "a git option (%s)" % name
+            return "an unknown git option (%s)" % name
+        if name in GIT_CONFIG_OPTIONS and value.lower().startswith("alias."):
+            return "a git alias set on the command line"
     if rest and rest[0] not in GIT_COMMANDS:
-        return "a git subcommand the guards do not know (%s)" % rest[0]
+        return "an unknown git subcommand (%s)" % rest[0]
     return None
 
 
@@ -312,6 +320,9 @@ def parse(command_line, directory):
     command, and the parser would otherwise read that text as commands. A
     `cd` moves the directory only when it stands between separators and
     names one plain directory; any other cd is reported and moves nothing.
+    A command given git or gh as an argument, from `! git push` and
+    `find -exec git add` to `git bisect run git ...`, may run it, and is
+    reported rather than read.
     """
     parsed = Parsed()
     try:
@@ -319,7 +330,7 @@ def parse(command_line, directory):
     except ValueError:
         parsed.skip("unbalanced quotes")
         return parsed
-    pieces = list(segments(tokens))
+    pieces = list(segments(tokens, parsed))
     for index, piece in enumerate(pieces):
         if isinstance(piece, str):
             if "(" in piece or ")" in piece:
@@ -340,15 +351,18 @@ def parse(command_line, directory):
             if before in CD_BEFORE and after in CD_AFTER and len(argv) == 2 and not argv[1].startswith("-"):
                 directory = os.path.normpath(os.path.join(directory, os.path.expanduser(argv[1])))
             else:
-                parsed.skip("a cd the parser does not follow")
+                parsed.skip("a cd with options, or in a pipeline or group")
             continue
         if name in WRAPPERS:
             parsed.skip("a wrapper (%s)" % name)
             continue
         if name in NESTED_SHELLS:
-            parsed.skip("a nested shell (%s)" % argv[0])
+            parsed.skip("a nested shell (%s)" % name)
             if any(MENTIONS_GIT.search(token) for token in argv[1:]):
                 parsed.hidden = True
+            continue
+        if any(GIT_ARGUMENT.match(token) for token in argv[1:]):
+            parsed.skip("a command given git as an argument (%s)" % name)
             continue
         if name == "git":
             problem = git_problem(argv)

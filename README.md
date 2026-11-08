@@ -264,11 +264,13 @@ Everything else asks: a variable or command substitution, a backtick, a
 here-document (nothing after it on the line is read), any other redirection,
 a subshell, a brace group, an environment assignment in front of a program, a
 wrapper such as `env`, `sudo`, `nohup`, `time` or `timeout`, a nested shell
-such as `bash -c`, `eval` or `xargs`, a git option or subcommand the guards do
-not know, aliases included, and unbalanced quotes. A line with one of those is
-judged on the plain commands it does have, and when it also names something a
-guard judges, or a nested shell's own text mentions git or gh, the owner is
-asked about the rest; a read-only `git -C "$repo" status` passes in silence.
+such as `bash -c`, `eval` or `xargs`, any command given git or gh as an
+argument (`! git push`, `find -exec git add`), a git option or subcommand the
+guards do not know, aliases included, and unbalanced quotes. A line with one
+of those is judged on the plain commands it does have, and when it also names
+something a guard judges, or a nested shell's own text mentions git or gh, or
+a git option or subcommand is unknown, the owner is asked about the rest; a
+read-only `git -C "$repo" status` passes in silence.
 Every git call a guard makes runs with the repository's filesystem monitor,
 hooks and signature display off, on a scratch copy of the index where it
 would take the lock, under one deadline for the whole run.
@@ -292,8 +294,8 @@ tracking refs which refs each would update:
 
 Anything else, from `--all` and `--mirror` to a wildcard, a URL destination
 or an option outside the set, makes the secret scan ask, and makes the
-default-branch guard deny when a protected name or an every-branch option is
-visible in the arguments. It never contacts the remote and never runs
+default-branch guard deny when a protected name, an every-branch option or a
+refspec pattern is visible in the arguments. It never contacts the remote and never runs
 anything the command names, since a hook runs before the owner approves the
 call. The guards that judge a `gh` call share `gh_options.py`, which
 finds the subcommand past `-R o/r`; the flags that matter, `--draft` and

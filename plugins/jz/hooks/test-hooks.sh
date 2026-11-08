@@ -1007,6 +1007,10 @@ git -C "$GATEREPO" config alias.p2 p
 all_guards '"git p2 origin main"'                       "alias of an alias for push"              deny
 all_guards '"git -C gaterepo p origin main"'            "alias looked up behind git -C"           deny "$FIXTURE"
 all_guards '"git -c alias.q=p q origin main"'           "alias override chaining to an alias"     deny
+all_guards '"git P origin main"'                        "alias matched without regard to case"   deny
+all_guards '"git -c alias.W=push w origin main"'        "alias override matched without regard to case" deny
+all_guards '"git -c alias.push=status push origin main"' "alias named like a builtin is ignored"  deny
+PUSHCMD=push all_guards '"git --config-env=alias.x=PUSHCMD x origin main"' "alias through --config-env asks" ask
 git -C "$GATEREPO" config alias.x '!echo'
 all_guards '"git x"'                                    "shell alias asks"                        ask
 git -C "$GATEREPO" config alias.loop1 loop2
@@ -1023,6 +1027,13 @@ all_guards '"GIT_TRACE=1 git push origin main"'         "GIT_* prefix still lets
 all_guards '"HOME=/tmp git push origin feature"'        "HOME prefix asks"                        ask
 all_guards '"cat > f <<EOF\nbody\nEOF\ngit add .claude"' "command after a here-document is judged" deny
 all_guards '"cat <<EOF\ngit push origin main\nEOF\ngit status"' "here-document body is not a command" allow
+all_guards '"cat <<\\EOF\nbody\nEOF\ngit push origin main"' "backslash-quoted delimiter, push after it" deny
+all_guards '"cat <<E\"O\"F\nbody\nEOF\ngit push origin main"' "partly quoted delimiter, push after it" deny
+all_guards '"git status # see <<EOF\ngit push origin main"' "<< inside a comment is not a here-document" deny
+all_guards '"git commit -m \"first\nuse <<Z\" ; git push origin main\nZ"' "<< inside a multi-line string is text" deny
+all_guards '"cat <<EOF\nbody without an end\ngit push origin main"' "here-document never closed, later lines judged" deny
+all_guards '"sudo -u gh git push origin main"'          "option value spelled gh is not the program" deny
+all_guards '"env -C child git status"'                  "env -C asks"                             ask
 all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow
 printf 'a\n' > "$GATEREPO/a.txt"
 printf '*.txt filter=x\n' > "$GATEREPO/.gitattributes"
@@ -1032,6 +1043,22 @@ printf '  %-52s' "the clean filter was not run"
 if [ -e "$FIXTURE/filtermarker" ]; then echo "FAIL"; fail=1; else echo "PASS"; fi
 rm -f "$GATEREPO/a.txt" "$GATEREPO/.gitattributes"
 git -C "$GATEREPO" config --unset filter.x.clean
+printf '  %-52s' "a guard needing no git still denies past the deadline"
+printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"},"cwd":"%s","transcript_path":"%s"}' "$GATEREPO" "$FIXTURE/no-pr.jsonl" \
+  | JZ_DEADLINE_SECONDS=0.001 "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+if [ $? = 2 ]; then echo "PASS"; else echo "FAIL"; fail=1; fi
+printf '  %-52s' "a timed-out run keeps the other asks"
+out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git push --force origin feature"},"cwd":"%s"}' "$GATEREPO" \
+  | JZ_DEADLINE_SECONDS=0.001 "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+if printf '%s' "$out" | grep -q 'force option' && printf '%s' "$out" | grep -q 'ran out of time'; then echo "PASS"; else echo "FAIL"; fail=1; fi
+printf '  %-52s' "an old git without --attr-source asks instead of passing"
+mkdir -p "$FIXTURE/oldgit"
+real_git="$(command -v git)"
+printf '#!/usr/bin/env bash\nfor a in "$@"; do case "$a" in --attr-source*) echo "unknown option" >&2; exit 129;; esac; done\nexec "%s" "$@"\n' "$real_git" > "$FIXTURE/oldgit/git"
+chmod +x "$FIXTURE/oldgit/git"
+out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git add .claude"},"cwd":"%s"}' "$GATEREPO" \
+  | PATH="$FIXTURE/oldgit:$PATH" JZ_GUARDS=no-claude-artifacts "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+if printf '%s' "$out" | grep -q 'could not get git'; then echo "PASS"; else echo "FAIL"; fail=1; fi
 printf '  %-52s' "a run past its deadline asks"
 out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"%s"}' "$GATEREPO" \
   | JZ_DEADLINE_SECONDS=0.001 "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"

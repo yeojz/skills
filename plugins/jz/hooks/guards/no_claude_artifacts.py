@@ -15,7 +15,7 @@ import tempfile
 
 from command_lines import SHORT_CLUSTER, git_call, git_location_options
 from git_push import git_text, run_git
-from guards import Deny, safe_text
+from guards import Ask, Deny, safe_text
 
 NAME = "no-claude-artifacts"
 
@@ -198,8 +198,12 @@ def check(context):
             try:
                 offenders.extend(forbidden(dirty_paths(check_directory, options)))
             except Unresolvable:
-                # Even the fallback could not run. Nothing observed, nothing to block.
-                pass
+                # Even the fallback could not run: git is missing, too old for
+                # --attr-source, or the repository would not answer. Asking
+                # keeps a guard that cannot see from passing everything.
+                return Ask("The artifact guard could not get git to say which paths this command stages or commits "
+                           "(git missing, older than 2.40, or the repository did not answer), so nothing was checked "
+                           "for .claude, docs/plans or .plans; confirm it, or run git status yourself first.")
     if offenders:
         return deny(offenders, unparsed)
     return None

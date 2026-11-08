@@ -50,13 +50,16 @@ def alias_map(directory, options, config_overrides, cache):
         out = run_git(directory, list(options), ["config", "--get-regexp", r"^alias\."])
         for line in (out.stdout.splitlines() if out is not None and out.returncode == 0 else []):
             name, _, value = line.partition(" ")
-            aliases[name[len("alias."):]] = value
+            aliases[name[len("alias."):].lower()] = value
         cache[key] = aliases
     aliases = dict(cache[key])
     for name, value in zip(config_overrides[::2], config_overrides[1::2]):
         setting, has_value, expansion = value.partition("=")
         if setting.lower().startswith("alias.") and has_value:
-            aliases[setting[len("alias."):]] = expansion
+            if name == "--config-env":
+                # The expansion is in an environment variable the guard cannot see.
+                return None
+            aliases[setting[len("alias."):].lower()] = expansion
     return aliases
 
 
@@ -76,10 +79,15 @@ def resolve_aliases(parsed):
             if split is None or not split[1] or split[1][0] in KNOWN_GIT_COMMANDS or not ALIAS_NAME.match(split[1][0]):
                 resolved.append((argv, directory))
                 break
+            # git matches alias names without regard to case.
             subcommand = split[1][0]
             git_directory = git_call(argv, directory)[2]
             aliases = alias_map(git_directory, git_location_options(argv), git_config_overrides(argv), cache)
-            value = aliases.get(subcommand)
+            if aliases is None:
+                parsed.skip("an alias set through --config-env")
+                parsed.hidden = True
+                break
+            value = aliases.get(subcommand.lower())
             if value is None:
                 resolved.append((argv, directory))
                 break

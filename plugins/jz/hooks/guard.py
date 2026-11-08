@@ -25,7 +25,7 @@ import os
 import re
 import sys
 
-from git_push import GuardTimeout, set_deadline
+from git_push import GuardTimeout, seconds_from_environment, set_deadline
 from guards import Ask, Context, Deny
 from guards import (  # noqa: E402
     confirm_remote_writes,
@@ -42,7 +42,7 @@ from guards import (  # noqa: E402
 # passes in silence.
 JUDGED = re.compile(r"\b(add|stage|commit|push|merge|pull|pr|api)\b")
 # Under the 60 s the host gives the hook, with room for the interpreter.
-DEADLINE_SECONDS = float(os.environ.get("JZ_DEADLINE_SECONDS") or 50)
+DEADLINE_SECONDS = seconds_from_environment("JZ_DEADLINE_SECONDS", 50)
 
 # Denying guards first, the ones that need the least git first, so a push to
 # the default branch is denied before any dry run can use up the deadline;

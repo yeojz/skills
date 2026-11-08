@@ -130,23 +130,33 @@ def strip_comments(line, parsed):
     return "".join(kept)
 
 
+def heredoc_delimiter(word):
+    """The delimiter a here-document word names, with its quoting removed, as bash reads it."""
+    return re.sub(r"[\\'\"]", "", word)
+
+
 def strip_heredocs(line, parsed):
     """Remove the bodies of here-documents, so their lines are not read as commands.
 
-    An unquoted `<<` or `<<-` names a delimiter; the lines after the current
-    one up to the line that equals it are the body and are dropped. The
-    operator and the delimiter word stay, so the lexer sees `cmd <<EOF` and
-    the segment reader can tell which command the body feeds.
+    An unquoted `<<` or `<<-` outside a comment names a delimiter; the lines
+    after the current one up to the line that equals it are the body and are
+    dropped. The operator and the delimiter word stay, so the lexer sees
+    `cmd <<EOF` and the segment reader can tell which command the body feeds.
+    Quote state carries across lines, so a `<<` inside a multi-line string is
+    text. A body whose delimiter never comes is left in place and reported,
+    since bash would read the rest of the line as the body and nothing after
+    it would run; judging those lines as commands errs towards asking.
     """
     lines = line.split("\n")
     kept = []
     index = 0
+    quote = ""
     while index < len(lines):
         text = lines[index]
         index += 1
         kept.append(text)
-        quote = ""
         position = 0
+        at_word_start = True
         delimiters = []
         while position < len(text):
             char = text[position]
@@ -157,20 +167,32 @@ def strip_heredocs(line, parsed):
                     position += 1
             elif char == "\\":
                 position += 1
+                at_word_start = False
             elif char in "'\"":
                 quote = char
+                at_word_start = False
+            elif char == "#" and at_word_start:
+                break
             elif text.startswith("<<", position) and not text.startswith("<<<", position) and not (position and text[position - 1] == "<"):
-                match = re.match(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s<>|&;()]+))", text[position:])
+                match = re.match(r"<<(-?)\s*([^\s<>|&;()]+)", text[position:])
                 if match:
-                    delimiters.append((match.group(1) == "-", match.group(2) or match.group(3) or match.group(4) or ""))
+                    delimiters.append((match.group(1) == "-", heredoc_delimiter(match.group(2))))
                     position += len(match.group(0)) - 1
+                    at_word_start = False
+            else:
+                at_word_start = char in " \t;|&()"
             position += 1
         for strip_tabs, delimiter in delimiters:
-            while index < len(lines):
-                body = lines[index]
-                index += 1
-                if (body.lstrip("\t") if strip_tabs else body) == delimiter:
+            closing = None
+            for later in range(index, len(lines)):
+                if (lines[later].lstrip("\t") if strip_tabs else lines[later]) == delimiter:
+                    closing = later
                     break
+            if closing is None:
+                parsed.skip("a here-document whose delimiter never comes")
+                parsed.hidden = True
+                break
+            index = closing + 1
     return "\n".join(kept)
 
 
@@ -264,9 +286,21 @@ def peel_wrappers(argv, parsed):
             rest.pop(0)
         if rest and rest[0].startswith("-"):
             parsed.skip("a %s option" % name)
-            for index, token in enumerate(rest):
+            if name == "env" and (rest[0] in {"-C", "--chdir"} or rest[0].startswith("--chdir=")):
+                # env -C runs the program elsewhere; the recorded call would be judged in the wrong directory.
+                parsed.hidden = True
+                return None
+            # The token after an option may be its value, so a value spelled
+            # git or gh is not the program.
+            index = 0
+            while index < len(rest):
+                token = rest[index]
+                if token.startswith("-") and "=" not in token:
+                    index += 2
+                    continue
                 if os.path.basename(token) in JUDGED_PROGRAMS:
                     return rest[index:]
+                index += 1
             return None
     return rest
 

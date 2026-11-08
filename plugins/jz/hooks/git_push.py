@@ -36,7 +36,17 @@ PUSH_LONG_OPTIONS = {
 PUSH_LONG_OPTIONS_WITH_VALUE = {"repo", "receive-pack", "exec", "push-option", "recurse-submodules"}
 PUSH_SHORT_OPTIONS_WITH_VALUE = "o"
 SHORT_FLAGS = {"d": "delete", "n": "dry-run"}
-GIT_TIMEOUT_SECONDS = float(os.environ.get("JZ_GIT_TIMEOUT_SECONDS") or 10)
+
+
+def seconds_from_environment(name, default):
+    """A tuning knob for the test suite; anything that is not a number is the default."""
+    try:
+        return float(os.environ.get(name) or default)
+    except ValueError:
+        return default
+
+
+GIT_TIMEOUT_SECONDS = seconds_from_environment("JZ_GIT_TIMEOUT_SECONDS", 10)
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 
 

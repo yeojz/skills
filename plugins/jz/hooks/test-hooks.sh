@@ -494,7 +494,7 @@ deny '"gh pr create --draft -F body-trailer.md"'                  "trailer in a 
 # end and a FIFO would block, and the guard runs before the owner has approved
 # the command that names it.
 mkfifo "$FIXTURE/body.fifo"
-deny '"gh pr create --draft --body-file /dev/zero"'               "body file is a device"          0 no-restricted-words
+deny '"gh pr create --draft --body-file /dev/zero"'               "body file is a device: unseen, asks, exit 0" 0 no-restricted-words
 deny '"gh pr create --draft --body-file body.fifo"'               "body file is a FIFO"            0 no-restricted-words
 deny '"git commit -F /dev/zero"'                                  "commit message file is a device" 0 no-restricted-words
 head -c 1100000 /dev/zero | tr '\0' 'a' > "$FIXTURE/body-huge.md"
@@ -1016,6 +1016,8 @@ all_guards '"env -i git push origin main"'              "env -i before a push of
 all_guards '"time -p git push origin main"'             "time -p before a push of main"           deny
 all_guards '"nice -n5 git push origin main"'            "attached wrapper value"                  deny
 all_guards '"git add .claude; git --work-tree=/nonexistent add y"' "unresolvable call beside a visible offender" deny
+all_guards '"cat <<'"'"'EOF'"'"' | git commit -F -\nfeat: x\nEOF"' "message from stdin asks"          ask
+all_guards '"cat > msg.txt <<EOF\nfeat: x\nEOF\ngit commit -F msg.txt"' "message file written on the same line asks" ask
 all_guards '"sudo -u gh git push origin main"'          "option value spelled gh is not the program" deny
 all_guards '"env -C child git status"'                  "env -C asks"                             ask
 all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow

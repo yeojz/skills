@@ -15,7 +15,7 @@ import re
 from command_lines import git_call
 from gh_options import gh_command
 from git_push import git_text
-from guards import Deny, read_text
+from guards import Ask, Deny, read_text
 
 NAME = "no-restricted-words"
 
@@ -30,12 +30,29 @@ COMMIT_VALUE_LETTERS = "mFCct"
 COMMIT_PROSE_LETTERS = "mF"
 JSON_PROSE_KEYS = {"body", "title", "message", "text", "commit_title", "commit_message"}
 
+class Unseen(Exception):
+    """The text comes from standard input or a file that is not there yet, so it cannot be judged."""
+
+
 def read_file(path, directory):
-    """The text of a body or instruction file, or "" when there is nothing to judge: stdin, a missing path, a device, a FIFO."""
+    """The text of a body or message file. Raises Unseen for stdin or a path the guard cannot read.
+
+    A `-F -` fed by a here-document or a pipe, and a file a command earlier
+    on the line will write, are text the guard never sees; the dispatcher
+    asks instead of letting it pass.
+    """
     if path == "-":
-        return ""
+        raise Unseen()
     full = path if os.path.isabs(path) else os.path.join(directory, path)
     found = read_text(full)
+    if found is None:
+        raise Unseen()
+    return found[0]
+
+
+def read_instructions(name, directory):
+    """An instruction file's text, or "" when it is absent."""
+    found = read_text(os.path.join(directory, name))
     return found[0] if found else ""
 
 
@@ -170,7 +187,7 @@ def restricted_words(directory, policies_by_directory):
     words_found = []
     for policy_directory in policy_directories(directory):
         for name in ("AGENTS.md", "CLAUDE.md"):
-            for word in words_listed_in(read_file(name, policy_directory)):
+            for word in words_listed_in(read_instructions(name, policy_directory)):
                 if word not in words_found:
                     words_found.append(word)
     policies_by_directory[directory] = words_found
@@ -195,12 +212,17 @@ def findings(text, restricted):
 
 def check(context):
     policies_by_directory = {}
-    for argv, directory in context.calls:
-        for text, policy_directory in texts_from(argv, directory):
-            if not text:
-                continue
-            found = findings(text, restricted_words(policy_directory, policies_by_directory))
-            if found:
-                return Deny("Blocked: the text to be published contains " + ", ".join(found) + ".",
-                            "Rewrite it in plain words, then rerun.")
+    try:
+        for argv, directory in context.calls:
+            for text, policy_directory in texts_from(argv, directory):
+                if not text:
+                    continue
+                found = findings(text, restricted_words(policy_directory, policies_by_directory))
+                if found:
+                    return Deny("Blocked: the text to be published contains " + ", ".join(found) + ".",
+                                "Rewrite it in plain words, then rerun.")
+    except Unseen:
+        return Ask("The text this command publishes comes from standard input or from a file that is not there yet, "
+                   "so it was not checked for emoji, attribution trailers, session links, model slugs or restricted "
+                   "words; confirm it, or pass the text inline or from an existing file.")
     return None

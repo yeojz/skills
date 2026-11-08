@@ -50,7 +50,9 @@ PUSH_CONFIG_PREFIXES = ("remote.", "push.", "branch.", "url.")
 # repository's own config: the filesystem monitor, signature display, hooks.
 # Switched off for every call a guard makes.
 SAFE_CONFIG = ["-c", "core.fsmonitor=false", "-c", "log.showSignature=false",
-               "-c", "core.hooksPath=/dev/null"]
+               "-c", "core.hooksPath=/dev/null",
+               # A dry run on a scratch index must not write a shared index into the real .git.
+               "-c", "core.splitIndex=false", "-c", "splitIndex.sharedIndexExpire=never"]
 
 
 def run_git(directory, options, args):
@@ -58,7 +60,8 @@ def run_git(directory, options, args):
     environment = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0",
                        GIT_PAGER="cat", GIT_EDITOR="true")
     try:
-        return subprocess.run(["git", "--no-pager", "-C", directory] + SAFE_CONFIG + options + args,
+        # SAFE_CONFIG last, so no caller option can override it.
+        return subprocess.run(["git", "--no-pager", "-C", directory] + options + SAFE_CONFIG + args,
                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
                               errors="replace", env=environment, timeout=GIT_TIMEOUT_SECONDS)
     except Exception:
@@ -227,14 +230,16 @@ def qualify(directory, options, destination, source_ref, remote, tracked):
 
     A short name that matches a branch already at the destination is that
     branch, whatever the source is; `git push origin v1:main` moves main. Only
-    a tag source landing on a name the destination does not have creates a
-    tag. Without tracking refs the destination's branches are unknown, so a
-    short name is read as a branch, the stricter reading.
+    a tag source landing on a name the destination is known not to have
+    creates a tag, and the destination is known only through tracking refs
+    that have been fetched at least once. Otherwise a short name is read as a
+    branch, the stricter reading.
     """
     if destination.startswith("refs/"):
         return destination
     if source_ref and source_ref.startswith(TAGS) and tracked:
-        if resolve_commit(directory, options, "refs/remotes/%s/%s" % (remote, destination)) is None:
+        fetched = local_refs(directory, options, "refs/remotes/%s/" % remote)
+        if fetched and resolve_commit(directory, options, "refs/remotes/%s/%s" % (remote, destination)) is None:
             return TAGS + destination
     return HEADS + destination
 

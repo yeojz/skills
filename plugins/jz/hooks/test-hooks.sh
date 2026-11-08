@@ -837,6 +837,34 @@ protgit config --unset branch.main.pushRemote
 protgit push -q origin main
 protgit checkout -q feature
 protect '"git push --all origin"'                "--all with main up to date"     0
+# With main level at origin, a push of main is denied only when it goes elsewhere.
+git init -q --bare "$FIXTURE/elsewhere.git"
+protgit remote add elsewhere "$FIXTURE/elsewhere.git"
+protgit checkout -q main
+protect '"git push --repo=elsewhere"'            "--repo names another remote"    2
+protgit config branch.main.pushRemote elsewhere
+protect '"git push"'                             "pushRemote names another remote" 2
+protgit config --unset branch.main.pushRemote
+protgit config remote.pushDefault elsewhere
+protect '"git push"'                             "pushDefault names another remote" 2
+protgit config --unset remote.pushDefault
+protgit config --add remote.origin.url "$FIXTURE/elsewhere.git"
+protect '"git push origin main"'                 "second url sends main elsewhere" 2
+protgit config --unset remote.origin.url "$FIXTURE/elsewhere.git"
+protgit config "url.$FIXTURE/elsewhere.git.pushInsteadOf" "$FIXTURE/protremote.git"
+protect '"git push origin main"'                 "pushInsteadOf sends main elsewhere" 2
+protgit config --unset "url.$FIXTURE/elsewhere.git.pushInsteadOf"
+protect '"git push origin main"'                 "main level at origin again"     0
+# A configured remote that was never fetched has no tracking refs, so a short
+# destination is a branch there too.
+git clone -q --bare "$FIXTURE/protremote.git" "$FIXTURE/fresh.git"
+protgit remote add fresh "$FIXTURE/fresh.git"
+protgit tag v1 main
+protect '"git push fresh v1:main"'               "tag onto main at a never-fetched remote" 2
+protgit tag -d v1 >/dev/null
+protgit remote remove fresh
+protgit remote remove elsewhere
+protgit checkout -q feature
 # The remote's own default counts, whatever its name.
 protgit symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/release
 protect '"git push origin feature:release"'      "onto the default origin/HEAD names" 2

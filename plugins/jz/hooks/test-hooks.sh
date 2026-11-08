@@ -1036,6 +1036,7 @@ all_guards '"cat <<\"E O F\"\nx\nE O F\ngit push origin main\nE"' "delimiter wit
 all_guards '"cat <<'"'"'E\\F'"'"'\nbody\nE\\F\ngit push origin main\nEF"' "backslash kept inside a single-quoted delimiter" deny
 all_guards '"x=$((1<<2)); git push origin main\n2"'   "a shift inside arithmetic is not a here-document" deny
 all_guards '"(( x = 1 << 2 ))\ngit push origin main\n2"' "a shift in a bare arithmetic command"     deny
+all_guards '"if((1<<2)); then :; fi\ngit push origin main\n2"' "arithmetic glued to a keyword"       deny
 all_guards '"cat <<EOF;\nbody\nEOF\ngit push origin main\nEOF;"' "delimiter ends at a metacharacter"  deny
 all_guards '"cat <<EOF>out\nbody\nEOF\ngit push origin main"' "delimiter ends at a redirection"     deny
 all_guards '"sudo -E git push origin main"'             "wrapper flag without a value"            deny

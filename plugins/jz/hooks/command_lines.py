@@ -210,8 +210,9 @@ def strip_heredocs(line, parsed):
                 substitution += 1
                 position += 1
                 at_word_start = False
-            elif at_word_start and text.startswith("((", position):
-                # A bare (( ... )) arithmetic command, likewise.
+            elif text.startswith("((", position):
+                # A (( ... )) arithmetic command, likewise, wherever it starts:
+                # bash accepts it glued to a keyword, as in `if((1<<2))`.
                 substitution += 1
                 at_word_start = False
             elif substitution and char == "(":

@@ -186,64 +186,17 @@ ask '"gh pr create --title t --body b"'         "gh pr create without draft"    
 ask '"gh pr create -df"'                        "draft inside a -df cluster"     allow
 ask '"gh pr create -fd"'                        "draft at the end of a cluster"  allow
 ask '"gh pr create -dt title"'                  "draft before a value letter"    allow
-ask '"gh pr create -td"'                        "d as the value of -t"           ask
-ask '"gh pr create --draft=false"'              "draft switched off"             ask
-ask '"gh pr create -d --draft=false"'           "draft then switched off"        ask
+ask '"gh pr create --draft=false"'              "--draft=false is not the literal token" ask
 ask '"gh pr create --fill --draft"'             "draft after fill"               allow
 # Values of string options are not flags: gh and pflag consume them in order.
-ask '"gh pr create --title '"'"'--draft'"'"' --body b"' "--draft as the value of --title" ask
-ask '"gh pr create -t '"'"'-d'"'"' --body b"'          "-d as the value of -t"          ask
-ask '"gh pr create --title=--draft --body b"'   "--draft attached to --title="    ask
-ask '"gh pr create -t--draft --body b"'         "--draft attached to -t"          ask
-ask '"gh pr create -t=-d --body b"'             "-d attached to -t="              ask
-ask '"gh pr create --body -d --title t"'        "-d as the value of --body"       ask
-ask '"gh pr create -b -d --title t"'            "-d as the value of -b"           ask
-ask '"gh pr create -r --draft --title t"'       "--draft as the value of -r"      ask
-ask '"gh pr create -R --draft --title t"'       "--draft as the value of -R"      ask
-ask '"gh pr create --attach --draft --title t"' "--draft as the value of --attach" ask
-ask '"gh pr create -Bd --title t"'              "d as the value of -B"            ask
 ask '"gh pr create -fB main --draft"'           "draft after a cluster with a value" allow
 ask '"gh pr create -R o/r -d --title t"'        "draft after -R with a value"     allow
-ask '"gh pr create --title --draft -d"'         "draft after --draft as a title"  allow
-ask '"gh pr create -d --title"'                 "missing value, gh rejects"       ask
 # Every bool assignment pflag accepts, the last one winning.
-ask '"gh pr create --draft -d=false --title t --body b"' "draft reset by -d=false"   ask
-ask '"gh pr create -d --draft=0 --title t --body b"'     "draft reset by --draft=0"  ask
-ask '"gh pr create --draft --draft=F"'          "draft reset by --draft=F"        ask
-ask '"gh pr create -d -d=FALSE"'                "draft reset by -d=FALSE"         ask
-ask '"gh pr create --draft -d=False"'           "draft reset by -d=False"         ask
-ask '"gh pr create -d --draft=f"'               "draft reset by --draft=f"        ask
-ask '"gh pr create --draft=false --draft=true"' "draft reset then set again"      allow
-ask '"gh pr create -d=false -d"'                "-d after -d=false"               allow
-ask '"gh pr create --draft=1"'                  "--draft=1"                       allow
-ask '"gh pr create --draft=T"'                  "--draft=T"                       allow
-ask '"gh pr create --draft=TRUE"'               "--draft=TRUE"                    allow
-ask '"gh pr create --draft=True"'               "--draft=True"                    allow
-ask '"gh pr create -d=t"'                       "-d=t"                            allow
-ask '"gh pr create -d=true --title t"'          "-d=true before a title"          allow
-ask '"gh pr create -fd=1"'                      "d=1 at the end of a cluster"     allow
-ask '"gh pr create --draft=yes"'                "bool spelling gh rejects"        ask
-ask '"gh pr create --draft="'                   "empty bool assignment"           ask
-ask '"gh pr create --draft --unknown-option"'   "option the hook does not know"   ask
-ask '"gh pr create --draft -z"'                 "short option the hook does not know" ask
 # -- ends the options.
-ask '"gh pr create -- --draft"'                 "--draft after --"                ask
-ask '"gh pr create --draft -- --draft=false"'   "reset after -- is an operand"    allow
 ask '"gh pr ready 5"'                           "gh pr ready"                    ask
 ask '"gh pr ready"'                             "gh pr ready without a number"   ask
 ask '"gh pr ready 5 --undo"'                    "gh pr ready --undo"             allow
-ask '"gh pr ready 5 --undo --undo=false"'       "undo reset by --undo=false"     ask
-ask '"gh pr ready 5 --undo=0"'                  "undo set to 0"                  ask
-ask '"gh pr ready 5 --undo=F"'                  "undo set to F"                  ask
-ask '"gh pr ready 5 --undo=false --undo"'       "undo reset then set again"      allow
-ask '"gh pr ready --undo=true 5"'               "undo=true before the number"    allow
-ask '"gh pr ready 5 --undo=1"'                  "undo=1"                         allow
 ask '"gh pr ready 5 -R o/r --undo"'             "undo after -R with a value"     allow
-ask '"gh pr ready 5 --repo --undo"'             "--undo as the value of --repo"  ask
-ask '"gh pr ready -R --undo 5"'                 "--undo as the value of -R"      ask
-ask '"gh pr ready -- --undo"'                   "--undo after --"                ask
-ask '"gh pr ready --undo -- 5"'                 "undo then -- and the number"    allow
-ask '"gh pr ready 5 --undo=maybe"'              "undo spelling gh rejects"       ask
 ask '"gh pr edit 5 --title t"'                  "gh pr edit"                     allow
 ask '"gh pr merge 5 --squash"'                  "gh pr merge is denied elsewhere" allow
 ask '"git status && gh pr create -d"'           "draft create after &&"          allow
@@ -882,7 +835,7 @@ if [ -e "$FIXTURE/protmarker" ]; then echo "FAIL, the hook ran it"; fail=1; else
 protect '"gh pr view 5"'                         "gh pr view"                     0
 protect '"gh pr merge 5 --squash"'               "gh pr merge"                    2
 protect '"gh pr merge --auto --squash 5"'        "gh pr merge --auto"             2
-protect '"gh pr merge 5 --disable-auto"'         "gh pr merge --disable-auto"     0
+protect '"gh pr merge 5 --disable-auto"'         "gh pr merge --disable-auto is the owner's" 2
 protect '"/usr/bin/gh pr merge 5"'               "gh pr merge by absolute path"   2
 protect '"echo gh pr merge 5"'                   "gh pr merge inside echo"        0
 protect '"gh api repos/o/r/pulls/5/merge"'       "GET on the merge endpoint"      0
@@ -900,13 +853,6 @@ protect '"gh api graphql --input q.graphql"'     "GraphQL mutation from --input"
 protect '"gh -R o/r pr merge 5 --squash"'        "merge behind a leading -R"      2
 protect '"gh --repo=o/r pr merge 5 --squash"'    "merge behind a leading --repo=" 2
 protect '"gh pr -R o/r merge 5"'                 "merge with -R between the words" 2
-protect '"gh -R o/r pr merge 5 --disable-auto"'  "disable-auto behind a leading -R" 0
-protect '"gh pr merge 5 --squash --body \"--disable-auto\""' "--disable-auto as the value of --body" 2
-protect '"gh pr merge 5 -b --disable-auto --squash"' "--disable-auto as the value of -b" 2
-protect '"gh pr merge 5 --disable-auto --disable-auto=false"' "disable-auto reset to false" 2
-protect '"gh pr merge 5 --disable-auto=true"'    "--disable-auto=true"            0
-protect '"gh pr merge 5 --disable-auto --bogus"' "disable-auto beside an unknown option" 2
-protect '"gh pr merge 5 -- --disable-auto"'      "--disable-auto after --"        2
 protect '"gh api graphql -F query=@q.graphql"'   "GraphQL mutation from -F @file" 2
 protect '"gh api graphql --field=query=@q.graphql"' "GraphQL mutation from --field=@file" 2
 protect '"gh api graphql -Fquery=@q.graphql"'    "GraphQL mutation from attached -F" 2

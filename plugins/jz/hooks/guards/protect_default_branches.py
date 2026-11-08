@@ -11,12 +11,12 @@ repository alone, by git_push.resolve_push; nothing is asked of the remote
 and nothing the caller named is run. A -c or --config-env override of
 remote.*, push.*, branch.* or url.* cannot be followed and is denied.
 
-A merge is `gh pr merge`, which arms auto-merge too, unless its final
---disable-auto is true; `gh api` with a write to pulls/<n>/merge or to the
-repository merges endpoint; and a GraphQL call carrying mergePullRequest,
-enablePullRequestAutoMerge or mergeBranch, inline, in an --input file or in
-a typed `-F key=@file` field. A query read from standard input cannot be
-inspected and is denied. This is a guardrail against a mistake, not a wall:
+A merge is `gh pr merge` in any form, --disable-auto included, since the
+owner can run that one themselves; `gh api` with a write to pulls/<n>/merge
+or to the repository merges endpoint; and a GraphQL call carrying
+mergePullRequest, enablePullRequestAutoMerge or mergeBranch, inline, in an
+--input file or in a typed `-F key=@file` field. A query read from standard
+input cannot be inspected and is denied. This is a guardrail against a mistake, not a wall:
 branch protection on GitHub is what holds.
 """
 
@@ -24,7 +24,7 @@ import os
 import re
 
 from command_lines import git_call, git_config_overrides, git_location_options
-from gh_options import final_bool_option, gh_command
+from gh_options import gh_command
 from git_push import COMMON_DEFAULTS, HEADS, origin_head, resolve_commit, resolve_push, unfollowed_config_override
 from guards import Deny, safe_text
 
@@ -34,26 +34,16 @@ NAME = "protect-default-branches"
 MERGE_MUTATIONS = re.compile(r"\b(mergePullRequest|enablePullRequestAutoMerge|mergeBranch)\b")
 PULL_MERGE_ENDPOINT = re.compile(r"(^|/)pulls/[^/]+/merge/?$")
 REPO_MERGES_ENDPOINT = re.compile(r"(^|/)merges/?$")
-# The option table of gh pr merge (cli/cli v2.103.0) with the persistent
-# --repo/-R, read by gh_options.final_bool_option. Only a line whose final
-# --disable-auto is provably true passes; an option missing here asks gh
-# something the hook cannot follow, so the line is denied.
-PR_MERGE_BOOL_OPTIONS = {
-    "admin": None, "auto": None, "delete-branch": "d", "disable-auto": None,
-    "merge": "m", "rebase": "r", "squash": "s", "help": "h",
-}
-PR_MERGE_VALUE_OPTIONS = {
-    "author-email": "A", "body": "b", "body-file": "F", "match-head-commit": None,
-    "subject": "t", "repo": "R",
-}
-# The option table of gh api (cli/cli v2.103.0); every option outside the
-# value set is a flag. A typed field, -F or --field, reads `key=@path` from
-# the file, and `@-` or --input - from standard input.
-GH_API_VALUE_SHORTS = {"X", "f", "F", "H", "p", "q", "t"}
-GH_API_VALUE_LONGS = {"method", "raw-field", "field", "header", "preview", "jq",
-                      "template", "input", "hostname", "cache"}
-GH_API_FIELD_OPTIONS = {"-f", "-F", "--raw-field", "--field", "--input"}
-GH_API_TYPED_FIELD_OPTIONS = {"-F", "--field"}
+# A gh api write is one with a method other than GET, or one that sends a
+# field or an input body. The tokens are read by their surface: a merge
+# endpoint among them, a merge mutation in them or in a file a typed field
+# or --input names, or a body read from standard input, which cannot be
+# inspected.
+GH_API_METHOD_OPTIONS = {"-X", "--method"}
+GH_API_BODY_OPTIONS = {"-f", "-F", "--raw-field", "--field", "--input"}
+GH_API_FILE_OPTIONS = {"-F", "--field", "--input"}
+GRAPHQL = "graphql"
+
 
 def protected_branches(directory, options, protected_by_directory):
     if directory not in protected_by_directory:
@@ -105,70 +95,55 @@ def reason_for_push(directory, options, args, config_overrides, cache):
 
 
 def gh_api_call(args):
-    """(method, endpoint, values, files) of a gh api call.
+    """(is a write, tokens, files) of a gh api call, read from the tokens' surface.
 
-    `values` holds every option value and operand as written; `files` holds
-    the paths whose contents gh sends: the --input file and each typed field's
-    `@path`, with "-" for standard input.
+    `files` holds the paths whose contents gh would send: the --input file
+    and each typed field's `@path`, with "-" for standard input.
     """
-    method = None
-    endpoint = None
-    values = []
+    write = False
     files = []
-    has_fields = False
-    rest = list(args)
-    while rest:
-        token = rest.pop(0)
-        option = value = None
-        if token.startswith("--"):
-            name, has_value, attached = token[2:].partition("=")
-            if name in GH_API_VALUE_LONGS:
-                option = "--" + name
-                value = attached if has_value else (rest.pop(0) if rest else "")
-        elif token.startswith("-") and len(token) > 1:
-            letter, attached = token[1], token[2:]
-            if letter in GH_API_VALUE_SHORTS:
-                option = "-" + letter
-                value = attached[1:] if attached.startswith("=") else attached
-                if not attached:
-                    value = rest.pop(0) if rest else ""
-        elif endpoint is None:
-            endpoint = token
+    tokens = list(args)
+    for index, token in enumerate(tokens):
+        name, has_value, attached = token.partition("=")
+        following = tokens[index + 1] if index + 1 < len(tokens) else ""
+        if name in GH_API_METHOD_OPTIONS:
+            write = write or (attached if has_value else following).upper() != "GET"
+        elif token[:2] in GH_API_METHOD_OPTIONS and len(token) > 2:
+            write = write or token[2:].lstrip("=").upper() != "GET"
+        if name in GH_API_BODY_OPTIONS or (token[:2] in {"-f", "-F"} and len(token) > 2):
+            write = True
+        if name == "--input":
+            files.append(attached if has_value else following)
             continue
+        if token[:2] == "-F" and len(token) > 2:
+            field = token[2:]
+        elif name in GH_API_FILE_OPTIONS:
+            field = attached if has_value else following
         else:
-            values.append(token)
             continue
-        if option is None:
-            continue
-        values.append(value)
-        if option in {"-X", "--method"}:
-            method = value
-        elif option == "--input":
-            files.append(value)
-        elif option in GH_API_TYPED_FIELD_OPTIONS and "=@" in value:
-            files.append(value.split("=@", 1)[1])
-        has_fields = has_fields or option in GH_API_FIELD_OPTIONS
-    if method is None:
-        method = "POST" if has_fields else "GET"
-    return method.upper(), endpoint or "", values, files
+        if "=@" in field:
+            files.append(field.split("=@", 1)[1])
+    return write, tokens, files
 
 
 def reason_for_gh(words, args, directory):
     if words == ("pr", "merge"):
-        if final_bool_option(args, PR_MERGE_BOOL_OPTIONS, PR_MERGE_VALUE_OPTIONS, "disable-auto") is True:
-            return None
-        return "gh pr merge lands a pull request on the default branch, and merging is the owner's click on GitHub."
+        return ("gh pr merge lands a pull request on the default branch, and merging is the owner's click on GitHub; "
+                "to disarm auto-merge, the owner runs gh pr merge --disable-auto themselves.")
     if words == ("api",):
-        method, endpoint, values, files = gh_api_call(args)
-        if method != "GET" and PULL_MERGE_ENDPOINT.search(endpoint):
-            return "gh api %s %s merges a pull request, and merging is the owner's click on GitHub." % (method, endpoint)
-        if method == "POST" and REPO_MERGES_ENDPOINT.search(endpoint):
-            return "gh api POST %s merges one branch into another on the remote." % endpoint
-        if endpoint == "graphql":
-            text = " ".join(values)
+        write, tokens, files = gh_api_call(args)
+        if not write:
+            return None
+        for token in tokens:
+            if PULL_MERGE_ENDPOINT.search(token):
+                return "gh api on %s merges a pull request, and merging is the owner's click on GitHub." % token
+            if REPO_MERGES_ENDPOINT.search(token):
+                return "gh api on %s merges one branch into another on the remote." % token
+        if GRAPHQL in tokens:
+            text = " ".join(tokens)
             for path in files:
                 if path == "-":
-                    return ("This GraphQL call reads its query from standard input, which the hook cannot inspect "
+                    return ("This GraphQL call reads its query from standard input, which the guard cannot inspect "
                             "for a merge; pass the query inline or from a file.")
                 try:
                     with open(os.path.join(directory, path), encoding="utf-8", errors="replace") as handle:

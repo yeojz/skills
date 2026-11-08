@@ -233,7 +233,7 @@ also sets.
 | `no-claude-artifacts.sh` | PreToolUse on Bash | Blocks any staging or commit that would include `.claude/`, `docs/plans/` or `.plans/` |
 | `require-pr-skill.sh` | PreToolUse on Bash | Denies `git commit`, `git push` and `gh pr create` until the session's transcript shows the `pr` skill loaded, by a Skill call whose result reported no error or a typed `/jz:pr`; a payload without a transcript path passes, so the gate holds on Claude Code only |
 | `confirm-remote-writes.sh` | PreToolUse on Bash | Asks before a `gh pr create` without `--draft`, `gh pr ready` and any force push not pinned to a sha, including a bare `--force-with-lease`, `-f` clusters and a `+refspec`; a branch push, a draft PR and a `--force-with-lease=<branch>:<sha>` push pass without a prompt |
-| `protect-default-branches.sh` | PreToolUse on Bash | Blocks a push that would update or delete `main`, `master`, `develop`, `trunk` or the branch `origin/HEAD` names, as git's own dry run resolves it, and blocks merging a pull request: `gh pr merge` including `--auto`, and the REST and GraphQL merge calls through `gh api`. The owner merges on GitHub |
+| `protect-default-branches.sh` | PreToolUse on Bash | Blocks a push that would update or delete `main`, `master`, `develop`, `trunk` or the branch `origin/HEAD` names, resolved from the repository's own configuration and tracking refs, and blocks merging a pull request: `gh pr merge` including `--auto`, and the REST and GraphQL merge calls through `gh api`. The owner merges on GitHub |
 | `scan-secrets-before-push.sh` | PreToolUse on Bash | Scans the commits a `git push` would publish, with betterleaks or gitleaks when one is on PATH and a builtin set of token shapes otherwise, and asks before the push when something looks like a secret; nothing is installed |
 | `rebase-not-merge.sh` | PreToolUse on Bash | Blocks merging the default branch into a feature branch, or pulling it without `--rebase`; rebase instead. A checkout on the default branch may fast-forward itself |
 | `no-restricted-words.sh` | PreToolUse on Bash | Blocks a commit message, PR body, review or comment that carries an emoji, an agent attribution trailer, a session link, a model version slug, or a word listed under a `## Restricted words` heading in the repo's `AGENTS.md` or `CLAUDE.md` |
@@ -244,7 +244,10 @@ The hooks that read a command line share one parser, `command_lines.py`, so a
 line continuation, a quoted separator, a trailing comment, a `timeout 30`
 wrapper or a `bash -c` script is read the way the shell will read it. The
 hooks that judge a push share `git_push.py`, which reads the push options the
-way git does and asks git's dry run which refs the push would update. The
+way git does and works out from the repository's configuration and tracking
+refs which refs the push would update. It never contacts the remote and never
+runs anything the command names, since a hook runs before the owner approves
+the call. The
 hooks that judge a `gh` call share `gh_options.py`, which finds the subcommand
 past `-R o/r` and reads each flag's final value the way gh does.
 

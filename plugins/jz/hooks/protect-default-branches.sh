@@ -8,13 +8,15 @@
 # command the owner types with `!` does not pass through this hook.
 #
 # A protected branch is main, master, develop or trunk, and whatever
-# refs/remotes/origin/HEAD names. Which refs a push updates is git's answer,
-# not the hook's: `git push --dry-run --porcelain` with the same arguments
-# resolves configured refspecs, push.default, HEAD, wildcards, --all and
-# --mirror, the way scan-secrets-before-push.sh reads it. When the dry run
-# cannot say, the call is read by hand: a refspec naming a protected branch,
-# --all, --mirror or --branches, or a bare push from a protected branch is
-# denied, and anything else is left to the other hooks.
+# refs/remotes/origin/HEAD names. Which refs a push updates is read from the
+# repository alone, by git_push.py: the operands, else remote.<name>.push,
+# else push.default for the current branch, with --all, --mirror and
+# --delete, and a branch whose tracking ref already holds the pushed commit
+# is left alone. Nothing is asked of the remote and nothing the caller named
+# is run: a dry run would spawn receive-pack and the ssh command the caller
+# chooses, before the owner has approved the call. A -c or --config-env
+# override of remote.*, push.*, branch.* or url.* cannot be followed and is
+# denied; the setting belongs in the repository's configuration.
 #
 # A merge is `gh pr merge`, which arms auto-merge too, unless its final
 # --disable-auto is true; `gh api` with a write to pulls/<n>/merge or to the
@@ -50,15 +52,11 @@ import re
 import sys
 
 sys.path.insert(0, sys.argv[1])
-from command_lines import commands_with_directory, git_call, git_repository_options, start_directory  # noqa: E402
-from git_push import dry_run_updates, resolve_push_long_option, run_git, walk_push_options  # noqa: E402
+from command_lines import commands_with_directory, git_call, git_config_overrides, git_location_options, start_directory  # noqa: E402
+from git_push import HEADS, resolve_commit, resolve_push, run_git, unfollowed_config_override  # noqa: E402
 from gh_options import final_bool_option, gh_command  # noqa: E402
 
 COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
-BRANCH_PREFIX = "refs/heads/"
-# Flags of a porcelain line whose ref the push leaves where it is.
-UNCHANGED_FLAGS = set("=")
-WHOLESALE_PUSH_OPTIONS = {"all", "branches", "mirror"}
 
 MERGE_MUTATIONS = re.compile(r"\b(mergePullRequest|enablePullRequestAutoMerge|mergeBranch)\b")
 PULL_MERGE_ENDPOINT = re.compile(r"(^|/)pulls/[^/]+/merge/?$")
@@ -100,66 +98,42 @@ def protected_branches(directory, options):
     return protected_by_directory[directory]
 
 
-def current_branch(directory, options):
-    out = run_git(directory, options, ["symbolic-ref", "-q", "--short", "HEAD"])
-    if out is None or out.returncode != 0:
-        return None
-    return out.stdout.strip()
-
-
 def branch_name(ref):
-    return ref[len(BRANCH_PREFIX):] if ref.startswith(BRANCH_PREFIX) else ref
+    return ref[len(HEADS):] if ref.startswith(HEADS) else ref
 
 
-def push_by_hand(directory, options, args, protected):
-    """The protected branch a push names, read from its arguments alone, or None.
-
-    Used when git's own dry run cannot answer. The first operand is the
-    remote; each one after it is a refspec whose destination is the part after
-    the colon, or the source itself.
-    """
-    operands = []
-    for token in args:
-        if token.startswith("--"):
-            name = token[2:].partition("=")[0]
-            if resolve_push_long_option(name) in WHOLESALE_PUSH_OPTIONS:
-                return "every branch (" + token + ")"
-            continue
-        if token.startswith("-") and token != "-":
-            continue
-        operands.append(token)
-    refspecs = operands[1:]
-    current = current_branch(directory, options)
-    if not refspecs:
-        return current if current in protected else None
-    for refspec in refspecs:
-        source, colon, destination = refspec.lstrip("+").partition(":")
-        target = destination if colon else source
-        if target == "HEAD":
-            target = current or ""
-        if branch_name(target) in protected:
-            return branch_name(target)
-    return None
-
-
-def reason_for_push(directory, options, args):
-    walk = walk_push_options(args)
-    if not walk.error and walk.dry_run:
-        return None
+def reason_for_push(directory, options, args, config_overrides):
+    override = unfollowed_config_override(config_overrides)
+    if override:
+        return ("This push carries %s, which changes where or what it publishes, and a command-line "
+                "configuration override is not followed; put the setting in the repository's configuration." % override)
     protected = protected_branches(directory, options)
-    url, updates, error = dry_run_updates(directory, options, args)
+    push, error = resolve_push(directory, options, args)
     if error:
-        branch = push_by_hand(directory, options, args, protected)
-        if branch:
-            return "This push would update %s, and the default branch moves only through a merged pull request." % branch
+        # Unresolved is not safe: a token naming a protected branch is enough to deny.
+        for token in args:
+            if token.startswith("-"):
+                continue
+            target = token.lstrip("+").partition(":")[2] or token
+            if branch_name(target) in protected:
+                return ("This push could not be resolved (%s) and names %s, and the default branch moves only "
+                        "through a merged pull request." % (error, branch_name(target)))
         return None
-    for flag, _, destination, _ in updates:
-        if flag in UNCHANGED_FLAGS:
+    if push.dry_run:
+        return None
+    for source, destination in push.updates:
+        if not destination.startswith(HEADS) or branch_name(destination) not in protected:
             continue
-        if destination.startswith(BRANCH_PREFIX) and branch_name(destination) in protected:
-            action = "delete" if flag == "-" else "update"
-            return ("This push would %s %s on %s, and the default branch moves only through a merged pull request."
-                    % (action, branch_name(destination), url))
+        name = branch_name(destination)
+        if source is None:
+            return "This push would delete %s on %s, and the default branch moves only through a merged pull request." % (name, push.destination)
+        tracking = push.tracking_ref(name)
+        if tracking:
+            pushed = resolve_commit(directory, options, source)
+            held = resolve_commit(directory, options, tracking)
+            if pushed is not None and pushed == held:
+                continue
+        return "This push would update %s on %s, and the default branch moves only through a merged pull request." % (name, push.destination)
     return None
 
 
@@ -245,7 +219,7 @@ def reason_for(argv, directory):
         return reason_for_gh(gh[0], gh[1], directory)
     call = git_call(argv, directory)
     if call is not None and call[0] == "push":
-        return reason_for_push(call[2], git_repository_options(argv), call[1])
+        return reason_for_push(call[2], git_location_options(argv), call[1], git_config_overrides(argv))
     return None
 
 

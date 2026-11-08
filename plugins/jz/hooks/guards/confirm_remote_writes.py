@@ -11,14 +11,13 @@ here instead.
 
 import re
 
-from command_lines import git_call
+from command_lines import SHORT_CLUSTER, git_call
 from gh_options import final_bool_option, gh_command
 from git_push import resolve_push_long_option
 from guards import Ask
 
 NAME = "confirm-remote-writes"
 
-SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 # A lease expectation git cannot re-resolve: a full object id, or empty for
 # "the ref must not exist yet". Anything else, a ref name or a short hex that
 # could be one, is read from a ref a fetch can move.
@@ -38,8 +37,6 @@ PR_CREATE_VALUE_OPTIONS = {
 }
 PR_READY_BOOL_OPTIONS = {"undo": None, "help": "h"}
 PR_READY_VALUE_OPTIONS = {"repo": "R"}
-# When the line cannot be lexed at all, lean towards asking.
-RAW_REMOTE_WRITE = re.compile(r"\bgh\b.*\bpr\s+(create|ready)\b|\bgit\s+push\b.*(--force|\s-f\b|\s\+\S)")
 
 
 def push_is_forced(args):
@@ -104,11 +101,7 @@ def reason_for(argv):
 
 
 def check(context):
-    if context.calls is None:
-        if RAW_REMOTE_WRITE.search(context.command):
-            return Ask("The command could not be parsed and looks like a remote write; confirm first.")
-        return None
-    for argv, _, _ in context.calls:
+    for argv, _ in context.calls:
         reason = reason_for(argv)
         if reason:
             return Ask(reason)

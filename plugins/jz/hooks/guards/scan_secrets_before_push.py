@@ -25,8 +25,8 @@ import shutil
 import subprocess
 
 from command_lines import git_call, git_config_overrides, git_location_options
-from git_push import resolve_commit, resolve_push, run_git, unfollowed_config_override
-from guards import Ask
+from git_push import remaining, resolve_commit, resolve_push, run_git, unfollowed_config_override
+from guards import Ask, safe_text
 
 NAME = "scan-secrets-before-push"
 
@@ -51,8 +51,6 @@ BUILTIN_RULES = [
     ("generic-credential", re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*['\"][A-Za-z0-9_\-/+=]{20,}['\"]")),
 ]
 ALLOW_COMMENT = re.compile(r"(?:betterleaks|gitleaks):allow")
-# When the line cannot be lexed at all, lean towards asking.
-RAW_PUSH = re.compile(r"\bgit\b.*\bpush\b")
 
 
 def published_revisions(directory, options, push):
@@ -80,7 +78,7 @@ def unpublished_patch(directory, options, revision_arguments):
     """The patches and messages of the selected commits: text, or empty when there are none."""
     listed = run_git(directory, options, ["rev-list"] + revision_arguments)
     if listed is None or listed.returncode != 0:
-        tail = ((listed.stderr.strip().splitlines() if listed else []) or ["no output"])[-1]
+        tail = safe_text(((listed.stderr.strip().splitlines() if listed else []) or ["no output"])[-1])
         return None, "git rev-list failed: " + tail
     if not listed.stdout.strip():
         return "", None
@@ -88,7 +86,7 @@ def unpublished_patch(directory, options, revision_arguments):
                                 "--no-ext-diff", "--no-textconv", "--no-show-signature",
                                 "--format=commit %h%n%B"] + revision_arguments)
     if shown is None or shown.returncode != 0:
-        tail = ((shown.stderr.strip().splitlines() if shown else []) or ["no output"])[-1]
+        tail = safe_text(((shown.stderr.strip().splitlines() if shown else []) or ["no output"])[-1])
         return None, "git log failed: " + tail
     return shown.stdout, None
 
@@ -121,14 +119,14 @@ def scan_with(tool, directory, patch):
                "--exit-code", str(SCANNER_FINDINGS_EXIT)] + scanner_config(directory)
     try:
         result = subprocess.run(command, input=patch, capture_output=True, text=True,
-                                errors="replace", timeout=SCAN_TIMEOUT_SECONDS, cwd=directory)
+                                errors="replace", timeout=remaining(SCAN_TIMEOUT_SECONDS), cwd=directory)
     except Exception as failure:
         return [], "%s could not run: %s" % (tool, failure)
     if result.returncode == 0:
         return [], None
     if result.returncode != SCANNER_FINDINGS_EXIT:
         tail = result.stderr.strip().splitlines()[-1:] or ["no output"]
-        return [], "%s exited %d: %s" % (tool, result.returncode, tail[0])
+        return [], "%s exited %d: %s" % (tool, result.returncode, safe_text(tail[0]))
     try:
         report = json.loads(result.stdout or "[]")
     except ValueError:
@@ -138,7 +136,7 @@ def scan_with(tool, directory, patch):
     for entry in report:
         rule = entry.get("RuleID") or entry.get("Description") or "secret"
         line_number = entry.get("StartLine") or 0
-        findings.append("%s at %s" % (rule, locate(lines, line_number)))
+        findings.append("%s at %s" % (safe_text(rule, 60), safe_text(locate(lines, line_number))))
     return findings or ["%s reported findings" % tool], None
 
 
@@ -150,7 +148,7 @@ def scan_builtin(patch):
             continue
         for rule, pattern in BUILTIN_RULES:
             if pattern.search(text):
-                findings.append("%s at %s" % (rule, locate(lines, number)))
+                findings.append("%s at %s" % (rule, safe_text(locate(lines, number))))
                 break
     return findings
 
@@ -199,13 +197,7 @@ def reason_for_push(directory, options, args, config_overrides):
 
 
 def check(context):
-    if "push" not in context.command:
-        return None
-    if context.calls is None:
-        if RAW_PUSH.search(context.command):
-            return Ask("The command could not be parsed and looks like a push, so its commits were not scanned for secrets; confirm first.")
-        return None
-    for argv, _, directory in context.calls:
+    for argv, directory in context.calls:
         call = git_call(argv, directory)
         if call is None or call[0] != "push":
             continue

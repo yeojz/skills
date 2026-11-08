@@ -16,36 +16,20 @@ merge, since without origin/HEAD the default is only known to be one of the
 common names.
 """
 
-import re
-import subprocess
-
-from command_lines import git_call, git_config_overrides
+from command_lines import git_call, git_config_overrides, git_location_options
+from git_push import COMMON_DEFAULTS, current_branch, origin_head, run_git
 from guards import Deny
 
 NAME = "rebase-not-merge"
 
-COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 REBASE_VALUES_THAT_REBASE = {"true", "merges", "interactive", "preserve", "i"}
-# When the line cannot be lexed at all, lean towards denying a merge of a default name.
-RAW_MERGE = re.compile(r"\bgit\b.*\bmerge\s+(?:--\S+\s+)*(?:origin/|upstream/)?(main|master|develop|trunk)\b")
 
-def run_git(directory, args):
-    try:
-        return subprocess.run(["git", "-C", directory] + args, capture_output=True,
-                              text=True, timeout=5)
-    except Exception:
-        return None
-
-
-def default_branch(directory, defaults_by_directory):
-    if directory in defaults_by_directory:
-        return defaults_by_directory[directory]
-    names = COMMON_DEFAULTS
-    out = run_git(directory, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"])
-    if out is not None and out.returncode == 0 and out.stdout.strip():
-        names = {out.stdout.strip().split("/", 1)[-1]}
-    defaults_by_directory[directory] = names
-    return names
+def default_branch(directory, options, defaults_by_directory):
+    """The default branch's name, or every common default name when the clone does not record origin/HEAD."""
+    if directory not in defaults_by_directory:
+        head = origin_head(directory, options)
+        defaults_by_directory[directory] = {head} if head else COMMON_DEFAULTS
+    return defaults_by_directory[directory]
 
 
 def bare_name(token):
@@ -56,27 +40,20 @@ def names_default(token, defaults):
     return bare_name(token) in defaults
 
 
-def config_value(directory, config_overrides, key):
+def config_value(directory, options, config_overrides, key):
     """A config value as git pull would read it, or None when the key is unset.
 
     The query carries the call's own `-c` and `--config-env` options, so a
     one-off override is judged the way git will apply it. A bare `-c
     pull.rebase` means true, which --type=bool-or-str spells out.
     """
-    out = run_git(directory, config_overrides + ["config", "--type=bool-or-str", "--get", key])
+    out = run_git(directory, options + config_overrides, ["config", "--type=bool-or-str", "--get", key])
     if out is None or out.returncode != 0:
         return None
     return out.stdout.strip().lower()
 
 
-def current_branch(directory):
-    out = run_git(directory, ["symbolic-ref", "-q", "--short", "HEAD"])
-    if out is None or out.returncode != 0:
-        return None
-    return out.stdout.strip()
-
-
-def pull_rebases(args, directory, config_overrides):
+def pull_rebases(args, directory, options, config_overrides):
     """The effective rebase setting of a git pull, in git's own order of precedence.
 
     The last explicit flag wins; otherwise branch.<current>.rebase, then
@@ -93,11 +70,11 @@ def pull_rebases(args, directory, config_overrides):
     if setting is not None:
         return setting
     keys = ["pull.rebase"]
-    branch = current_branch(directory)
+    branch = current_branch(directory, options)
     if branch:
         keys.insert(0, "branch." + branch + ".rebase")
     for key in keys:
-        value = config_value(directory, config_overrides, key)
+        value = config_value(directory, options, config_overrides, key)
         if value is not None:
             return value in REBASE_VALUES_THAT_REBASE
     return False
@@ -116,11 +93,12 @@ def reason_for(argv, directory, switched, defaults_by_directory):
     if call is None:
         return None, None
     sub, args, git_directory = call
+    options = git_location_options(argv)
     if sub in {"checkout", "switch"}:
         switched.add(git_directory)
         return None, None
-    defaults = default_branch(git_directory, defaults_by_directory)
-    current = None if git_directory in switched else current_branch(git_directory)
+    defaults = default_branch(git_directory, options, defaults_by_directory)
+    current = None if git_directory in switched else current_branch(git_directory, options)
     if sub == "merge":
         if any(a in {"--abort", "--continue", "--quit"} for a in args):
             return None, None
@@ -134,7 +112,7 @@ def reason_for(argv, directory, switched, defaults_by_directory):
         positional = [a for a in args if not a.startswith("-")]
         if (len(positional) >= 2 and names_default(positional[1], defaults)
                 and not (current is not None and names_default(positional[1], {current}))
-                and not pull_rebases(args, git_directory, git_config_overrides(argv))):
+                and not pull_rebases(args, git_directory, options, git_config_overrides(argv))):
             return ("Pulling the default branch without an effective --rebase merges it into this branch.",
                     bare_name(positional[1]))
     return None, None
@@ -149,14 +127,9 @@ def deny(reason, branch):
 def check(context):
     if "git" not in context.command:
         return None
-    if context.calls is None:
-        match = RAW_MERGE.search(context.command)
-        if match:
-            return deny("The command could not be parsed and looks like a merge of the default branch.", match.group(1))
-        return None
     switched = set()
     defaults_by_directory = {}
-    for argv, _, directory in context.calls:
+    for argv, directory in context.calls:
         reason, branch = reason_for(argv, directory, switched, defaults_by_directory)
         if reason:
             return deny(reason, branch)

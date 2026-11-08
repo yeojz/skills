@@ -22,6 +22,7 @@ import os
 import re
 
 from command_lines import git_call
+from gh_options import gh_command
 from guards import Deny
 
 NAME = "require-pr-skill"
@@ -29,17 +30,14 @@ NAME = "require-pr-skill"
 GATED_GIT = {"commit", "push"}
 PR = re.compile(r"(^|:)pr$")
 TYPED = re.compile(r"<command-name>/(?:[^<>/]*:)?pr</command-name>")
-RAW_GATED = re.compile(r"\bgit\b.*\b(commit|push)\b|\bgh\b.*\bpr\s+create\b")
 
 
 def gated_call(argv):
     call = git_call(argv, ".")
     if call is not None:
         return call[0] in GATED_GIT
-    if os.path.basename(argv[0]) != "gh":
-        return False
-    positional = [a for a in argv[1:] if not a.startswith("-")]
-    return any(positional[i:i + 2] == ["pr", "create"] for i in range(len(positional) - 1))
+    gh = gh_command(argv)
+    return gh is not None and gh[0] == ("pr", "create")
 
 
 def skill_call_loads_pr(block):
@@ -102,11 +100,7 @@ def pr_loaded(path):
 
 
 def check(context):
-    if context.calls is None:
-        gated = bool(RAW_GATED.search(context.command))
-    else:
-        gated = any(gated_call(argv) for argv, _, _ in context.calls)
-    if not gated:
+    if not any(gated_call(argv) for argv, _ in context.calls):
         return None
     transcript = context.transcript_path
     if not isinstance(transcript, str) or not os.path.isfile(transcript):

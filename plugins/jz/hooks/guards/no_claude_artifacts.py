@@ -10,19 +10,18 @@ A dry run touches neither the index nor the object store and runs no hooks.
 
 import os
 import re
-import subprocess
+import shutil
+import tempfile
 
-from command_lines import git_call
-from guards import Deny
+from command_lines import SHORT_CLUSTER, git_call, git_location_options
+from git_push import git_text, run_git
+from guards import Ask, Deny, safe_text
 
 NAME = "no-claude-artifacts"
 
 FORBIDDEN = re.compile(r"(^|/)(\.claude|docs/plans|\.plans)(/|$)")
 
-GIT_TIMEOUT_SECONDS = 5
 MAX_REPORTED = 20
-
-SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 
 STAGING_SUBCOMMANDS = {"add", "stage"}
 
@@ -30,7 +29,7 @@ STAGING_SUBCOMMANDS = {"add", "stage"}
 # command puts in play.
 ADD_FLAGS_DROPPED = {"--dry-run", "--interactive", "--patch", "--edit", "--verbose"}
 ADD_LETTERS_DROPPED = "nipev"
-# These would reshape the porcelain report this hook has to read.
+# These would reshape the porcelain report this guard has to read.
 COMMIT_FLAGS_DROPPED = {"--dry-run", "--porcelain", "--patch", "--short", "--long", "--null"}
 COMMIT_LETTERS_DROPPED = "pz"
 
@@ -38,53 +37,68 @@ ADD_REPORT = re.compile(r"^(?:add|remove) '(.*)'$")
 STAGED_STATUS = "MADRCU"
 
 
-class GitMissing(Exception):
-    """git is not on PATH, so no command in this call can stage anything."""
-
-
 class Unresolvable(Exception):
     """git could not answer for this call, so the working tree is all we have."""
 
 
-def plan_checks(calls):
-    """Collect every git add, stage or commit the command line would run.
+# The dry runs and the modified-file listing would run a clean filter from
+# .gitattributes, such as git-lfs, over a file that changed. With the empty
+# tree as the attribute source and no attributes file, no filter applies;
+# only $GIT_DIR/info/attributes still does. Needs git 2.40 or later, and an
+# older git fails the call, which is then Unresolvable.
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+NO_ATTRIBUTES = ["--attr-source=" + EMPTY_TREE, "-c", "core.attributesFile=/dev/null"]
 
-    The shared parser resolves each command's directory, so a leading `cd`,
-    a `bash -c` script and a `-C` held in a shell variable are judged where
-    they point.
-    """
+
+def plan_checks(calls):
+    """Collect every git add, stage or commit the command line would run, each with the options that pick its repository."""
     checks = []
-    for argv, via_xargs, command_directory in calls:
+    for argv, command_directory in calls:
         call = git_call(argv, command_directory)
         if call is None:
             continue
         subcommand, args, git_directory = call
         if subcommand in STAGING_SUBCOMMANDS:
-            checks.append(("add", git_directory, args, via_xargs))
+            checks.append(("add", git_directory, git_location_options(argv), args))
         elif subcommand == "commit":
-            checks.append(("commit", git_directory, args, via_xargs))
+            checks.append(("commit", git_directory, git_location_options(argv), args))
     return checks
 
 
-def run_git(directory, args):
-    """Run one read-only git call under a timeout, with locks and pager off."""
-    environment = dict(os.environ,
-                       GIT_OPTIONAL_LOCKS="0",
-                       GIT_PAGER="cat",
-                       GIT_EDITOR="true",
-                       GIT_TERMINAL_PROMPT="0")
-    try:
-        return subprocess.run(["git", "--no-pager", "-C", directory] + args,
-                              stdin=subprocess.DEVNULL,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              text=True,
-                              env=environment,
-                              timeout=GIT_TIMEOUT_SECONDS)
-    except FileNotFoundError:
-        raise GitMissing()
-    except (subprocess.TimeoutExpired, OSError):
+def git_answer(directory, options, args, environment=None, accepted=(0,)):
+    """A git call whose exit code must be in `accepted` to count; anything else is Unresolvable."""
+    out = run_git(directory, options, args, environment)
+    if out is None or out.returncode not in accepted:
         raise Unresolvable()
+    return out
+
+
+def on_scratch_index(directory, options, args, accepted=(0,)):
+    """Run a dry run against a copy of the index.
+
+    `git add --dry-run` takes the index lock, and a git killed at the timeout
+    leaves it behind, breaking every later write in the owner's repository.
+    On a copy, the lock and the copy are both discarded here.
+    """
+    index = git_text(directory, options, ["rev-parse", "--git-path", "index"])
+    if index is None:
+        raise Unresolvable()
+    index = os.path.join(directory, index)
+    handle, scratch = tempfile.mkstemp(prefix="jz-index-")
+    os.close(handle)
+    try:
+        if os.path.isfile(index):
+            shutil.copyfile(index, scratch)
+        else:
+            # No index yet. An empty file is not a valid index; a missing one is.
+            os.remove(scratch)
+        return git_answer(directory, options + NO_ATTRIBUTES, args, {"GIT_INDEX_FILE": scratch}, accepted)
+    finally:
+        for leftover in (scratch, scratch + ".lock"):
+            try:
+                os.remove(leftover)
+            except OSError:
+                pass
 
 
 def drop_flags(args, long_flags, letters):
@@ -102,20 +116,15 @@ def drop_flags(args, long_flags, letters):
     return kept
 
 
-def is_repository(directory):
-    return run_git(directory, ["rev-parse", "--git-dir"]).returncode == 0
+def is_repository(directory, options):
+    out = run_git(directory, options, ["rev-parse", "--git-dir"])
+    return out is not None and out.returncode == 0
 
 
-def has_pathspec(args):
-    return any(not token.startswith("-") for token in args if token != "--")
-
-
-def staged_by_add(directory, args, via_xargs):
+def staged_by_add(directory, options, args):
     """Ask git which paths `git add` with these arguments would put in the index."""
-    if via_xargs and not has_pathspec(args):
-        raise Unresolvable()
-    result = run_git(directory, ["add", "--dry-run"]
-                     + drop_flags(args, ADD_FLAGS_DROPPED, ADD_LETTERS_DROPPED))
+    result = on_scratch_index(directory, options, ["add", "--dry-run"]
+                              + drop_flags(args, ADD_FLAGS_DROPPED, ADD_LETTERS_DROPPED))
     return [match.group(1) for match in
             (ADD_REPORT.match(line) for line in result.stdout.splitlines()) if match]
 
@@ -125,12 +134,11 @@ def patch_mode(args):
                or (SHORT_CLUSTER.match(token) and "p" in token[1:]) for token in args)
 
 
-def committed_by_commit(directory, args, via_xargs):
+def committed_by_commit(directory, options, args):
     """Ask git which paths `git commit` with these arguments would record."""
-    if via_xargs and not has_pathspec(args):
-        raise Unresolvable()
-    result = run_git(directory, ["commit", "--dry-run", "--porcelain"]
-                     + drop_flags(args, COMMIT_FLAGS_DROPPED, COMMIT_LETTERS_DROPPED))
+    # A commit dry run exits 1 when there is nothing to commit, and still reports.
+    result = on_scratch_index(directory, options, ["commit", "--dry-run", "--porcelain"]
+                              + drop_flags(args, COMMIT_FLAGS_DROPPED, COMMIT_LETTERS_DROPPED), accepted=(0, 1))
     # Column one is the index status. An untracked (??) or worktree-only ( M)
     # entry is reported but would not be committed, unless -p is picking hunks
     # straight out of the working tree.
@@ -142,11 +150,14 @@ def committed_by_commit(directory, args, via_xargs):
     return paths
 
 
-def dirty_paths(directory):
-    """Everything the working tree could contribute to a commit right now."""
-    staged = run_git(directory, ["diff", "--cached", "--name-only"]).stdout.splitlines()
-    status = run_git(directory, ["status", "--porcelain", "-uall"]).stdout.splitlines()
-    return staged + [unquote(line[3:]) for line in status if len(line) > 3]
+def dirty_paths(directory, options):
+    """Everything the working tree could contribute to a commit right now, read with no attributes so no filter runs."""
+    paths = []
+    for args in (["diff", "--cached", "--name-only"],
+                 ["ls-files", "--full-name", "--others", "--exclude-standard"],
+                 ["ls-files", "--full-name", "--modified"]):
+        paths.extend(unquote(line) for line in git_answer(directory, options + NO_ATTRIBUTES, args).stdout.splitlines())
+    return paths
 
 
 def unquote(path):
@@ -158,10 +169,10 @@ def unquote(path):
 def deny(offenders, unparsed):
     report = sorted(set(offenders))[:MAX_REPORTED]
     lines = ["Blocked: this would stage or commit Claude Code working artifacts.", ""]
-    lines += ["  " + path for path in report]
+    lines += ["  " + safe_text(path) for path in report]
     lines.append("")
     if unparsed:
-        lines.append("The command could not be parsed, so the working tree was checked instead.")
+        lines.append("git could not say which paths the command puts in play, so the working tree was checked instead.")
     lines += ["These paths are never committed. Unstage them first:",
               "  git reset HEAD -- .claude docs/plans .plans",
               "and add them to .gitignore if they are not there already."]
@@ -174,29 +185,28 @@ def forbidden(paths):
 def check(context):
     if "git" not in context.command:
         return None
-    directory = context.start
-    try:
-        if context.calls is None:
-            # Unbalanced quotes. Fall back to the tree, and deny only a real offender.
-            if is_repository(directory):
-                offenders = forbidden(dirty_paths(directory))
-                if offenders:
-                    return deny(offenders, unparsed=True)
-            return None
-        offenders = []
-        unparsed = False
-        for kind, check_directory, args, via_xargs in plan_checks(context.calls):
-            if not is_repository(check_directory):
-                continue
-            resolve = staged_by_add if kind == "add" else committed_by_commit
+    offenders = []
+    unparsed = False
+    unseen = False
+    for kind, check_directory, options, args in plan_checks(context.calls):
+        if not is_repository(check_directory, options):
+            continue
+        resolve = staged_by_add if kind == "add" else committed_by_commit
+        try:
+            offenders.extend(forbidden(resolve(check_directory, options, args)))
+        except Unresolvable:
+            unparsed = True
             try:
-                offenders.extend(forbidden(resolve(check_directory, args, via_xargs)))
+                offenders.extend(forbidden(dirty_paths(check_directory, options)))
             except Unresolvable:
-                unparsed = True
-                offenders.extend(forbidden(dirty_paths(check_directory)))
-        if offenders:
-            return deny(offenders, unparsed)
-    except (GitMissing, Unresolvable):
-        # No git, or even the fallback could not run. Nothing observed, nothing to block.
-        pass
+                # Even the fallback could not run: git is missing, too old for
+                # --attr-source, or the repository would not answer. The other
+                # calls on the line are still judged; a deny among them wins.
+                unseen = True
+    if offenders:
+        return deny(offenders, unparsed)
+    if unseen:
+        return Ask("The artifact guard could not get git to say which paths this command stages or commits "
+                   "(git missing, older than 2.40, or the repository did not answer), so nothing was checked "
+                   "for .claude, docs/plans or .plans; confirm it, or run git status yourself first.")
     return None

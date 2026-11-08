@@ -134,19 +134,35 @@ def heredoc_delimiter(rest):
     """(delimiter, characters consumed) for the word after a `<<`, read with shell quoting, or None when the word cannot be read.
 
     bash removes the quoting from the word: `"E O F"` names `E O F`, `E"O"F`
-    and `\\EOF` name `EOF`, and a backslash inside single quotes stays.
+    and `\\EOF` name `EOF`, and a backslash inside single quotes stays. The
+    word ends at unquoted whitespace or a metacharacter, so `<<EOF;` and
+    `<<EOF>out` name `EOF`.
     """
-    lexer = shlex.shlex(rest, posix=True)
-    lexer.whitespace_split = True
-    lexer.whitespace = " \t"
-    lexer.commenters = ""
+    quote = ""
+    consumed = 0
+    while consumed < len(rest):
+        char = rest[consumed]
+        if quote:
+            if char == quote:
+                quote = ""
+            elif char == "\\" and quote == '"':
+                consumed += 1
+        elif char == "\\":
+            consumed += 1
+        elif char in "'\"":
+            quote = char
+        elif char in " \t;&|<>()":
+            break
+        consumed += 1
+    if quote:
+        return None
     try:
-        word = lexer.get_token()
+        words = shlex.split(rest[:consumed], posix=True)
     except ValueError:
         return None
-    if not word:
+    if len(words) != 1:
         return None
-    return word, lexer.instream.tell()
+    return words[0], consumed
 
 
 def strip_heredocs(line, parsed):
@@ -193,6 +209,10 @@ def strip_heredocs(line, parsed):
                 # Inside $(...) or $((...)) a << is a shift, not a here-document.
                 substitution += 1
                 position += 1
+                at_word_start = False
+            elif at_word_start and text.startswith("((", position):
+                # A bare (( ... )) arithmetic command, likewise.
+                substitution += 1
                 at_word_start = False
             elif substitution and char == "(":
                 substitution += 1

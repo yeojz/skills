@@ -5,8 +5,10 @@
 # guard.py, which parses the command line once and runs every guard in
 # guards/ over it: the artifact check, the pr-skill gate, the rebase rule, the
 # restricted words, the default-branch guard, the remote-write confirmation
-# and the secret scan. Exit 0 allows, exit 2 denies with the reason on stderr,
-# and an "ask" decision is printed as JSON on stdout.
+# and the secret scan. The parser follows plain commands only; a line with
+# anything else on it is asked about when it names something a guard judges.
+# Exit 0 allows, exit 2 denies with the reason on stderr, and an "ask"
+# decision is printed as JSON on stdout.
 set -uo pipefail
 
 payload="$(cat)"

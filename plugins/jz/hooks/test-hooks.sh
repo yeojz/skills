@@ -58,8 +58,6 @@ check '"git add :/"'                           "add by pathspec magic"         2
 check '"git -C docs add plans"'                "add behind git -C"             2
 check '"cd docs && git add plans"'             "add behind a leading cd"       2
 check '"git status\ngit add docs/plans"'       "add on a second line"          2
-check '"nohup git add docs/plans"'             "add behind nohup"              2
-check '"time git add .claude"'                 "add behind time"               2
 check '"/usr/bin/git add .claude"'             "add through an absolute path"  2
 check '"git stage docs/plans"'                 "stage a forbidden directory"   2
 check '"git add docs/plans # sneaky comment"'  "add trailed by a comment"      2
@@ -74,15 +72,11 @@ check '"git add ./src/a.ts"'                   "add a dot-slash clean path"    0
 check '"git add src/.claudette"'               "add a path that only looks bad" 0
 check '"git commit -m \"add -u flag docs\""'   "commit message contains -u"    0
 check '"git -C . add -A"'                      "add -A behind a global option" 2
-check '"command git add ."'                    "add dot behind command"        2
 check '"git add -- src/a.ts"'                  "add a clean path after --"     0
 check '"git add -A 2>&1"'                      "add -A with stderr redirected" 2
 check '"git add .claude 2>/dev/null"'          "add .claude with stderr discarded" 2
 check '"git add -A 1>/dev/null"'               "add -A with stdout discarded"  2
 check "\"git --git-dir=$FIXTURE/.git --work-tree=$FIXTURE add .claude\"" "add .claude by --git-dir from outside" 2 /
-git -C "$FIXTURE" config alias.a add
-check '"git a .claude"'                        "add through a git alias"       2
-git -C "$FIXTURE" config --unset alias.a
 # A dry run that never finishes is killed at its timeout; the lock it held
 # must be on a scratch copy of the index, never on the repository's own.
 JZ_GIT_TIMEOUT_SECONDS=2 check '"git add --pathspec-from-file=/dev/zero"' "pathspec file that never ends, tree checked instead" 2
@@ -211,8 +205,6 @@ ask '"git push --force-with-lease=x: origin x"'  "lease that expects no ref"    
 ask '"git push --force-with-lease=x"'           "lease on a ref without a sha"   ask
 ask '"git push --force-with-lease=x:0123456789abcdef0123456789abcdef01234567 --force-if-includes"' "pinned lease with if-includes" allow
 ask '"git push --force-if-includes --force-with-lease=x:0123456789abcdef0123456789abcdef01234567"' "if-includes before a pinned lease" allow
-ask '"git push --force-w=x:0123456789abcdef0123456789abcdef01234567 origin x"'      "pinned lease by an abbreviation" allow
-ask '"git push --force-w origin x"'            "bare lease by an abbreviation"  ask
 ask '"git push --force-with-lease=x:0123456789abcdef0123456789abcdef01234567 origin +y"' "pinned lease beside a plus refspec" ask
 ask '"git push --force-with-lease=x:0123456789abcdef0123456789abcdef01234567 -f"'    "pinned lease beside -f"         ask
 ask '"git push origin -- +x"'                   "plus refspec after --"          ask
@@ -298,7 +290,6 @@ deny '"git pull origin main"'                    "pull main without rebase"     
 deny '"git fetch && git merge origin/main"'      "merge main after &&"            2 rebase-not-merge
 deny '"git -C . merge main"'                     "merge main behind git -C"       2 rebase-not-merge
 deny '"git merge \\\n  origin/main"'             "merge main after a continuation" 2 rebase-not-merge
-deny '"timeout 30 git merge main"'               "merge main behind timeout"      2 rebase-not-merge
 deny '"echo '"'"'git merge main'"'"'"'            "merge main inside quotes"       0 rebase-not-merge
 deny '"git merge feature # not main"'            "main only in a comment"         0 rebase-not-merge
 deny '"git pull --rebase=false origin main"'     "pull main with --rebase=false"  2 rebase-not-merge
@@ -343,7 +334,7 @@ deny '"git -C child merge origin/stable"'        "merge stable behind -C child" 
 deny '"cd child && git merge origin/stable"'     "merge stable after cd child"    2 rebase-not-merge
 deny '"git -C child merge origin/main"'          "merge main inside child"        0 rebase-not-merge
 # A cd that is a pipeline element or a background job moves nothing; one
-# inside a subshell or a brace group moves the rest of the line, and the
+# inside a subshell or a brace group moves nothing either, and the
 # dispatcher asks about the grouping itself (see the last block).
 deny '"cd child | git merge origin/main"'        "cd as a pipeline element"       2 rebase-not-merge
 deny '"echo x | cd child; git merge origin/main"' "cd after a pipe"                2 rebase-not-merge
@@ -637,36 +628,29 @@ pushgit add leaky.ts && pushgit commit -q -m 'feat: leaky'
 pushgit checkout -q main
 scan '"git push origin"'                        "clean HEAD with the default refspec" allow
 pushgit config remote.origin.push refs/heads/leaky:refs/heads/leaky
-scan '"git push origin"'                        "configured refspec publishes leaky" secret
+scan '"git push origin"'                        "configured refspec is not followed, asks" incomplete
 pushgit config --unset remote.origin.push
 pushgit config push.default matching
-scan '"git push origin"'                        "push.default matching publishes leaky" secret
+scan '"git push origin"'                        "push.default matching is not followed, asks" incomplete
 pushgit config --unset push.default
-scan '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec publishes leaky" secret
-scan '"git push --all origin"'                  "--all publishes leaky"          secret
+scan '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec asks"       incomplete
+scan '"git push --all origin"'                  "--all asks"                     incomplete
 scan '"git push origin leaky"'                  "leaky named directly"           secret
 # The hook never pushes, whatever the caller asked for, and never runs the
-# receive-pack or ssh command the caller names.
+# receive-pack or ssh command the caller names. An option outside the
+# followed set is not read at all: the scan asks.
 before_tip="$(git -C "$FIXTURE/remote.git" rev-parse refs/heads/leaky)"
-scan '"git push --no-dry-run origin leaky"'     "--no-dry-run cannot make the preview push" secret
-scan '"git push -n --no-dry-run origin leaky"'  "-n reset by a later --no-dry-run" secret
-scan '"git push --no-dry-run -n origin leaky"'  "--no-dry-run reset by a later -n" allow
-scan '"git push --dry origin leaky"'            "abbreviated --dry-run is a dry run" allow
-scan '"git push --no-dry -n origin leaky"'      "abbreviated --no-dry-run reset by -n" allow
-scan '"git push -o n origin leaky"'             "n as the value of -o"           secret
-git -C "$FIXTURE/remote.git" config receive.advertisePushOptions true
-scan '"git push -o -- origin leaky"'            "-- as the value of -o"          secret
-scan '"git push -o -n origin leaky"'            "-n as the value of -o"          secret
-scan '"git push --push-option=-n origin leaky"' "-n attached to --push-option"   secret
-scan '"git push --push-option -- origin leaky"' "-- as the value of --push-option" secret
-scan '"git push --push-opt -- origin leaky"'    "-- as the value of an abbreviated option" secret
-scan '"git push --receive-pack -n origin leaky"' "-n as the value of --receive-pack" secret
-scan '"git push -on origin leaky"'              "n attached to -o"               secret
-scan '"git push origin leaky -o"'               "dangling -o asks"               incomplete
-scan '"git push --bogus origin leaky"'          "option outside the table asks"  incomplete
+scan '"git push -fu origin leaky"'              "short cluster of followed flags" secret
+scan '"git push --no-verify origin leaky"'      "--no-verify is followed"        secret
+scan '"git push --no-dry-run origin leaky"'     "--no-dry-run asks"              incomplete
+scan '"git push --dry origin leaky"'            "abbreviated --dry-run asks"     incomplete
+scan '"git push -o n origin leaky"'             "-o asks"                        incomplete
+scan '"git push -on origin leaky"'              "n attached to -o asks"          incomplete
+scan '"git push --push-option=-n origin leaky"' "--push-option asks"             incomplete
+scan '"git push --bogus origin leaky"'          "option outside the set asks"    incomplete
 scan '"git push origin -- leaky -n"'            "-n after the terminator is an operand" incomplete
-scan "\"git push --receive-pack=\\\"touch $FIXTURE/scanmarker; git-receive-pack\\\" origin leaky\"" "receive-pack named on a push" secret
-scan "\"git -c core.sshCommand=\\\"touch $FIXTURE/sshmarker\\\" push git@example.invalid:x/y.git leaky\"" "ssh command named on a push to a URL" secret
+scan "\"git push --receive-pack=\\\"touch $FIXTURE/scanmarker; git-receive-pack\\\" origin leaky\"" "receive-pack named on a push asks" incomplete
+scan "\"git -c core.sshCommand=\\\"touch $FIXTURE/sshmarker\\\" push git@example.invalid:x/y.git leaky\"" "push to a URL asks" incomplete
 printf '  %-52s' "neither named command was run"
 if [ -e "$FIXTURE/scanmarker" ] || [ -e "$FIXTURE/sshmarker" ]; then echo "FAIL, the hook ran one"; fail=1; else echo "PASS"; fi
 printf '  %-52s' "remote tip unchanged by the previews"
@@ -690,22 +674,18 @@ scan '"git -c user.name=dev push origin main"'  "unrelated -c on a clean HEAD"  
 pushgit remote add dead "$FIXTURE/no-such-remote.git"
 scan '"git push dead main"'                     "unreachable remote asks"        secret
 scan '"git push origin nosuchbranch"'           "unknown ref asks"               incomplete
-# Destinations and selections git resolves that the arguments alone do not show.
+# Tags are followed; every other selection the arguments alone do not show asks.
 pushgit tag leak-tag leaky
 scan '"git push --tags origin"'                  "--tags publishes a tagged leak" secret
 pushgit tag -d leak-tag >/dev/null
-scan '"git push --mirror origin"'                "--mirror publishes leaky"       secret
-scan '"git push origin refs/heads/*:refs/heads/pub/*"' "wildcard onto another prefix" secret
-pushgit branch -q fix/nested leaky
-scan '"git push origin refs/heads/fix/*:refs/heads/fix/*"' "wildcard matches a nested branch" secret
-pushgit branch -q -D fix/nested
-git init -q --bare "$FIXTURE/target.git"
-pushgit remote add target "$FIXTURE/target.git"
-scan '"git push --repo=target"'                  "--repo names an empty destination" secret
-pushgit remote remove target
+scan '"git push --mirror origin"'                "--mirror asks"                  incomplete
+scan '"git push --repo=origin"'                  "--repo asks"                    incomplete
 pushgit config remote.origin.pushurl "$FIXTURE/archive.git"
-scan '"git push origin main"'                    "pushurl: every remote's refs count as published" allow
+scan '"git push origin main"'                    "a remote with a pushurl asks"   incomplete
 pushgit config --unset remote.origin.pushurl
+pushgit config remote.origin.mirror true
+scan '"git push origin main"'                    "a mirror remote asks"           incomplete
+pushgit config --unset remote.origin.mirror
 pushgit config push.default nothing
 scan '"git push"'                                "push.default nothing"           incomplete
 pushgit config --unset push.default
@@ -760,8 +740,9 @@ protect '"git push origin feature:refs/heads/master"' "feature onto a new master
 protect '"git push origin feature:develop"'      "feature onto a new develop"     2
 protect '"git push origin :main"'                "delete main by refspec"         2
 protect '"git push origin --delete main"'        "delete main by --delete"        2
-protect '"git push --all origin"'                "--all with main ahead"          2
-protect '"git push --mirror origin"'             "--mirror"                       2
+protect '"git push --all origin"'                "--all pushes every branch"      2
+protect '"git push --branches origin"'           "--branches pushes every branch" 2
+protect '"git push --mirror origin"'             "--mirror pushes every branch"   2
 protect '"git push --dry-run origin main"'       "a dry run moves nothing"        0
 protect '"git push origin feature && git push origin main"' "main after a feature push" 2
 protect '"cd protrepo && git push origin main"'  "push main after cd"             2 "$FIXTURE"
@@ -776,14 +757,12 @@ protect '"git commit -m \"merge main notes\""'   "merge only in a commit message
 # Destinations git resolves that the arguments alone do not show.
 protgit tag v1 main
 protect '"git push origin v1:main"'              "tag pushed onto main by its short name" 2
-protect '"git push origin v1:v1"'                "tag pushed as a new tag"        0
+protect '"git push origin v1:v1"'                "tag pushed under its own name"  0
 protgit tag -d v1 >/dev/null
-protect '"git push --repo=origin"'               "--repo from feature"            0
-protect '"git push --recurse-submodules check origin main"' "value option before the operands" 2
-protect '"git push origin refs/heads/*:refs/heads/main"' "unresolvable refspec naming main" 2
-protgit config remote.origin.mirror true
-protect '"git push"'                             "remote.origin.mirror pushes main" 2
-protgit config --unset remote.origin.mirror
+protect '"git push --recurse-submodules check origin main"' "option outside the set, main named" 2
+protect '"git push origin refs/heads/*:refs/heads/main"' "wildcard refspec naming main" 2
+protect '"git push --repo=origin main"'          "--repo with main named"         2
+protect '"git push --repo=origin feature"'       "--repo with a feature named is left to the asking guards" 0
 protgit config push.default upstream
 protgit config branch.feature.merge refs/heads/main
 protect '"git push"'                             "upstream mode pushes feature onto main" 2
@@ -796,18 +775,16 @@ protect '"git push"'                             "remote.pushDefault from featur
 protgit config --unset remote.pushDefault
 protgit checkout -q main
 protect '"git push"'                             "bare push from main"            2
-protect '"git push --repo=origin"'               "--repo from main"               2
 protgit config branch.main.pushRemote origin
 protect '"git push"'                             "pushRemote from main"           2
 protgit config --unset branch.main.pushRemote
 protgit push -q origin main
 protgit checkout -q feature
-protect '"git push --all origin"'                "--all with main up to date"     0
+protect '"git push --all origin"'                "--all with main up to date still denies" 2
 # With main level at origin, a push of main is denied only when it goes elsewhere.
 git init -q --bare "$FIXTURE/elsewhere.git"
 protgit remote add elsewhere "$FIXTURE/elsewhere.git"
 protgit checkout -q main
-protect '"git push --repo=elsewhere"'            "--repo names another remote"    2
 protgit config branch.main.pushRemote elsewhere
 protect '"git push"'                             "pushRemote names another remote" 2
 protgit config --unset branch.main.pushRemote
@@ -841,6 +818,8 @@ protect '"git push dead feature"'                "unreachable remote, feature"  
 protect '"git push dead main"'                   "unreachable remote, main"       2
 protect '"git push dead feature:main"'           "unreachable remote, onto main"  2
 protect '"git push --all dead"'                  "unreachable remote, --all"      2
+protect '"git push git@example.invalid:o/r.git main"' "URL destination naming main" 2
+protect '"git push git@example.invalid:o/r.git feature"' "URL destination, feature, left to the asking guards" 0
 protgit checkout -q main
 protect '"git push dead"'                        "unreachable remote from main"   2
 protgit checkout -q feature
@@ -936,87 +915,86 @@ printf '{"tool_name":"Bash","tool_input":{"command":"git push --force origin mai
   | JZ_GUARDS=no-such-guard "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
 if [ $? = 0 ]; then echo "PASS"; else echo "FAIL"; fail=1; fi
 
-# Constructs the parser does not follow. The line is judged on the commands
-# that were visible, and asked about for the rest when it names something a
+# Constructs outside the parser's grammar. The line is judged on the plain
+# commands it has, and asked about for the rest when it names something a
 # guard judges; a read-only line with such a construct passes in silence.
-printf '\nconstructs the parser does not follow\n'
+printf '\nconstructs outside the grammar\n'
 mkdir -p "$GATEREPO/.claude" "$GATEREPO/child"
 echo settings > "$GATEREPO/.claude/settings.json"
 git init -q -b stable "$GATEREPO/child"
-all_guards '"git add .claude"'                          "visible add of .claude denies"           deny
+all_guards '"git add .claude"'                          "plain add of .claude denies"             deny
+all_guards '"git add .claude 2>&1"'                     "2>&1 is accepted"                        deny
+all_guards '"git add .claude >/dev/null 2>&1"'          ">/dev/null 2>&1 is accepted"             deny
+all_guards '"git add .claude &>/dev/null"'              "&>/dev/null is accepted"                 deny
+all_guards '"git add .claude 2>/dev/null"'              "2>/dev/null is accepted"                 deny
+all_guards '"git add .claude > out.txt"'                "redirection to a file asks"              ask
+all_guards '"git add .claude < list.txt"'               "input redirection asks"                  ask
+all_guards '"git add .claude >> log.txt"'               "append redirection asks"                 ask
+all_guards '"git status > out.txt"'                     "redirection on a read-only line is silent" allow
+all_guards '"git log --oneline | head -n 3"'            "a pipeline of plain commands is followed" allow
+all_guards '"git status && git push origin main"'       "push of main after && denies"            deny
+all_guards '"git status; git push origin main"'         "push of main after ; denies"             deny
+all_guards '"git status\ngit push origin main"'         "push of main on a second line denies"    deny
 all_guards '"bash -c \"git add .claude\""'              "nested shell asks"                       ask
-all_guards '"env -u X git add README.md"'               "wrapper option reported, add still judged" deny
-all_guards '"env -u X git push origin feature"'         "wrapper option before an unresolvable push asks" ask
+all_guards '"bash -c '"'"'git pu\"\"sh origin main'"'"'"' "split word inside a nested shell asks" ask
+all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow
 all_guards '"xargs -L 2 git push"'                      "xargs asks"                              ask
+all_guards '"echo x | xargs git status"'                "xargs naming git asks without a judged word" ask
+all_guards '"nohup git add .claude"'                    "bare wrapper asks"                       ask
+all_guards '"timeout 30 git add .claude"'               "timeout asks"                            ask
+all_guards '"command git add ."'                        "command asks"                            ask
+all_guards '"env -u X git add README.md"'               "env asks"                                ask
+all_guards '"sudo -u gh git push origin main"'          "sudo asks"                               ask
+all_guards '"nice -n 5 git push origin main"'           "nice asks"                               ask
+all_guards '"time git status"'                          "wrapper on a read-only line is silent"   allow
+all_guards '"env -C child git status"'                  "env -C on a read-only line is silent"    allow
+all_guards '"GIT_DIR=.git git push origin feature"'     "environment assignment asks"             ask
+all_guards '"GIT_TRACE=1 git push origin main"'         "assignment before a push of main asks"   ask
+all_guards '"HOME=/tmp git push origin feature"'        "HOME assignment asks"                    ask
+all_guards "\"export GIT_DIR=$GATEREPO/.git; git push origin feature\"" "export asks"            ask
 all_guards '"m=.claude; git -C \"$m\" add settings.json"' "variable asks"                         ask
 all_guards '"echo $HOME && git commit -m x"'            "variable beside a commit asks"           ask
 all_guards '"git commit -m \"costs $5\""'               "dollar in double quotes asks"            ask
 all_guards '"git commit -m '"'"'costs $5'"'"'"'          "dollar in single quotes is text"         allow
 all_guards '"git -C \"$REPO\" status"'                  "variable on a read-only line is silent"  allow
-all_guards '"time --output t.log git status"'           "wrapper option on a read-only line is silent" allow
-all_guards '"(git status); git push origin main"'      "subshell does not hide a push of main"   deny
-all_guards '"(cd child && git status); git push origin main"' "cd inside a subshell is not applied" deny
-all_guards '"(cd child && git add .claude)"'            "cd inside a subshell is not applied, add judged here" deny
-all_guards '"cd && git add .claude"'                    "bare cd is not followed"                 deny
-all_guards '"(cd child && git merge origin/stable)"'    "cd inside a subshell, merge judged here, asks" ask
-all_guards '"{ cd child; git add .claude; }"'           "cd inside a brace group is not applied"  deny
-all_guards '"cd -P child && git add .claude"'           "cd with an option is not followed"       deny
-all_guards '"cd /tmp &\ngit push origin main"'         "background cd before a newline moves nothing" deny
-all_guards '"GIT_DIR=.git git push origin feature"'     "GIT_* assignment asks"                   ask
-all_guards '"git --bogus push origin main"'             "unknown git option, push still denied"   deny
-all_guards '"git --bogus push origin feature"'          "unknown git option asks"                 ask
-all_guards '"bash -c '"'"'git pu\"\"sh origin main'"'"'"' "split word inside a nested shell asks" ask
-all_guards '"git commit -F - <<'"'"'EOF'"'"'\nfeat: the oracle\nEOF"' "here-document asks"      ask
-all_guards '"gh pr create --draft --body-file - <<<\"ship it\""' "here-string asks"               ask
 all_guards '"git commit -m \"`id`\""'                 "backtick in double quotes asks"          ask
 all_guards '"echo `date` && git status"'                "backtick on a read-only line is silent"  allow
-all_guards '"timeout --signal TERM 30 git push --force"' "wrapper option, forced push of main denied" deny
-all_guards '"sudo -u root git push -f origin feature"'  "sudo with an option asks"                ask
+all_guards '"(git status); git push origin main"'      "subshell does not hide a push of main"   deny
+all_guards '"(cd child && git status); git push origin main"' "cd inside a subshell is not applied" deny
+all_guards '"(cd child && git add .claude)"'            "cd inside a subshell, add judged here"   deny
+all_guards '"(cd child && git merge origin/stable)"'    "cd inside a subshell, merge judged here, asks" ask
+all_guards '"{ cd child; git add .claude; }"'           "cd inside a brace group is not applied"  deny
+all_guards '"{ git status; }"'                          "brace group on a read-only line is silent" allow
+all_guards '"cd && git add .claude"'                    "bare cd is not followed"                 deny
+all_guards '"cd -P child && git add .claude"'           "cd with an option is not followed"       deny
+all_guards '"cd /tmp &\ngit push origin main"'         "background cd moves nothing"             deny
+all_guards '"echo x | cd child; git add .claude"'       "cd after a pipe moves nothing"           deny
+all_guards '"cd child & git add .claude"'               "cd as a background job moves nothing"    deny
+all_guards '"cd child | git add .claude"'               "cd as a pipeline element moves nothing"  deny
+all_guards '"git --bogus push origin main"'             "unknown git option asks"                 ask
+all_guards '"git --bogus status"'                       "unknown git option asks on a read-only line" ask
+all_guards '"git p origin main"'                        "unknown git subcommand asks"             ask
 git -C "$GATEREPO" config alias.p push
-all_guards '"git p origin main"'                        "alias for push is judged as a push"      deny
-git -C "$GATEREPO" config alias.p2 p
-all_guards '"git p2 origin main"'                       "alias of an alias for push"              deny
-all_guards '"git -C gaterepo p origin main"'            "alias looked up behind git -C"           deny "$FIXTURE"
-all_guards '"git -c alias.q=p q origin main"'           "alias override chaining to an alias"     deny
-all_guards '"git P origin main"'                        "alias matched without regard to case"   deny
-all_guards '"git -c alias.W=push w origin main"'        "alias override matched without regard to case" deny
-all_guards '"git -c alias.push=status push origin main"' "alias named like a builtin is ignored"  deny
-PUSHCMD=push all_guards '"git --config-env=alias.x=PUSHCMD x origin main"' "alias through --config-env asks" ask
-git -C "$GATEREPO" config alias.x '!echo'
-all_guards '"git x"'                                    "shell alias asks"                        ask
-git -C "$GATEREPO" config alias.loop1 loop2
-git -C "$GATEREPO" config alias.loop2 loop1
-all_guards '"git loop1"'                                "alias loop asks"                         ask
+all_guards '"git p origin main"'                        "alias is not followed, asks"             ask
 git -C "$GATEREPO" config --unset alias.p
-git -C "$GATEREPO" config --unset alias.p2
-git -C "$GATEREPO" config --unset alias.x
-git -C "$GATEREPO" config --unset alias.loop1
-git -C "$GATEREPO" config --unset alias.loop2
-all_guards "\"export GIT_DIR=$GATEREPO/.git GIT_WORK_TREE=$GATEREPO; git add .claude\"" "exported GIT_DIR asks" ask "$FIXTURE/src"
-all_guards '"nice -n 5 git push origin main"'           "wrapper option still lets the push be denied" deny
-all_guards '"GIT_TRACE=1 git push origin main"'         "GIT_* prefix still lets the push be denied" deny
-all_guards '"HOME=/tmp git push origin feature"'        "HOME prefix asks"                        ask
-all_guards '"cat > f <<EOF\nbody\nEOF\ngit add .claude"' "command after a here-document is judged" deny
-all_guards '"cat <<EOF\ngit push origin main\nEOF\ngit status"' "here-document body is not a command" allow
-all_guards '"cat <<\\EOF\nbody\nEOF\ngit push origin main"' "backslash-quoted delimiter, push after it" deny
-all_guards '"cat <<E\"O\"F\nbody\nEOF\ngit push origin main"' "partly quoted delimiter, push after it" deny
-all_guards '"git status # see <<EOF\ngit push origin main"' "<< inside a comment is not a here-document" deny
-all_guards '"git commit -m \"first\nuse <<Z\" ; git push origin main\nZ"' "<< inside a multi-line string is text" deny
-all_guards '"cat <<EOF\nbody without an end\ngit push origin main"' "here-document never closed, later lines judged" deny
-all_guards '"cat <<\"E O F\"\nx\nE O F\ngit push origin main\nE"' "delimiter with a quoted space"           deny
-all_guards '"cat <<'"'"'E\\F'"'"'\nbody\nE\\F\ngit push origin main\nEF"' "backslash kept inside a single-quoted delimiter" deny
-all_guards '"x=$((1<<2)); git push origin main\n2"'   "a shift inside arithmetic is not a here-document" deny
-all_guards '"(( x = 1 << 2 ))\ngit push origin main\n2"' "a shift in a bare arithmetic command"     deny
-all_guards '"if((1<<2)); then :; fi\ngit push origin main\n2"' "arithmetic glued to a keyword"       deny
-all_guards '"cat <<EOF;\nbody\nEOF\ngit push origin main\nEOF;"' "delimiter ends at a metacharacter"  deny
-all_guards '"cat <<EOF>out\nbody\nEOF\ngit push origin main"' "delimiter ends at a redirection"     deny
-all_guards '"sudo -E git push origin main"'             "wrapper flag without a value"            deny
-all_guards '"env -i git push origin main"'              "env -i before a push of main"            deny
-all_guards '"time -p git push origin main"'             "time -p before a push of main"           deny
-all_guards '"nice -n5 git push origin main"'            "attached wrapper value"                  deny
-all_guards '"git add .claude; git --work-tree=/nonexistent add y"' "unresolvable call beside a visible offender" deny
+all_guards '"git -c alias.x=push x origin main"'        "alias override asks"                     ask
+all_guards '"git -c user.name=dev status"'              "known option with a value is followed"   allow
+all_guards '"git commit -F - <<'"'"'EOF'"'"'\nfeat: the oracle\nEOF"' "here-document asks"      ask
+all_guards '"gh pr create --draft --body-file - <<<\"ship it\""' "here-string asks"               ask
+all_guards '"cat <<EOF\nbody\nEOF\ngit push origin main"' "a here-document ends the read, the line asks" ask
+all_guards '"git add .claude && cat <<EOF\nbody\nEOF"'  "command before a here-document is judged" deny
+all_guards '"cat <<EOF\nsee git log\nEOF"'              "here-document on a read-only line is silent" allow
 all_guards '"cat <<'"'"'EOF'"'"' | git commit -F -\nfeat: x\nEOF"' "message from stdin asks"          ask
 all_guards '"cat > msg.txt <<EOF\nfeat: x\nEOF\ngit commit -F msg.txt"' "message file written on the same line asks" ask
+all_guards '"git add .claude; git --work-tree=/nonexistent add y"' "unresolvable call beside a plain offender" deny
+all_guards '"git push --all origin"'                    "--all counts as a push of main"          deny
+all_guards '"git push --mirror origin"'                 "--mirror counts as a push of main"       deny
+all_guards '"git push --repo=origin"'                   "--repo asks"                             ask
+all_guards '"git push origin refs/heads/*:refs/heads/*"' "wildcard refspec asks"                  ask
+git -C "$GATEREPO" remote add origin "$FIXTURE/no-such-remote.git"
+git -C "$GATEREPO" config remote.origin.mirror true
+all_guards '"git push origin feature"'                  "mirror remote asks"                      ask
+git -C "$GATEREPO" remote remove origin
 mkfifo "$GATEREPO/body.fifo"
 head -c 1100000 /dev/zero | tr '\0' 'a' > "$GATEREPO/body-huge.md"
 printf '## Restricted words\n\n- oracle\n' > "$GATEREPO/AGENTS.md"
@@ -1027,9 +1005,6 @@ all_guards '"gh pr create --draft --body-file body-huge.md"' "body past the read
 all_guards '"git commit -F /dev/zero -m \"feat: the oracle\""' "visible restricted word beside unseen text denies" deny
 all_guards '"gh pr create --draft --body-file /dev/zero && git commit -m \"feat: the oracle\""' "restricted word in a later call denies" deny
 rm -f "$GATEREPO/body.fifo" "$GATEREPO/body-huge.md" "$GATEREPO/AGENTS.md"
-all_guards '"sudo -u gh git push origin main"'          "option value spelled gh is not the program" deny
-all_guards '"env -C child git status"'                  "env -C asks"                             ask
-all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow
 printf 'a\n' > "$GATEREPO/a.txt"
 printf '*.txt filter=x\n' > "$GATEREPO/.gitattributes"
 git -C "$GATEREPO" config filter.x.clean "touch $FIXTURE/filtermarker; cat"
@@ -1058,17 +1033,12 @@ printf '  %-52s' "a run past its deadline asks"
 out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"cwd":"%s"}' "$GATEREPO" \
   | JZ_DEADLINE_SECONDS=0.001 "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
 if printf '%s' "$out" | grep -q 'ran out of time'; then echo "PASS"; else echo "FAIL"; fail=1; fi
-all_guards '"echo x | cd child; git add .claude"'       "cd after a pipe moves nothing"           deny
-all_guards '"cd child & git add .claude"'               "cd as a background job moves nothing"    deny
-all_guards '"{ git status; }"'                          "brace group on a read-only line is silent" allow
 all_guards '"git push origin main \"unterminated"'      "unbalanced quotes ask"                   ask
 all_guards '"gh pr merge 5 \"unterminated"'             "unbalanced quotes on a gh call ask"      ask
-all_guards '"nohup git add .claude"'                    "bare wrapper is followed"                deny
-all_guards '"timeout 30 git add .claude"'               "timeout with a duration is followed"     deny
-printf '  %-52s' "the ask names the construct"
+printf '  %-52s' "the ask names the construct and the grammar"
 out="$(printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' '"bash -c \"git push\""' "$GATEREPO" \
   | "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
-if printf '%s' "$out" | grep -q 'a nested shell (bash)'; then echo "PASS"; else echo "FAIL"; fail=1; fi
+if printf '%s' "$out" | grep -q 'a nested shell (bash)' && printf '%s' "$out" | grep -q 'git -C <dir>'; then echo "PASS"; else echo "FAIL"; fail=1; fi
 rm -rf "$GATEREPO"
 
 exit "$fail"

@@ -8,12 +8,13 @@ rule never blocks an ordinary Bash call; the exit code stays 0 in that case
 because a non-zero code other than 2 is shown to the user as a hook error and
 allows the call anyway.
 
-A construct the parser does not follow (a subshell, a variable, a nested
-shell, a wrapper with options, unbalanced quotes) is judged on what was
-visible and asked about for the rest, when the line also names a command a
-guard judges or the construct itself mentions git or gh. The run has one
-deadline under the host's 60 s hook timeout; when it passes, the owner is
-asked rather than the host failing open.
+The parser follows plain commands only (see command_lines.py). A line with
+anything else on it, a subshell, a variable, a here-document, a wrapper, a
+nested shell, is judged on the plain commands it does have and asked about
+for the rest, when the line also names a command a guard judges or a nested
+shell's own text mentions git or gh. The run has one deadline under the
+host's 60 s hook timeout; when it passes, the owner is asked rather than the
+host failing open.
 
 JZ_GUARDS, a comma-separated list of guard names, restricts the run to those
 guards. The test suite uses it to exercise one guard at a time; the ask for
@@ -37,8 +38,8 @@ from guards import (  # noqa: E402
     scan_secrets_before_push,
 )
 
-# A line with a construct the parser does not follow is asked about only when
-# it also names something a guard judges; a read-only `git -C "$repo" status`
+# A line with a construct outside the grammar is asked about only when it
+# also names something a guard judges; a read-only `git -C "$repo" status`
 # passes in silence.
 JUDGED = re.compile(r"\b(add|stage|commit|push|merge|pull|pr|api)\b")
 # Under the 60 s the host gives the hook, with room for the interpreter.
@@ -99,8 +100,9 @@ def main():
                     "confirm it, or split the line." % " and ".join(timed_out))
     if context.unfollowed and (context.parsed.hidden or JUDGED.search(context.command)):
         asks.append("The command uses %s, which the guards do not follow, so part of it was not checked. "
-                    "Write plain git and gh commands joined by && or ;, run from the repository directory "
-                    "or with git -C <path>, or confirm it as written." % " and ".join(context.unfollowed))
+                    "The guards follow plain commands joined by &&, ; or |, with a leading cd <dir> or a "
+                    "git -C <dir>, and at most a 2>&1 or >/dev/null; write it that way, or confirm it as "
+                    "written." % " and ".join(context.unfollowed))
     if asks:
         print(json.dumps({
             "hookSpecificOutput": {

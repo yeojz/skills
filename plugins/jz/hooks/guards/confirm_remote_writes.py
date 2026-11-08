@@ -13,7 +13,6 @@ import re
 
 from command_lines import SHORT_CLUSTER, git_call
 from gh_options import gh_command
-from git_push import resolve_push_long_option
 from guards import Ask
 
 NAME = "confirm-remote-writes"
@@ -38,9 +37,9 @@ def push_is_forced(args):
     lease, or one whose expectation is a ref name such as
     `refs/remotes/origin/x`, checks against a ref a background fetch can move,
     so it is treated like --force, as are --mirror and --prune, which delete
-    remote refs. --force-if-includes only refines a lease
-    and asks on its own. Long options resolve by unambiguous prefix, as git
-    resolves them.
+    remote refs. --force-if-includes only refines a lease and asks on its
+    own. Options are read as literal tokens; an abbreviation is one the
+    push resolver does not follow, so the guards that use it ask.
     """
     pinned = False
     forced = False
@@ -48,16 +47,15 @@ def push_is_forced(args):
     for token in args:
         if token.startswith("--") and token != "--":
             name, has_value, value = token[2:].partition("=")
-            resolved = resolve_push_long_option(name)
-            if resolved in {"force", "mirror", "prune"}:
+            if name in {"force", "mirror", "prune"}:
                 # --mirror is an implicit +refs/*:refs/* that also deletes; --prune deletes too.
                 forced = True
-            elif resolved == "force-with-lease":
+            elif name == "force-with-lease":
                 if has_value and ":" in value and PINNED_EXPECTATION.match(value.split(":", 1)[1]):
                     pinned = True
                 else:
                     forced = True
-            elif resolved == "force-if-includes":
+            elif name == "force-if-includes":
                 includes = True
             continue
         if token.startswith("+"):

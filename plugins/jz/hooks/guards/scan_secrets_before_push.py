@@ -6,9 +6,8 @@ This scan is the last look before content goes public.
 
 Which refs the push would update is read from the repository alone, by
 git_push.resolve_push. The commits scanned are the ones reachable from the
-pushed refs but not from that remote's tracking refs; when the destination
-is a URL, or the remote has a pushurl, every remote's refs are excluded
-instead. Merge commits are rendered against their first parent, with
+pushed refs but not from that remote's tracking refs. Merge commits are
+rendered against their first parent, with
 external diff drivers and textconv off. The patches and messages go to
 betterleaks when it is on PATH, else to gitleaks, since both read stdin and
 share their config files; with neither installed a small builtin set of
@@ -57,8 +56,7 @@ def published_revisions(directory, options, push):
     """rev-list arguments for the commits the push would make public at the destination.
 
     A deletion publishes nothing. The tracking refs of the destination remote
-    are excluded; when nothing local describes the destination, every
-    remote's refs are.
+    are excluded.
     """
     revisions = []
     for source, _ in push.updates:
@@ -70,8 +68,7 @@ def published_revisions(directory, options, push):
         revisions.append(sha)
     if not revisions:
         return [], None
-    excluded = "--remotes=" + push.remote if push.tracked else "--remotes"
-    return revisions + ["--not", excluded], None
+    return revisions + ["--not", "--remotes=" + push.remote], None
 
 
 def unpublished_patch(directory, options, revision_arguments):

@@ -247,26 +247,55 @@ The guards, each a module in `hooks/guards/` with a `NAME` and a
 | `rebase-not-merge` guard | Blocks merging the default branch into a feature branch, or pulling it without `--rebase`; rebase instead. A checkout on the default branch may fast-forward itself |
 | `no-restricted-words` guard | Blocks a commit message, PR body, review or comment that carries an emoji, an agent attribution trailer, a session link, a model version slug, or a word listed under a `## Restricted words` heading in the repo's `AGENTS.md` or `CLAUDE.md` |
 
-The guards share one parser, `command_lines.py`, which reads a line once:
-commands joined by `;`, `&&`, `||`, `|` or a newline, quoted arguments, a
-trailing comment, a line continuation, a `cd` that moves the commands after
-it, a `git -C`, a git alias resolved from the repository's config, and a bare
-wrapper such as `nohup` or `timeout 30`. It does not follow a subshell, a
-brace group, a variable or command substitution, a backtick, a here-document,
-a wrapper given options, a `GIT_*` environment variable, a git option it does
-not know, a shell alias, or a nested shell such as `bash -c`, `eval` or
-`xargs`. A line with one of those is judged on the commands that were
-visible, and when it also names something a guard judges, or the construct
-itself mentions git or gh, the owner is asked about the rest; a read-only
-`git -C "$repo" status` passes in silence. Every git call a guard makes runs
-with the repository's filesystem monitor, hooks and signature display off, on
-a scratch copy of the index where it would take the lock, under one deadline
-for the whole run. The guards that
-judge a push share `git_push.py`, which reads the push options the way git
-does and works out from the repository's configuration and tracking refs
-which refs the push would update. It never contacts the remote and never
-runs anything the command names, since a hook runs before the owner approves
-the call. The guards that judge a `gh` call share `gh_options.py`, which
+The guards share one parser, `command_lines.py`, which follows a small
+grammar and reports everything outside it:
+
+- plain commands joined by `;`, `&&`, `||`, `|` or a newline, each a program
+  with word arguments, with quoted arguments, a trailing comment and a line
+  continuation read the way bash reads them
+- at most the output redirections `2>&1`, `>/dev/null`, `2>/dev/null` and
+  `&>/dev/null`
+- a `cd <dir>` between separators, which moves the commands after it, and a
+  `git -C <dir>`, which moves one call
+- a git call with the global options the guards know and a subcommand git
+  ships
+
+Everything else asks: a variable or command substitution, a backtick, a
+here-document (nothing after it on the line is read), any other redirection,
+a subshell, a brace group, an environment assignment in front of a program, a
+wrapper such as `env`, `sudo`, `nohup`, `time` or `timeout`, a nested shell
+such as `bash -c`, `eval` or `xargs`, a git option or subcommand the guards do
+not know, aliases included, and unbalanced quotes. A line with one of those is
+judged on the plain commands it does have, and when it also names something a
+guard judges, or a nested shell's own text mentions git or gh, the owner is
+asked about the rest; a read-only `git -C "$repo" status` passes in silence.
+Every git call a guard makes runs with the repository's filesystem monitor,
+hooks and signature display off, on a scratch copy of the index where it
+would take the lock, under one deadline for the whole run.
+
+The guards that judge a push share `git_push.py`, which follows the push
+forms an agent writes and works out from the repository's configuration and
+tracking refs which refs each would update:
+
+- `git push`, `git push <remote>`, `git push <remote> <branch>`,
+  `git push <remote> <src>:<dst>`, `git push <remote> HEAD[:<dst>]`,
+  `git push <remote> :<dst>`, `git push --delete <remote> <name>` and
+  `--tags`
+- the options `-u`, `-f`, `--force-with-lease[=...]`, `--force-if-includes`,
+  `-n`, `--verify`, `--no-verify`, `-q`, `-v`, `--follow-tags`,
+  `--porcelain`, `--progress`, `--atomic` and `-d`, with their long or short
+  spellings
+- a configured remote with one url and no pushurl, mirror flag,
+  `pushInsteadOf` rewrite or `remote.<name>.push` refspec; the bare form
+  follows `pushRemote`, `remote.pushDefault`, `branch.<name>.remote`, then
+  `origin`, and `push.default` `simple`, `current` or `upstream`
+
+Anything else, from `--all` and `--mirror` to a wildcard, a URL destination
+or an option outside the set, makes the secret scan ask, and makes the
+default-branch guard deny when a protected name or an every-branch option is
+visible in the arguments. It never contacts the remote and never runs
+anything the command names, since a hook runs before the owner approves the
+call. The guards that judge a `gh` call share `gh_options.py`, which
 finds the subcommand past `-R o/r`; the flags that matter, `--draft` and
 `--undo`, are read as literal tokens rather than through an emulation of gh's
 option parser. `JZ_GUARDS=<name>,<name>` restricts a run to the guards named, which

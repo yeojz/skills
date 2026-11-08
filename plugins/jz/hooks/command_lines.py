@@ -1,20 +1,28 @@
-"""Split a Bash tool call into the simple commands it would run, and say what it could not follow.
+"""Read a Bash tool call as the plain commands the guards judge, and report anything outside that grammar.
 
-Shared by every guard that has to decide something about a command line. The
-parser follows what an agent writes when it is doing ordinary work: commands
-joined by `;`, `&&`, `||`, `|` or a newline, a quoted argument, a trailing
-comment, a line continuation, a `cd` that moves the commands after it, a
-`git -C`, and a bare wrapper such as `nohup`, `sudo`, `command`, `env`,
-`time` or `timeout 30` in front of the program.
+Shared by every guard that decides something about a command line. The
+grammar is small on purpose: every construct it follows is one the guards
+have to get right, and a hook is a guardrail against an honest mistake,
+not a shell.
 
-It does not follow a subshell, a brace group, a command substitution, a
-variable, a backtick, a here-document, a wrapper given options, a GIT_*
-environment variable, a git option it does not know, or a nested shell such
-as `bash -c`, `eval`, `exec`, `xargs` or `source`. Each of those is reported
-as an unfollowed construct instead, and the dispatcher asks the owner about
-the line when it also names a command a guard judges, or when the construct
-itself mentions git or gh. Following them exactly would mean reimplementing
-the shell; reporting them means the owner sees the line instead.
+A line is followed when it is plain commands joined by `;`, `&&`, `||`,
+`|` or a newline, each a program with word arguments and at most the
+output redirections `2>&1`, `>/dev/null`, `2>/dev/null` and `&>/dev/null`.
+Quoted arguments, a trailing comment and a line continuation are read the
+way bash reads them. A `cd <dir>` between separators moves the commands
+after it, and a `git -C <dir>` moves one call. A git call may carry the
+global options the guards know and a subcommand git ships.
+
+Everything else is reported, not followed: a variable or command
+substitution, a backtick, a here-document (nothing after it on the line is
+read), any other redirection, a subshell, a brace group, an environment
+assignment in front of a program, a wrapper such as `env`, `sudo`, `nohup`,
+`time` or `timeout`, a nested shell such as `bash -c`, `eval` or `xargs`, a
+git option or subcommand outside the known sets, an alias among them, and
+unbalanced quotes. The dispatcher asks the owner about such a line when it
+also names a command a guard judges, or when a nested shell's own text
+mentions git or gh; the owner rewrites the line in the plain form or
+confirms it as written.
 """
 
 import os
@@ -22,53 +30,71 @@ import re
 import shlex
 
 SEPARATOR_CHARS = set("();<>|&\n")
-GROUPING_CHARS = set("()")
-REDIRECTIONS = {"<", ">", ">>", "<&", ">&", "&>", "<<", "<<<", ">|", "&>>", ">>&"}
+REDIRECTIONS = {"<", ">", ">>", "<&", ">&", "&>", ">|", "<>", "&>>", ">>&"}
 HERE_DOCUMENTS = {"<<", "<<<"}
-# Environment variables that change what git reads: its own GIT_* family, and
-# the two that move the global configuration file.
-ENVIRONMENT_GIT_READS = re.compile(r"^(GIT_[A-Za-z_0-9]*|HOME|XDG_CONFIG_HOME)=")
-EXPORTERS = {"export", "declare", "typeset"}
-JUDGED_PROGRAMS = {"git", "gh"}
-MENTIONS_GIT = re.compile(r"\b(git|gh)\b")
+# The redirections an accepted command may carry: output discarded or
+# merged, nothing read in and no file written.
+QUIET_REDIRECTIONS = {(">", "/dev/null"), ("&>", "/dev/null"), (">&", "1"), (">&", "2")}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
-DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
+MENTIONS_GIT = re.compile(r"\b(git|gh)\b")
 SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
+# A cd is followed when it stands between these separators, or at the start
+# or end of the line. One in a pipeline, a background job, a subshell or a
+# brace group runs where the next command does not.
+CD_BEFORE = {"", ";", "&&", "\n"}
+CD_AFTER = {"", ";", "&&", "||", "\n"}
 
-# Wrappers that run the program after them unchanged. A wrapper given an
-# option, such as `env -u X` or `timeout -s KILL 30`, is not followed: its
-# option table would have to be known to tell an option's value from the
-# program.
-WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "nice", "stdbuf", "ionice"}
+# Programs that run the command after them changed: as another user, in
+# another environment, under a timer, or in the shell's own state. Which
+# token is the program depends on option tables the parser does not carry.
+WRAPPERS = {"command", "env", "sudo", "doas", "nohup", "time", "timeout", "nice", "ionice", "stdbuf",
+            "export", "declare", "typeset", "unset", "alias"}
 # Programs that run a command line of their own, which the parser cannot see.
-NESTED_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "eval", "exec", "xargs", "source", "."}
+NESTED_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "eval", "exec", "xargs", "source", "."}
 
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
-                          "--exec-path", "--config-env", "--attr-source", "--super-prefix"}
-# The global flags of git that take no value. Any other option before the
-# subcommand is one the parser does not know, so the call is not followed.
+                          "--exec-path", "--config-env", "--attr-source"}
 GIT_GLOBAL_FLAGS = {"--no-pager", "--paginate", "-p", "-P", "--bare", "--no-replace-objects",
                     "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs",
                     "--icase-pathspecs", "--no-optional-locks", "--no-lazy-fetch",
                     "--no-advice", "--version", "--help", "-h"}
 GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
 GIT_LOCATION_OPTIONS = {"--git-dir", "--work-tree", "--namespace"}
+# The subcommands git ships (`git --list-cmds=main`, git 2.54) and the
+# common add-ons. Any other word is an alias, whose expansion the guards do
+# not read, or a typo git will reject.
+GIT_COMMANDS = set("""
+add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr
+check-ignore check-mailmap check-ref-format checkout checkout-index cherry cherry-pick clean clone
+column commit commit-graph commit-tree config count-objects credential describe diagnose diff
+diff-files diff-index diff-tree difftool fast-export fast-import fetch fetch-pack filter-branch
+fmt-merge-msg for-each-ref for-each-repo format-patch fsck gc get-tar-commit-id grep hash-object
+help hook index-pack init interpret-trailers log ls-files ls-remote ls-tree mailinfo mailsplit
+maintenance merge merge-base merge-file merge-index merge-tree mergetool mktag mktree
+multi-pack-index mv name-rev notes pack-objects pack-refs patch-id prune prune-packed pull push
+range-diff read-tree rebase receive-pack reflog refs remote repack replace replay request-pull
+rerere reset restore rev-list rev-parse revert rm send-email send-pack shortlog show show-branch
+show-index show-ref sparse-checkout stage stash status stripspace submodule subtree switch
+symbolic-ref tag unpack-file unpack-objects update-index update-ref update-server-info upload-pack
+var verify-commit verify-pack verify-tag version whatchanged worktree write-tree
+absorb filter-repo flow lfs
+""".split())
 
 
 class Parsed:
-    """The simple commands of a line and the constructs the parser did not follow.
+    """The plain commands of a line and the constructs outside the grammar.
 
-    `calls` holds (argv, directory) for each command it could read; `unfollowed`
-    names each construct it could not, in the order found, so a line with any
-    of them is judged on what was visible and asked about for the rest.
+    `calls` holds (argv, directory) for each command that was followed;
+    `unfollowed` names each construct that was not, in the order found, so a
+    line with any of them is judged on what was followed and asked about for
+    the rest. `hidden` is set when a construct's own text mentions git or
+    gh, as `bash -c "git ..."` does, so the dispatcher asks even when the
+    rest of the line names no judged command.
     """
 
     def __init__(self):
         self.calls = []
         self.unfollowed = []
-        # True when an unfollowed construct itself mentions git or gh, such as
-        # a `bash -c "git ..."` or a shell alias, so the dispatcher asks even
-        # when the visible text names no judged command.
         self.hidden = False
 
     def skip(self, construct):
@@ -77,7 +103,7 @@ class Parsed:
 
 
 def strip_comments(line, parsed):
-    """Drop unquoted `# ...` runs and line continuations, the way a shell does, and note expansions.
+    """Drop unquoted `# ...` runs and line continuations, the way a shell does, and report expansions.
 
     A `$` or a backtick outside single quotes expands in the shell, inside
     double quotes too, so the text the parser sees is not the text that will
@@ -92,7 +118,6 @@ def strip_comments(line, parsed):
         index += 1
         if quote:
             if quote == '"' and char == "\\" and index < len(line):
-                # An escape inside double quotes; keep both characters.
                 kept.append(char)
                 kept.append(line[index])
                 index += 1
@@ -105,7 +130,6 @@ def strip_comments(line, parsed):
             continue
         if char == "\\":
             if index < len(line) and line[index] == "\n":
-                # A line continuation. Drop it so the lexer sees one command.
                 index += 1
                 continue
             kept.append(char)
@@ -130,235 +154,54 @@ def strip_comments(line, parsed):
     return "".join(kept)
 
 
-def heredoc_delimiter(rest):
-    """(delimiter, characters consumed) for the word after a `<<`, read with shell quoting, or None when the word cannot be read.
-
-    bash removes the quoting from the word: `"E O F"` names `E O F`, `E"O"F`
-    and `\\EOF` name `EOF`, and a backslash inside single quotes stays. The
-    word ends at unquoted whitespace or a metacharacter, so `<<EOF;` and
-    `<<EOF>out` name `EOF`.
-    """
-    quote = ""
-    consumed = 0
-    while consumed < len(rest):
-        char = rest[consumed]
-        if quote:
-            if char == quote:
-                quote = ""
-            elif char == "\\" and quote == '"':
-                consumed += 1
-        elif char == "\\":
-            consumed += 1
-        elif char in "'\"":
-            quote = char
-        elif char in " \t;&|<>()":
-            break
-        consumed += 1
-    if quote:
-        return None
-    try:
-        words = shlex.split(rest[:consumed], posix=True)
-    except ValueError:
-        return None
-    if len(words) != 1:
-        return None
-    return words[0], consumed
-
-
-def strip_heredocs(line, parsed):
-    """Remove the bodies of here-documents, so their lines are not read as commands.
-
-    An unquoted `<<` or `<<-` outside a comment names a delimiter; the lines
-    after the current one up to the line that equals it are the body and are
-    dropped. The operator and the delimiter word stay, so the lexer sees
-    `cmd <<EOF` and the segment reader can tell which command the body feeds.
-    Quote state carries across lines, so a `<<` inside a multi-line string is
-    text. A body whose delimiter never comes is left in place and reported,
-    since bash would read the rest of the line as the body and nothing after
-    it would run; judging those lines as commands errs towards asking.
-    """
-    lines = line.split("\n")
-    kept = []
-    index = 0
-    quote = ""
-    substitution = 0
-    while index < len(lines):
-        text = lines[index]
-        index += 1
-        kept.append(text)
-        position = 0
-        at_word_start = True
-        delimiters = []
-        unreadable = False
-        while position < len(text):
-            char = text[position]
-            if quote:
-                if char == quote:
-                    quote = ""
-                elif char == "\\" and quote == '"':
-                    position += 1
-            elif char == "\\":
-                position += 1
-                at_word_start = False
-            elif char in "'\"":
-                quote = char
-                at_word_start = False
-            elif char == "#" and at_word_start:
-                break
-            elif char == "$" and text.startswith("$(", position):
-                # Inside $(...) or $((...)) a << is a shift, not a here-document.
-                substitution += 1
-                position += 1
-                at_word_start = False
-            elif text.startswith("((", position):
-                # A (( ... )) arithmetic command, likewise, wherever it starts:
-                # bash accepts it glued to a keyword, as in `if((1<<2))`.
-                substitution += 1
-                at_word_start = False
-            elif substitution and char == "(":
-                substitution += 1
-            elif substitution and char == ")":
-                substitution -= 1
-            elif not substitution and text.startswith("<<", position) and not text.startswith("<<<", position) and not (position and text[position - 1] == "<"):
-                match = re.match(r"<<(-?)\s*", text[position:])
-                read = heredoc_delimiter(text[position + len(match.group(0)):])
-                if read is None:
-                    unreadable = True
-                    break
-                delimiters.append((match.group(1) == "-", read[0]))
-                position += len(match.group(0)) + read[1] - 1
-                at_word_start = False
-            else:
-                at_word_start = char in " \t;|&()"
-            position += 1
-        if unreadable:
-            parsed.skip("a here-document whose delimiter cannot be read")
-            parsed.hidden = True
-            break
-        for strip_tabs, delimiter in delimiters:
-            closing = None
-            for later in range(index, len(lines)):
-                if (lines[later].lstrip("\t") if strip_tabs else lines[later]) == delimiter:
-                    closing = later
-                    break
-            if closing is None:
-                parsed.skip("a here-document whose delimiter never comes")
-                parsed.hidden = True
-                break
-            index = closing + 1
-    return "\n".join(kept)
-
-
 def lex(line, parsed):
-    """Tokenise a command line, keeping newlines as command separators.
-
-    Raises ValueError on unbalanced quotes, as shlex does.
-    """
-    lexer = shlex.shlex(strip_comments(strip_heredocs(line, parsed), parsed), posix=True,
-                        punctuation_chars="();<>|&\n")
+    """Tokenise a command line, keeping newlines as command separators. Raises ValueError on unbalanced quotes."""
+    lexer = shlex.shlex(strip_comments(line, parsed), posix=True, punctuation_chars="();<>|&\n")
     lexer.whitespace_split = True
     lexer.whitespace = " \t\r"
     lexer.commenters = ""
     return list(lexer)
 
 
-def command_segments(tokens, parsed):
-    """Yield each simple command as a list and each separator run as a string.
-
-    `;`, `&&`, `||`, `|`, `&` and a newline all end a command. Parentheses and
-    braces group commands in a subshell or in the current shell, with their
-    own working directory in the subshell case; the parser does not model
-    that and reports them.
-    """
+def segments(tokens):
+    """Yield each command's tokens as a list and each separator as a string, braces included."""
     current = []
-    drop_next = False
     for token in tokens:
-        if drop_next:
-            drop_next = False
-            continue
-        if token in HERE_DOCUMENTS and current and os.path.basename(current[0]) in JUDGED_PROGRAMS:
-            # A body fed to git or gh is text the guards never see.
-            parsed.skip("a here-document fed to %s" % os.path.basename(current[0]))
-        if token in REDIRECTIONS:
-            # `2>&1`: the descriptor number in front of a redirection is not an operand.
-            if current and current[-1].isdigit():
-                current.pop()
-            drop_next = True
-            continue
-        if token and set(token) <= SEPARATOR_CHARS:
-            if set(token) & GROUPING_CHARS:
-                parsed.skip("a subshell")
+        if token in {"{", "}"} or (token and set(token) <= SEPARATOR_CHARS and token not in REDIRECTIONS
+                                    and token not in HERE_DOCUMENTS):
             if current:
                 yield current
             current = []
             yield token
-            continue
-        if token in {"{", "}"}:
-            parsed.skip("a brace group")
-            if current:
-                yield current
-            current = []
-            yield token
-            continue
-        current.append(token)
+        else:
+            current.append(token)
     if current:
         yield current
 
 
-def runs_apart(separator):
-    """Whether a command beside this separator runs in a process of its own: a pipeline element or a background job."""
-    separator = separator.strip("\n")
-    return ("|" in separator and separator != "||") or separator == "&"
-
-
-def group_depth_change(separator):
-    """How many groups a separator run opens or closes."""
-    return separator.count("(") + separator.count("{") - separator.count(")") - separator.count("}")
-
-
-def peel_wrappers(argv, parsed):
-    """Drop leading assignments and wrapper programs, reporting what the guards cannot account for.
-
-    A GIT_*, HOME or XDG_CONFIG_HOME assignment changes what git reads as
-    much as -c does, and a wrapper given options hides where the program
-    starts. Both are reported; the program is still returned, best effort
-    from the first git or gh token, so the denying guards see the call.
-    """
-    rest = list(argv)
-    while rest:
-        name = os.path.basename(rest[0])
-        if ASSIGNMENT.match(rest[0]):
-            if ENVIRONMENT_GIT_READS.match(rest[0]):
-                parsed.skip("a %s environment variable" % ("GIT_*" if rest[0].startswith("GIT_") else rest[0].partition("=")[0]))
-            rest.pop(0)
-            continue
-        if name not in WRAPPERS:
-            break
-        rest.pop(0)
-        if name == "timeout" and rest and DURATION.match(rest[0]):
-            rest.pop(0)
-        if rest and rest[0].startswith("-"):
-            parsed.skip("a %s option" % name)
-            if name == "env" and (rest[0] in {"-C", "--chdir"} or rest[0].startswith("--chdir=")):
-                # env -C runs the program elsewhere; the recorded call would be judged in the wrong directory.
-                parsed.hidden = True
+def plain_command(tokens, parsed):
+    """The argv of a segment inside the grammar, or None after reporting what put it outside."""
+    argv = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        index += 1
+        if token in REDIRECTIONS:
+            target = tokens[index] if index < len(tokens) else ""
+            index += 1
+            if argv and argv[-1] in {"1", "2"}:
+                argv.pop()
+            if (token, target) not in QUIET_REDIRECTIONS:
+                parsed.skip("a redirection (%s%s)" % (token, target))
                 return None
-            # Without the wrapper's option table, a token may be a flag or a
-            # value, so the program is the last of the first run of git or gh
-            # tokens: `sudo -u gh git push` is git, `sudo -E git push` is git.
-            start = None
-            for index, token in enumerate(rest):
-                if os.path.basename(token) in JUDGED_PROGRAMS:
-                    start = index
-                elif start is not None:
-                    return rest[start:]
-            return rest[start:] if start is not None else None
-    return rest
-
-
-def exports_git_reads(argv):
-    """Whether an `export`, `declare` or `typeset` sets a variable git reads."""
-    return os.path.basename(argv[0]) in EXPORTERS and any(ENVIRONMENT_GIT_READS.match(word) for word in argv[1:])
+            continue
+        argv.append(token)
+    if not argv:
+        return None
+    if ASSIGNMENT.match(argv[0]):
+        parsed.skip("an environment assignment (%s)" % argv[0].partition("=")[0])
+        return None
+    return argv
 
 
 def git_global_options(argv):
@@ -384,6 +227,17 @@ def git_global_options(argv):
     return options, argv[index:]
 
 
+def git_problem(argv):
+    """What puts a git call outside the grammar: an option or a subcommand the guards do not know. None when it is plain."""
+    options, rest = git_global_options(argv)
+    for name, _ in options:
+        if name not in GIT_OPTIONS_WITH_VALUE and name not in GIT_GLOBAL_FLAGS:
+            return "a git option (%s)" % name
+    if rest and rest[0] not in GIT_COMMANDS:
+        return "a git subcommand the guards do not know (%s)" % rest[0]
+    return None
+
+
 def git_call(argv, directory):
     """Return (subcommand, args, directory) for a git invocation, else None."""
     split = git_global_options(argv)
@@ -394,21 +248,6 @@ def git_call(argv, directory):
         if name == "-C":
             directory = os.path.join(directory, os.path.expanduser(value))
     return rest[0], rest[1:], os.path.normpath(directory)
-
-
-def unknown_git_option(argv):
-    """The first global option of a git call the parser does not know, or None."""
-    index = 1
-    while index < len(argv) and argv[index].startswith("-"):
-        token = argv[index]
-        index += 1
-        if token in GIT_OPTIONS_WITH_VALUE:
-            index += 1
-        elif token.partition("=")[0] in GIT_OPTIONS_WITH_VALUE and "=" in token:
-            continue
-        elif token not in GIT_GLOBAL_FLAGS:
-            return token
-    return None
 
 
 def git_options_named(argv, names):
@@ -467,14 +306,12 @@ def start_directory(cwd):
 
 
 def parse(command_line, directory):
-    """Read a command line into a Parsed: its simple commands with their directories, and what was not followed.
+    """Read a command line into a Parsed: the plain commands with their directories, and what was not followed.
 
-    A plain `cd <dir>` moves the directory of every command after it on the
-    line. One that is a pipeline element or a background job runs in a
-    process of its own and moves nothing; one inside a subshell or brace
-    group, one with options, and a bare `cd` or `cd -` are not followed and
-    move nothing either. Each is reported. A `git -C` is resolved per call by
-    git_call. Unbalanced quotes leave no commands and are reported.
+    A here-document ends the read: bash feeds the lines after it to the
+    command, and the parser would otherwise read that text as commands. A
+    `cd` moves the directory only when it stands between separators and
+    names one plain directory; any other cd is reported and moves nothing.
     """
     parsed = Parsed()
     try:
@@ -482,43 +319,42 @@ def parse(command_line, directory):
     except ValueError:
         parsed.skip("unbalanced quotes")
         return parsed
-    segments = list(command_segments(tokens, parsed))
-    depth = 0
-    for index, segment in enumerate(segments):
-        if isinstance(segment, str):
-            depth = max(0, depth + group_depth_change(segment))
+    pieces = list(segments(tokens))
+    for index, piece in enumerate(pieces):
+        if isinstance(piece, str):
+            if "(" in piece or ")" in piece:
+                parsed.skip("a subshell")
+            elif piece in {"{", "}"}:
+                parsed.skip("a brace group")
             continue
-        argv = peel_wrappers(segment, parsed)
-        if not argv:
+        if any(token in HERE_DOCUMENTS for token in piece):
+            parsed.skip("a here-document (the lines after it were not read)")
+            break
+        argv = plain_command(piece, parsed)
+        if argv is None:
             continue
         name = os.path.basename(argv[0])
+        if argv[0] == "cd":
+            before = pieces[index - 1] if index and isinstance(pieces[index - 1], str) else ""
+            after = pieces[index + 1] if index + 1 < len(pieces) and isinstance(pieces[index + 1], str) else ""
+            if before in CD_BEFORE and after in CD_AFTER and len(argv) == 2 and not argv[1].startswith("-"):
+                directory = os.path.normpath(os.path.join(directory, os.path.expanduser(argv[1])))
+            else:
+                parsed.skip("a cd the parser does not follow")
+            continue
+        if name in WRAPPERS:
+            parsed.skip("a wrapper (%s)" % name)
+            continue
         if name in NESTED_SHELLS:
             parsed.skip("a nested shell (%s)" % argv[0])
             if any(MENTIONS_GIT.search(token) for token in argv[1:]):
                 parsed.hidden = True
             continue
-        if exports_git_reads(argv):
-            parsed.skip("an exported variable git reads")
-            parsed.hidden = True
-            continue
-        if argv[0] == "cd":
-            before = segments[index - 1] if index > 0 and isinstance(segments[index - 1], str) else ""
-            after = segments[index + 1] if index + 1 < len(segments) and isinstance(segments[index + 1], str) else ""
-            if runs_apart(before) or runs_apart(after):
-                parsed.skip("a cd in a pipeline or background job")
-            elif depth > 0:
-                parsed.skip("a cd inside a subshell or brace group")
-            elif len(argv) != 2 or argv[1].startswith("-") or argv[1] == "-":
-                parsed.skip("a cd the parser does not follow")
-            else:
-                directory = os.path.normpath(os.path.join(directory, os.path.expanduser(argv[1])))
-            continue
         if name == "git":
-            unknown = unknown_git_option(argv)
-            if unknown is not None:
-                # Reported, and still judged: git_global_options reads an
-                # unknown option as a flag, which is right for most of them.
-                parsed.skip("a git option (%s)" % unknown)
+            problem = git_problem(argv)
+            if problem is not None:
+                parsed.skip(problem)
                 parsed.hidden = True
+                continue
         parsed.calls.append((argv, directory))
     return parsed

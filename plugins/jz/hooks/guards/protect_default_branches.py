@@ -8,8 +8,11 @@ hook.
 A protected branch is main, master, develop or trunk, and whatever
 refs/remotes/origin/HEAD names. Which refs a push updates is read from the
 repository alone, by git_push.resolve_push; nothing is asked of the remote
-and nothing the caller named is run. A -c or --config-env override of
-remote.*, push.*, branch.* or url.* cannot be followed and is denied.
+and nothing the caller named is run. A push the resolver does not follow is
+denied when a protected name, or an option that pushes every branch, is
+visible in its arguments, and left to the asking guards otherwise. A -c or
+--config-env override of remote.*, push.*, branch.* or url.* cannot be
+followed and is denied.
 
 A merge is `gh pr merge` in any form, --disable-auto included, since the
 owner can run that one themselves; `gh api` with a write to pulls/<n>/merge
@@ -44,6 +47,8 @@ GH_API_METHOD_OPTIONS = {"-X", "--method"}
 GH_API_BODY_OPTIONS = {"-f", "-F", "--raw-field", "--field", "--input"}
 GH_API_FILE_OPTIONS = {"-F", "--field", "--input"}
 GRAPHQL_ENDPOINT = re.compile(r"(^|/)graphql(?:[?#]|$)")
+# Options that push every local branch, the default branch among them.
+EVERY_BRANCH = {"--all", "--branches", "--mirror"}
 
 
 def protected_branches(directory, options, protected_by_directory):
@@ -68,8 +73,11 @@ def reason_for_push(directory, options, args, config_overrides, cache):
     protected = protected_branches(directory, options, cache)
     push, error = resolve_push(directory, options, args)
     if error:
-        # Unresolved is not safe: a token naming a protected branch is enough to deny.
+        # Unresolved is not safe: a token naming a protected branch, or every branch, is enough to deny.
         for token in args:
+            if token in EVERY_BRANCH:
+                return ("This push could not be resolved (%s) and %s pushes every branch, and the default "
+                        "branch moves only through a merged pull request." % (safe_text(error), token))
             if token.startswith("-"):
                 continue
             target = token.lstrip("+").partition(":")[2] or token
@@ -84,14 +92,12 @@ def reason_for_push(directory, options, args, config_overrides, cache):
             continue
         name = branch_name(destination)
         if source is None:
-            return "This push would delete %s on %s, and the default branch moves only through a merged pull request." % (name, push.destination)
-        tracking = push.tracking_ref(name)
-        if tracking:
-            pushed = resolve_commit(directory, options, source)
-            held = resolve_commit(directory, options, tracking)
-            if pushed is not None and pushed == held:
-                continue
-        return "This push would update %s on %s, and the default branch moves only through a merged pull request." % (name, push.destination)
+            return "This push would delete %s on %s, and the default branch moves only through a merged pull request." % (name, push.remote)
+        pushed = resolve_commit(directory, options, source)
+        held = resolve_commit(directory, options, push.tracking_ref(name))
+        if pushed is not None and pushed == held:
+            continue
+        return "This push would update %s on %s, and the default branch moves only through a merged pull request." % (name, push.remote)
     return None
 
 
@@ -180,7 +186,6 @@ def deny(reason):
 
 
 def check(context):
-    # No pre-filter on the raw text: an alias such as `git p` resolves to a push only after parsing.
     cache = {}
     for argv, directory in context.calls:
         reason = reason_for(argv, directory, cache)

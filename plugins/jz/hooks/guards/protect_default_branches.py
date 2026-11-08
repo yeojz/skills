@@ -26,7 +26,7 @@ import re
 from command_lines import git_call, git_config_overrides, git_location_options
 from gh_options import gh_command
 from git_push import COMMON_DEFAULTS, HEADS, origin_head, resolve_commit, resolve_push, unfollowed_config_override
-from guards import Deny, safe_text
+from guards import Deny, read_text, safe_text
 
 NAME = "protect-default-branches"
 
@@ -150,11 +150,15 @@ def reason_for_gh(words, args, directory):
                     return ("This GraphQL call reads its query from standard input, which the guard cannot inspect "
                             "for a merge; pass the query inline or from a file.")
                 continue
-            try:
-                with open(os.path.join(directory, path), encoding="utf-8", errors="replace") as handle:
-                    text += " " + handle.read()
-            except OSError:
-                pass
+            found = read_text(os.path.join(directory, path))
+            if found is None or not found[1]:
+                if not os.path.exists(os.path.join(directory, path)):
+                    continue
+                if graphql:
+                    return ("This GraphQL call reads its body from %s, which is not a plain file under a megabyte that "
+                            "the guard can inspect for a merge; pass the query inline or from a smaller plain file." % safe_text(path))
+                continue
+            text += " " + found[0]
         if MERGE_MUTATIONS.search(text):
             return "This GraphQL call merges a pull request or arms auto-merge, and merging is the owner's click on GitHub."
     return None

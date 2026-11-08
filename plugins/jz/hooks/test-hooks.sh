@@ -436,6 +436,10 @@ gate() {
 gate '"git status"'                              "git status without the skill"   0 "$FIXTURE/no-pr.jsonl"
 gate '"git commit -m x"'                         "commit, no transcript path"     0 -
 gate '"git commit -m x"'                         "commit, transcript file absent" 0 "$FIXTURE/absent.jsonl"
+mkfifo "$FIXTURE/transcript.fifo"
+gate '"git commit -m x"'                         "transcript is a FIFO"           0 "$FIXTURE/transcript.fifo"
+gate '"git commit -m x"'                         "transcript is a device"         0 /dev/zero
+rm -f "$FIXTURE/transcript.fifo"
 gate '"git commit -m x"'                         "commit without the skill"       2 "$FIXTURE/no-pr.jsonl"
 gate '"git push -u origin HEAD"'                 "push without the skill"         2 "$FIXTURE/no-pr.jsonl"
 gate '"gh pr create --draft --title t --body b"' "draft PR without the skill"     2 "$FIXTURE/no-pr.jsonl"
@@ -486,6 +490,16 @@ deny '"gh pr create --title t --body \"the oracle says\""'        "restricted wo
 deny '"gh pr comment 5 --body \"matches the predecessor repo\""'  "restricted word in a comment"   2 no-restricted-words
 deny '"gh pr create --draft --body-file body-emoji.md"'           "emoji in a body file"           2 no-restricted-words
 deny '"gh pr create --draft -F body-trailer.md"'                  "trailer in a body file via -F"  2 no-restricted-words
+deny '"git commit -F /dev/zero -m \"feat: the oracle\""'       "inline restricted word beside an unseen file" 2 no-restricted-words
+deny '"gh pr create --draft --title \"ship ✅\" --body-file -"'  "emoji in a title beside a stdin body" 2 no-restricted-words
+deny '"git commit -m \"feat: the oracle\" -F missing.txt"'       "inline word before a missing file" 2 no-restricted-words
+# A body file that is not a regular file is not read: a device would never
+# end and a FIFO would block, and the guard runs before the owner has approved
+# the command that names it.
+mkfifo "$FIXTURE/body.fifo"
+head -c 1100000 /dev/zero | tr '\0' 'a' > "$FIXTURE/body-huge.md"
+printf '\nthe oracle\n' >> "$FIXTURE/body-huge.md"
+rm -f "$FIXTURE/body.fifo" "$FIXTURE/body-huge.md"
 deny '"gh api repos/o/r/pulls/5/comments -f body=\"an Oracle again\""' "restricted word via gh api -f" 2 no-restricted-words
 deny '"gh api --method POST repos/o/r/issues/5/comments --input input-link.json"' "session link via gh api --input" 2 no-restricted-words
 deny '"gh pr review 5 --comment --body \"ok 👍\""'  "emoji in a review"              2 no-restricted-words
@@ -864,6 +878,12 @@ protect '"gh api graphql -Fquery=@q.graphql"'    "GraphQL mutation from attached
 protect '"gh api graphql -f query=@q.graphql"'   "raw -f sends @q.graphql literally" 0
 protect '"gh api graphql -F query=@-"'           "GraphQL query from stdin field" 2
 protect '"gh api graphql --input -"'             "GraphQL body from stdin"        2
+protect '"gh api graphql --input /dev/zero"'     "GraphQL body from a device"     2
+protect '"gh api graphql --input missing.graphql"' "GraphQL body from a missing file" 0
+head -c 1100000 /dev/zero | tr '\0' ' ' > "$PROTREPO/huge.graphql"
+protect '"gh api graphql --input huge.graphql"'  "GraphQL body past the read cap" 2
+protect '"gh api graphql -F query=@huge.graphql"' "-F @file past the read cap"   2
+protect '"gh api repos/o/r/issues -F body=@huge.graphql"' "REST write with a large body file is not a merge" 0
 printf 'query { viewer { login } }' > "$PROTREPO/safe.graphql"
 protect '"gh api graphql -F query=@safe.graphql"' "GraphQL query from -F @file"   0
 rm -rf "$PROTREPO" "$FIXTURE/protremote.git"
@@ -995,6 +1015,18 @@ all_guards '"env -i git push origin main"'              "env -i before a push of
 all_guards '"time -p git push origin main"'             "time -p before a push of main"           deny
 all_guards '"nice -n5 git push origin main"'            "attached wrapper value"                  deny
 all_guards '"git add .claude; git --work-tree=/nonexistent add y"' "unresolvable call beside a visible offender" deny
+all_guards '"cat <<'"'"'EOF'"'"' | git commit -F -\nfeat: x\nEOF"' "message from stdin asks"          ask
+all_guards '"cat > msg.txt <<EOF\nfeat: x\nEOF\ngit commit -F msg.txt"' "message file written on the same line asks" ask
+mkfifo "$GATEREPO/body.fifo"
+head -c 1100000 /dev/zero | tr '\0' 'a' > "$GATEREPO/body-huge.md"
+printf '## Restricted words\n\n- oracle\n' > "$GATEREPO/AGENTS.md"
+all_guards '"gh pr create --draft --body-file /dev/zero"' "body file is a device: unseen text asks" ask
+all_guards '"gh pr create --draft --body-file body.fifo"' "body file is a FIFO: unseen text asks"  ask
+all_guards '"git commit -F /dev/zero"'                  "message file is a device: unseen text asks" ask
+all_guards '"gh pr create --draft --body-file body-huge.md"' "body past the read cap: unseen text asks" ask
+all_guards '"git commit -F /dev/zero -m \"feat: the oracle\""' "visible restricted word beside unseen text denies" deny
+all_guards '"gh pr create --draft --body-file /dev/zero && git commit -m \"feat: the oracle\""' "restricted word in a later call denies" deny
+rm -f "$GATEREPO/body.fifo" "$GATEREPO/body-huge.md" "$GATEREPO/AGENTS.md"
 all_guards '"sudo -u gh git push origin main"'          "option value spelled gh is not the program" deny
 all_guards '"env -C child git status"'                  "env -C asks"                             ask
 all_guards '"bash scripts/highlight.sh"'                "gh inside a word is not a mention"       allow

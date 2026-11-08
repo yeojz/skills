@@ -15,7 +15,7 @@ import re
 from command_lines import git_call
 from gh_options import gh_command
 from git_push import git_text
-from guards import Deny
+from guards import Ask, Deny, read_text
 
 NAME = "no-restricted-words"
 
@@ -31,14 +31,26 @@ COMMIT_PROSE_LETTERS = "mF"
 JSON_PROSE_KEYS = {"body", "title", "message", "text", "commit_title", "commit_message"}
 
 def read_file(path, directory):
+    """The text of a body or message file, or None for text the guard cannot see.
+
+    A `-F -` fed by a here-document or a pipe, a file a command earlier on
+    the line will write, a device or FIFO, and a file longer than the guard
+    reads are all None; the dispatcher asks about them once the visible texts
+    have been judged.
+    """
     if path == "-":
-        return ""
+        return None
     full = path if os.path.isabs(path) else os.path.join(directory, path)
-    try:
-        with open(full, encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except OSError:
-        return ""
+    found = read_text(full)
+    if found is None or not found[1]:
+        return None
+    return found[0]
+
+
+def read_instructions(name, directory):
+    """An instruction file's text, or "" when it is absent."""
+    found = read_text(os.path.join(directory, name))
+    return found[0] if found else ""
 
 
 def json_prose(text):
@@ -106,8 +118,12 @@ def gh_texts(rest, directory):
         elif t.startswith("--body-file="):
             yield read_file(t.split("=", 1)[1], directory)
         elif t == "--input":
-            for text in json_prose(read_file(value_after(rest, i), directory)):
-                yield text
+            body = read_file(value_after(rest, i), directory)
+            if body is None:
+                yield None
+            else:
+                for text in json_prose(body):
+                    yield text
         elif t in {"-f", "-F", "--field", "--raw-field"} and rest[0] == "api":
             field = value_after(rest, i)
             if "=" in field:
@@ -172,7 +188,7 @@ def restricted_words(directory, policies_by_directory):
     words_found = []
     for policy_directory in policy_directories(directory):
         for name in ("AGENTS.md", "CLAUDE.md"):
-            for word in words_listed_in(read_file(name, policy_directory)):
+            for word in words_listed_in(read_instructions(name, policy_directory)):
                 if word not in words_found:
                     words_found.append(word)
     policies_by_directory[directory] = words_found
@@ -197,12 +213,22 @@ def findings(text, restricted):
 
 def check(context):
     policies_by_directory = {}
+    unseen = False
     for argv, directory in context.calls:
         for text, policy_directory in texts_from(argv, directory):
+            if text is None:
+                # Every other text on the line is still judged; a deny wins.
+                unseen = True
+                continue
             if not text:
                 continue
             found = findings(text, restricted_words(policy_directory, policies_by_directory))
             if found:
                 return Deny("Blocked: the text to be published contains " + ", ".join(found) + ".",
                             "Rewrite it in plain words, then rerun.")
+    if unseen:
+        return Ask("The text this command publishes comes from standard input, or from a file that is not there yet, "
+                   "is not a plain file, or is longer than a megabyte, so it was not checked for emoji, attribution "
+                   "trailers, session links, model slugs or restricted words; confirm it, or pass the text inline or "
+                   "from an existing file.")
     return None

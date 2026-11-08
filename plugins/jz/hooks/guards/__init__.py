@@ -8,8 +8,10 @@ could read; the dispatcher itself asks about anything it could not follow,
 so no guard needs a fallback of its own for an unreadable line.
 """
 
+import os
 import re
 import shlex
+import stat
 
 from command_lines import git_call, git_config_overrides, git_global_options, git_location_options, parse, start_directory
 from git_push import run_git
@@ -105,6 +107,39 @@ def resolve_aliases(parsed):
             parsed.skip("an alias chain deeper than %d" % MAX_ALIAS_DEPTH)
             parsed.hidden = True
     parsed.calls = resolved
+
+
+# A file a command names is read for inspection only. A device, a FIFO or
+# a socket would block or never end, and a guard runs before the owner has
+# approved the command that names it, so only a regular file is read, and
+# only this much of it.
+MAX_READ_BYTES = 1_000_000
+
+
+def read_text(path, limit=MAX_READ_BYTES):
+    """(text, complete) for the first `limit` bytes of a regular file, or None.
+
+    None for a missing path, a directory, a device, a FIFO, a socket or a
+    read error. `complete` is False when the file was longer than `limit`.
+    """
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        # Checked on the open descriptor, so a path swapped for a FIFO between
+        # a stat and the open cannot block the read.
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = None
+            data = handle.read(limit + 1)
+    except OSError:
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    return data[:limit].decode("utf-8", errors="replace"), len(data) <= limit
 
 
 class Deny:

@@ -68,7 +68,7 @@ NESTED_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "eval", "exec", "xa
 GIT_RUNNERS = {
     "submodule": {"foreach"}, "bisect": {"run"},
     "rebase": {"-x", "--exec"}, "difftool": {"-x", "--extcmd"}, "grep": {"-O", "--open-files-in-pager"},
-    "fetch": {"--upload-pack"}, "pull": {"--upload-pack"}, "clone": {"-u", "--upload-pack"},
+    "fetch": {"--upload-pack"}, "pull": {"--upload-pack"}, "clone": {"-u", "--upload-pack", "-c", "--config"},
     "ls-remote": {"-u", "--upload-pack"}, "fetch-pack": {"--exec", "--upload-pack"},
     "send-pack": {"--exec", "--receive-pack"}, "archive": {"--exec"},
 }
@@ -89,8 +89,11 @@ PLAIN_CONFIG = re.compile(r"""^(
     merge\.(conflictstyle|ff|autostash) | http\.(sslverify|postbuffer|version)
 )$""", re.VERBOSE)
 # The nested shells that make sense as an argument: `find -exec sh -c`. The
-# argument hides a command only when `-c` follows it.
-SHELL_ARGUMENTS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "eval"}
+# argument hides a command only when an option such as `-c`, `-ec` or
+# `--norc` follows it; `find -exec bash run.sh` names a script.
+SHELL_ARGUMENTS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
+# The letters of a short option token, with any attached value dropped.
+SHORT_LETTERS = re.compile(r"^-([A-Za-z]*)")
 
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
                           "--exec-path", "--config-env", "--attr-source"}
@@ -304,17 +307,31 @@ def git_problem(argv):
     for token in rest[1:]:
         if runs_command(token, GIT_RUNNERS.get(rest[0], ())):
             return "a git %s subcommand that runs a command (%s)" % (rest[0], token.partition("=")[0])
+    if rest[0] == "config":
+        operands = [token for token in rest[1:] if not token.startswith("-")]
+        if len(operands) >= 2 and not PLAIN_CONFIG.match(operands[0].lower()):
+            # The value is stored for the next git call on the line to run.
+            return "a git config that sets %s" % operands[0]
     return None
 
 
 def runs_command(token, triggers):
-    """Whether an argument spells one of `triggers`: exactly, as a unique long prefix, or as a short option attached or clustered."""
+    """Whether an argument spells one of `triggers`.
+
+    A word matches exactly. A long option matches as any prefix of four or
+    more characters, which is wider than git's unique-prefix rule and so
+    asks about a few more spellings than git accepts. A short option
+    matches when its letter is anywhere in the token's leading letters, so
+    `-x`, `-ix`, `-x"git push"` and `-ix"git push"` all match, and so does
+    a cluster where another letter takes `x` as its value; that false ask
+    is cheap.
+    """
     name = token.partition("=")[0]
     for trigger in triggers:
         if token == trigger:
             return True
-        if len(trigger) == 2:
-            if token.startswith(trigger) or (SHORT_CLUSTER.match(token) and trigger[1] in token):
+        if len(trigger) == 2 and token.startswith("-") and not token.startswith("--"):
+            if trigger[1] in SHORT_LETTERS.match(token).group(1):
                 return True
         elif name.startswith("--") and len(name) >= 4 and trigger.startswith(name):
             return True
@@ -445,9 +462,9 @@ def parse(command_line, directory):
             parsed.hidden = True
             continue
         if name not in {"git", "gh"}:
-            if any(os.path.basename(token) in SHELL_ARGUMENTS and following == "-c"
+            if any(os.path.basename(token) in SHELL_ARGUMENTS and following.startswith("-")
                    for token, following in zip(argv[1:], argv[2:])):
-                parsed.skip("a command handed a nested shell (%s)" % name)
+                parsed.skip("a program handed sh -c (%s)" % name)
                 parsed.hidden = True
                 continue
             if any(MENTIONS_GIT.search(token) for token in argv[1:]):

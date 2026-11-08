@@ -985,8 +985,13 @@ all_guards '"git rebase -x\"git push origin main\" HEAD~1"' "attached -x asks"  
 all_guards '"find . -exec sh -c '"'"'cd . && git push origin main'"'"' \\;"' "sh -c under find asks" ask
 all_guards '"find . -exec sh -c '"'"'git status'"'"' \\;"' "sh -c under find asks without a judged word" ask
 all_guards '"find . -exec sh -c '"'"'g\"\"it push origin main'"'"' \\;"' "quote-split git under a nested shell asks" ask
+all_guards '"find . -exec sh -ec '"'"'g\"\"it push origin main'"'"' \\;"' "sh -ec under find asks"      ask
+all_guards '"find . -exec bash --norc -c '"'"'g\"\"it push origin main'"'"' \\;"' "bash --norc -c under find asks" ask
 all_guards '"bash -c '"'"'g\"\"it push origin main'"'"'"' "quote-split git with no literal git asks"  ask
-all_guards '"bash -c '"'"'g\\\\it push origin main'"'"'"' "backslash-split git asks"                ask
+all_guards '"bash -c '"'"'g\\it push origin main'"'"'"'  "backslash-split git asks"                ask
+all_guards '"g'"'"'i'"'"'t push origin main"'              "single-quote-split git is read as git, denied" deny
+all_guards '"x=gi; ${x}t push origin main"'             "variable-spelled git asks"               ask
+all_guards '"`printf gi`t push origin main"'            "backtick-spelled git asks"               ask
 all_guards '"ls -la /bin/sh"'                           "a shell named as a file is silent"       allow
 all_guards '"grep -rn bash scripts"'                    "a shell named as a search word is silent" allow
 all_guards '"find . -exec bash run.sh {} \\;"'         "a shell given a script, no judged word, is silent" allow
@@ -1002,6 +1007,11 @@ all_guards '"git -c user.name=dev -c color.ui=never status"' "plain settings are
 all_guards '"git fetch --upload-pack=\"git push origin main\" origin"' "upload-pack command asks"      ask
 all_guards '"git rebase --exe=\"git push origin main\" HEAD~1"' "abbreviated --exec asks"            ask
 all_guards '"git rebase -ix \"git push origin main\" HEAD~1"' "-x inside a short cluster asks"      ask
+all_guards '"git rebase -ix\"git push origin main\" HEAD~1"' "cluster with the value attached asks" ask
+all_guards '"git clone -c core.sshCommand=\"git push origin main\" ../r.git d"' "clone -c asks"     ask
+all_guards '"git config core.sshCommand \"git push origin main\"; git fetch origin"' "config setting a command key asks" ask
+all_guards '"git config user.name dev && git status"'   "config setting a plain key is followed"  allow
+all_guards '"git config --get core.sshCommand"'         "config reading a key is followed"        allow
 all_guards '"git clone -u \"git push origin main\" ../r.git d"' "clone -u asks"                     ask
 all_guards '"git send-pack --receive-pack=\"git push origin main\" ../r.git main"' "send-pack --receive-pack asks" ask
 all_guards '"git fetch-pack --exec=\"git push origin main\" ../r.git"' "fetch-pack --exec asks"      ask
@@ -1010,7 +1020,9 @@ all_guards '"git rebase -i HEAD~2"'                      "rebase -i is followed"
 all_guards '"git grep -O\"git push origin main\" hi"'   "grep -O command asks"                      ask
 all_guards '"git clean -fdx"'                           "clean -x is not a command option"        allow
 all_guards '"git for-each-repo --config=x status"'      "for-each-repo always runs a command, asks" ask
-all_guards '"gh pm 5"'                                  "unknown gh command asks"                 ask
+all_guards '"gh pm 5"'                                  "unknown gh subcommand asks"              ask
+all_guards '"GH_REPO=o/r gh issue comment 5 --body \"fixed ✅\""' "gh issue behind an assignment asks" ask
+all_guards '"timeout 30 gh release create v1 --notes \"done ✅\""' "gh release behind a wrapper asks"  ask
 all_guards '"gh pr view 5"'                             "known gh command is followed"            allow
 all_guards '"git send-email --to x HEAD~1"'             "optional git script asks"                ask
 all_guards '"/usr/libexec/git-core/git-push origin main"' "dashed git-push asks"                 ask

@@ -44,7 +44,7 @@ from guards import (  # noqa: E402
 # A line with a construct outside the grammar is asked about only when it
 # also names something a guard judges; a read-only `git -C "$repo" status`
 # passes in silence.
-JUDGED = re.compile(r"\b(add|stage|commit|push|merge|pull|pr|api)\b")
+JUDGED = re.compile(r"\b(add|stage|commit|push|merge|pull|pr|api|issue|release|gist)\b")
 # Under the 60 s the host gives the hook, with room for the interpreter.
 DEADLINE_SECONDS = seconds_from_environment("JZ_DEADLINE_SECONDS", 50)
 

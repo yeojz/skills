@@ -30,6 +30,13 @@ git -C /tmp/pstack sparse-checkout set skills/statechart
 git diff --no-index -- /tmp/pstack/skills/statechart plugins/jz/skills/statechart
 ```
 
-Carry upstream changes across, keep the local edits above, run the upstream
-tests from `/tmp/pstack/skills/statechart/scripts` with `npm test`, and update
-the commit line.
+Carry upstream changes across, keep the local edits above, and update the
+commit line. To test, copy the jz `scripts/` and `references/` over the
+upstream checkout, keeping its `scripts/test/`, then run `npm install` and
+`npm test` in `scripts/` with `TLA2TOOLS` and `JAVA` set (without them the TLC
+tests skip). At `a6342de` that gave 362 of 367 passing. The 5 failures are
+expected:
+
+- 4 launcher tests in `cli.test.ts` that check the Bun fallback and the old
+  missing-runtime message, both removed here on purpose.
+- 1 symlink launcher test that fails on upstream's own copy on macOS too.

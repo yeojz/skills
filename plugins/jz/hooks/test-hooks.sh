@@ -24,8 +24,13 @@ check() {
   # check <json-quoted command> <label> <expected exit> [cwd]
   printf '  %-52s' "$2"
   printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${4:-$FIXTURE}" \
-    | JZ_GUARDS=no-claude-artifacts "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+    | JZ_GUARDS=no-claude-artifacts "$HOOK_DIR/guard-bash.sh" >/dev/null 2>"$FIXTURE/guard.err"
   local got=$?
+  if grep -q "guard failed:" "$FIXTURE/guard.err" 2>/dev/null; then
+    echo "FAIL, a guard raised: $(head -1 "$FIXTURE/guard.err")"
+    fail=1
+    return
+  fi
   if [ "$got" = "$3" ]; then
     echo "exit=$got PASS"
   else
@@ -71,6 +76,18 @@ check '"git commit -m \"add -u flag docs\""'   "commit message contains -u"    0
 check '"git -C . add -A"'                      "add -A behind a global option" 2
 check '"command git add ."'                    "add dot behind command"        2
 check '"git add -- src/a.ts"'                  "add a clean path after --"     0
+check '"git add -A 2>&1"'                      "add -A with stderr redirected" 2
+check '"git add .claude 2>/dev/null"'          "add .claude with stderr discarded" 2
+check '"git add -A 1>/dev/null"'               "add -A with stdout discarded"  2
+check "\"git --git-dir=$FIXTURE/.git --work-tree=$FIXTURE add .claude\"" "add .claude by --git-dir from outside" 2 /
+git -C "$FIXTURE" config alias.a add
+check '"git a .claude"'                        "add through a git alias"       2
+git -C "$FIXTURE" config --unset alias.a
+# A dry run that never finishes is killed at its timeout; the lock it held
+# must be on a scratch copy of the index, never on the repository's own.
+check '"git add --pathspec-from-file=/dev/zero"' "pathspec file that never ends, tree checked instead" 2
+printf '  %-52s' "no index.lock left behind"
+if [ -e "$FIXTURE/.git/index.lock" ]; then echo "FAIL"; fail=1; else echo "PASS"; fi
 
 # Past the 64KB pipe buffer, where the old relevance check took SIGPIPE and
 # failed open. Every path exists, so git resolves the list rather than rejecting it.
@@ -140,9 +157,14 @@ ask() {
   printf '  %-52s' "$2"
   local out
   out="$(printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "$FIXTURE" \
-    | JZ_GUARDS=confirm-remote-writes "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+    | JZ_GUARDS=confirm-remote-writes "$HOOK_DIR/guard-bash.sh" 2>"$FIXTURE/guard.err")"
   local got=allow
   printf '%s' "$out" | grep -q '"permissionDecision": "ask"' && got=ask
+  if grep -q "guard failed:" "$FIXTURE/guard.err" 2>/dev/null; then
+    echo "FAIL, a guard raised: $(head -1 "$FIXTURE/guard.err")"
+    fail=1
+    return
+  fi
   if [ "$got" = "$3" ]; then
     echo "$got PASS"
   else
@@ -259,9 +281,6 @@ ask '"git push origin main # --force in a comment"' "force only in a trailing co
 ask '"echo '"'"'example;git push --force origin main'"'"'"' "separator inside quotes"       allow
 ask '"git log --oneline\ngit push -f"'           "push -f on a second line"       ask
 ask '"git push --force-with-lease \\\n origin x"' "lease then a continuation"     ask
-ask '"timeout --signal TERM 30 git push --force"' "push behind timeout --signal"   ask
-ask '"sudo -u root git push -f"'                 "push behind sudo -u"            ask
-ask '"nice -n 5 git push --force"'               "push behind nice -n"            ask
 
 printf '\nload-house-rules.sh\n'
 printf '  %-52s' "emits every rule file as context"
@@ -294,8 +313,13 @@ deny() {
   # deny <json-quoted command> <label> <expected exit> <guard> [cwd]
   printf '  %-52s' "$2"
   printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${5:-$FIXTURE}" \
-    | JZ_GUARDS="$4" "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+    | JZ_GUARDS="$4" "$HOOK_DIR/guard-bash.sh" >/dev/null 2>"$FIXTURE/guard.err"
   local got=$?
+  if grep -q "guard failed:" "$FIXTURE/guard.err" 2>/dev/null; then
+    echo "FAIL, a guard raised: $(head -1 "$FIXTURE/guard.err")"
+    fail=1
+    return
+  fi
   if [ "$got" = "$3" ]; then
     echo "exit=$got PASS"
   else
@@ -365,13 +389,10 @@ deny '"git -C child merge origin/main"'          "merge main inside child"      
 # A cd that is a pipeline element or a background job moves nothing; one
 # inside a subshell or a brace group moves the rest of the line, and the
 # dispatcher asks about the grouping itself (see the last block).
-deny '"(cd child && git merge origin/stable)"'   "merge stable inside a subshell" 2 rebase-not-merge
 deny '"cd child | git merge origin/main"'        "cd as a pipeline element"       2 rebase-not-merge
 deny '"echo x | cd child; git merge origin/main"' "cd after a pipe"                2 rebase-not-merge
 deny '"cd child & git merge origin/main"'        "cd as a background job"         2 rebase-not-merge
 deny '"cd child && git merge origin/stable | cat"' "merge stable piped after cd"   2 rebase-not-merge
-deny '"{ cd child; git merge origin/stable; }"'  "merge stable after cd in braces" 2 rebase-not-merge
-deny '"{ cd child; git status; }; git merge origin/stable"' "merge stable after a brace group" 2 rebase-not-merge
 # On the default branch itself, merging or pulling the default is the
 # fast-forward of that checkout after a merge on GitHub, which the `pr`
 # skill's Cleanup section runs. Any other branch, default-named or not, is still denied.
@@ -442,8 +463,13 @@ gate() {
     printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "$FIXTURE"
   else
     printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s","transcript_path":"%s"}' "$1" "$FIXTURE" "$4"
-  fi | JZ_GUARDS=require-pr-skill "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+  fi | JZ_GUARDS=require-pr-skill "$HOOK_DIR/guard-bash.sh" >/dev/null 2>"$FIXTURE/guard.err"
   local got=$?
+  if grep -q "guard failed:" "$FIXTURE/guard.err" 2>/dev/null; then
+    echo "FAIL, a guard raised: $(head -1 "$FIXTURE/guard.err")"
+    fail=1
+    return
+  fi
   if [ "$got" = "$3" ]; then
     echo "exit=$got PASS"
   else
@@ -485,6 +511,7 @@ else
 fi
 
 printf '\nno-restricted-words\n'
+git -C "$FIXTURE/child" rev-parse --git-dir >/dev/null 2>&1 || git init -q "$FIXTURE/child"
 printf '## Restricted words\n\n- oracle\n- predecessor\n' > "$FIXTURE/AGENTS.md"
 printf 'Summary with a tick \342\234\223 mark\n' > "$FIXTURE/body-emoji.md"
 printf 'Plain summary.\n\nCo-Authored-By: Claude <noreply@example.com>\n' > "$FIXTURE/body-trailer.md"
@@ -528,7 +555,6 @@ deny '"cd child && gh pr create --body-file body.md"' "body file resolved after 
 deny '"git -C child commit -m \"feat: secretword\""' "child policy behind -C child"    2 no-restricted-words
 deny '"git commit -m \"feat: secretword\""'       "parent policy does not restrict it" 0 no-restricted-words
 deny '"cd child && git commit -m \"feat: oracle\""' "parent policy not applied in child" 0 no-restricted-words
-deny '"(cd child && git commit -m \"feat: secretword\")"' "child policy inside a subshell" 2 no-restricted-words
 # src/ is an ordinary directory of the fixture repository: the root policy applies.
 printf 'the oracle\n' > "$FIXTURE/src/body.md"
 mkdir -p "$FIXTURE/src/deep"
@@ -552,11 +578,16 @@ scan() {
   printf '  %-52s' "$2"
   local out
   out="$(printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${4:-$PUSHREPO}" \
-    | JZ_GUARDS=scan-secrets-before-push "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+    | JZ_GUARDS=scan-secrets-before-push "$HOOK_DIR/guard-bash.sh" 2>"$FIXTURE/guard.err")"
   local got=allow
   if printf '%s' "$out" | grep -q '"permissionDecision": "ask"'; then
     got=incomplete
     printf '%s' "$out" | grep -q 'Possible secret' && got=secret
+  fi
+  if grep -q "guard failed:" "$FIXTURE/guard.err" 2>/dev/null; then
+    echo "FAIL, a guard raised: $(head -1 "$FIXTURE/guard.err")"
+    fail=1
+    return
   fi
   if [ "$got" = "$3" ]; then
     echo "$got PASS"
@@ -718,8 +749,13 @@ protect() {
   # protect <json-quoted command> <label> <expected exit> [cwd]
   printf '  %-52s' "$2"
   printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${4:-$PROTREPO}" \
-    | JZ_GUARDS=protect-default-branches "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+    | JZ_GUARDS=protect-default-branches "$HOOK_DIR/guard-bash.sh" >/dev/null 2>"$FIXTURE/guard.err"
   local got=$?
+  if grep -q "guard failed:" "$FIXTURE/guard.err" 2>/dev/null; then
+    echo "FAIL, a guard raised: $(head -1 "$FIXTURE/guard.err")"
+    fail=1
+    return
+  fi
   if [ "$got" = "$3" ]; then
     echo "exit=$got PASS"
   else
@@ -764,6 +800,8 @@ protect "\"git -C $PROTREPO push origin feature\"" "missing cwd, push a feature 
 protect "\"git -C $PROTREPO push origin main\""  "missing cwd, push main by -C"   2 "$FIXTURE/gone/worktree"
 protect '"git -c remote.origin.push=refs/heads/feature:refs/heads/main push origin"' "configured refspec onto main" 2
 protect '"echo git push origin main"'            "push inside echo"               0
+protect '"git push origin main 2>&1"'            "push main with stderr redirected" 2
+protect '"git --attr-source HEAD push origin main"' "attr-source takes a value"    2
 protect '"git commit -m \"merge main notes\""'   "merge only in a commit message" 0
 # Destinations git resolves that the arguments alone do not show.
 protgit tag v1 main
@@ -887,10 +925,15 @@ all_guards() {
   printf '  %-52s' "$2"
   local out got=allow
   out="$(printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$1" "${4:-$GATEREPO}" \
-    | "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+    | "$HOOK_DIR/guard-bash.sh" 2>"$FIXTURE/guard.err")"
   local code=$?
   [ "$code" = 2 ] && got=deny
   printf '%s' "$out" | grep -q '"permissionDecision": "ask"' && got=ask
+  if grep -q "guard failed:" "$FIXTURE/guard.err" 2>/dev/null; then
+    echo "FAIL, a guard raised: $(head -1 "$FIXTURE/guard.err")"
+    fail=1
+    return
+  fi
   if [ "$got" = "$3" ]; then
     echo "$got PASS"
   else
@@ -912,6 +955,10 @@ else
   echo "FAIL"
   fail=1
 fi
+printf '  %-52s' "several JZ_GUARDS names with spaces"
+out="$(printf '{"tool_name":"Bash","tool_input":{"command":"git push --force origin feature"},"cwd":"%s"}' "$GATEREPO" \
+  | JZ_GUARDS=" protect-default-branches , confirm-remote-writes " "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+if printf '%s' "$out" | grep -q 'force option'; then echo "PASS"; else echo "FAIL"; fail=1; fi
 printf '  %-52s' "an unknown JZ_GUARDS name runs nothing"
 printf '{"tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"cwd":"%s"}' "$GATEREPO" \
   | JZ_GUARDS=no-such-guard "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
@@ -935,8 +982,28 @@ all_guards '"git commit -m '"'"'costs $5'"'"'"'          "dollar in single quote
 all_guards '"git -C \"$REPO\" status"'                  "variable on a read-only line is silent"  allow
 all_guards '"time --output t.log git status"'           "wrapper option on a read-only line is silent" allow
 all_guards '"(git status); git push origin main"'      "subshell does not hide a push of main"   deny
-all_guards '"(cd child && git status); git push origin main"' "cd inside a subshell moves the rest"  ask
-all_guards '"(cd child && git add .claude)"'            "cd inside a subshell still moves the rest" ask
+all_guards '"(cd child && git status); git push origin main"' "cd inside a subshell is not applied" deny
+all_guards '"(cd child && git add .claude)"'            "cd inside a subshell is not applied, add judged here" deny
+all_guards '"cd && git add .claude"'                    "bare cd is not followed"                 deny
+all_guards '"(cd child && git merge origin/stable)"'    "cd inside a subshell, merge judged here, asks" ask
+all_guards '"{ cd child; git add .claude; }"'           "cd inside a brace group is not applied"  deny
+all_guards '"cd -P child && git add .claude"'           "cd with an option is not followed"       deny
+all_guards '"cd /tmp &\ngit push origin main"'         "background cd before a newline moves nothing" deny
+all_guards '"GIT_DIR=.git git push origin main"'        "GIT_* assignment asks"                   ask
+all_guards '"git --bogus push origin main"'             "unknown git option asks"                 ask
+all_guards '"bash -c '"'"'git pu\"\"sh origin main'"'"'"' "split word inside a nested shell asks" ask
+all_guards '"git commit -F - <<'"'"'EOF'"'"'\nfeat: the oracle\nEOF"' "here-document asks"      ask
+all_guards '"gh pr create --draft --body-file - <<<\"ship it\""' "here-string asks"               ask
+all_guards '"git commit -m \"`id`\""'                 "backtick in double quotes asks"          ask
+all_guards '"echo `date` && git status"'                "backtick on a read-only line is silent"  allow
+all_guards '"timeout --signal TERM 30 git push --force"' "wrapper option before a push asks"     ask
+all_guards '"sudo -u root git push -f"'                 "sudo with an option asks"                ask
+git -C "$GATEREPO" config alias.p push
+all_guards '"git p origin main"'                        "alias for push is judged as a push"      deny
+git -C "$GATEREPO" config alias.x '!echo'
+all_guards '"git x"'                                    "shell alias asks"                        ask
+git -C "$GATEREPO" config --unset alias.p
+git -C "$GATEREPO" config --unset alias.x
 all_guards '"echo x | cd child; git add .claude"'       "cd after a pipe moves nothing"           deny
 all_guards '"cd child & git add .claude"'               "cd as a background job moves nothing"    deny
 all_guards '"{ git status; }"'                          "brace group on a read-only line is silent" allow

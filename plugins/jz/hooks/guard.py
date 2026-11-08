@@ -11,7 +11,9 @@ allows the call anyway.
 A construct the parser does not follow (a subshell, a variable, a nested
 shell, a wrapper with options, unbalanced quotes) is judged on what was
 visible and asked about for the rest, when the line also names a command a
-guard judges.
+guard judges or the construct itself mentions git or gh. The run has one
+deadline under the host's 60 s hook timeout; when it passes, the owner is
+asked rather than the host failing open.
 
 JZ_GUARDS, a comma-separated list of guard names, restricts the run to those
 guards. The test suite uses it to exercise one guard at a time; the ask for
@@ -23,9 +25,8 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from guards import Ask, Context, Deny  # noqa: E402
+from git_push import GuardTimeout, set_deadline
+from guards import Ask, Context, Deny
 from guards import (  # noqa: E402
     confirm_remote_writes,
     no_claude_artifacts,
@@ -40,6 +41,8 @@ from guards import (  # noqa: E402
 # it also names something a guard judges; a read-only `git -C "$repo" status`
 # passes in silence.
 JUDGED = re.compile(r"\b(add|stage|commit|push|merge|pull|pr|api)\b")
+# Under the 60 s the host gives the hook, with room for the interpreter.
+DEADLINE_SECONDS = 50
 
 # Denying guards first, cheapest first, so a blocked call never pays for the
 # secret scan; the asking guards last.
@@ -70,10 +73,15 @@ def main():
     context = Context(event)
     if not context.command:
         return 0
+    set_deadline(DEADLINE_SECONDS)
     asks = []
     for guard in selected_guards():
         try:
             decision = guard.check(context)
+        except GuardTimeout:
+            asks.append("The guards ran out of time before %s finished, so part of the command was not checked; "
+                        "confirm it, or split the line." % guard.NAME)
+            break
         except Exception as failure:  # one broken guard must not block every Bash call
             print("%s guard failed: %s: %s" % (guard.NAME, type(failure).__name__, failure), file=sys.stderr)
             continue
@@ -83,7 +91,7 @@ def main():
             return 2
         if isinstance(decision, Ask):
             asks.append(decision.reason)
-    if context.unfollowed and JUDGED.search(context.command):
+    if context.unfollowed and (context.parsed.hidden or JUDGED.search(context.command)):
         asks.append("The command uses %s, which the guards do not follow, so part of it was not checked. "
                     "Write plain git and gh commands joined by && or ;, run from the repository directory "
                     "or with git -C <path>, or confirm it as written." % " and ".join(context.unfollowed))

@@ -250,14 +250,18 @@ The guards, each a module in `hooks/guards/` with a `NAME` and a
 The guards share one parser, `command_lines.py`, which reads a line once:
 commands joined by `;`, `&&`, `||`, `|` or a newline, quoted arguments, a
 trailing comment, a line continuation, a `cd` that moves the commands after
-it, a `git -C` and a bare wrapper such as `nohup` or `timeout 30`. It does not
-follow a subshell, a brace group, a variable or command substitution, a
-backtick, a wrapper given options, or a nested shell such as `bash -c`,
-`eval` or `xargs`. A line with one of those is judged on the commands that
-were visible, and when it also names something a guard judges, the owner is
-asked about the rest; a read-only `git -C "$repo" status` passes in silence.
-Every construct the parser does not follow is one that cannot be used to slip
-a call past it. The guards that
+it, a `git -C`, a git alias resolved from the repository's config, and a bare
+wrapper such as `nohup` or `timeout 30`. It does not follow a subshell, a
+brace group, a variable or command substitution, a backtick, a here-document,
+a wrapper given options, a `GIT_*` environment variable, a git option it does
+not know, a shell alias, or a nested shell such as `bash -c`, `eval` or
+`xargs`. A line with one of those is judged on the commands that were
+visible, and when it also names something a guard judges, or the construct
+itself mentions git or gh, the owner is asked about the rest; a read-only
+`git -C "$repo" status` passes in silence. Every git call a guard makes runs
+with the repository's filesystem monitor, hooks and signature display off, on
+a scratch copy of the index where it would take the lock, under one deadline
+for the whole run. The guards that
 judge a push share `git_push.py`, which reads the push options the way git
 does and works out from the repository's configuration and tracking refs
 which refs the push would update. It never contacts the remote and never

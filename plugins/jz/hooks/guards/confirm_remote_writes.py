@@ -11,14 +11,13 @@ here instead.
 
 import re
 
-from command_lines import git_call
+from command_lines import SHORT_CLUSTER, git_call
 from gh_options import final_bool_option, gh_command
 from git_push import resolve_push_long_option
 from guards import Ask
 
 NAME = "confirm-remote-writes"
 
-SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 # A lease expectation git cannot re-resolve: a full object id, or empty for
 # "the ref must not exist yet". Anything else, a ref name or a short hex that
 # could be one, is read from a ref a fetch can move.

@@ -11,9 +11,10 @@ directory up to the root of its repository.
 import json
 import os
 import re
-import subprocess
 
 from command_lines import git_call
+from gh_options import gh_command
+from git_push import git_text
 from guards import Deny
 
 NAME = "no-restricted-words"
@@ -124,20 +125,15 @@ def texts_from(argv, directory):
             _, args, git_directory = call
             for text in commit_texts(args, git_directory):
                 yield text, git_directory
-    elif name == "gh" and argv[1:2] and argv[1] in {"pr", "issue", "api"}:
-        for text in gh_texts(argv[1:], directory):
-            yield text, directory
+    else:
+        gh = gh_command(argv)
+        if gh is not None and gh[0][:1] and gh[0][0] in {"pr", "issue", "api"}:
+            for text in gh_texts(list(gh[0]) + gh[1], directory):
+                yield text, directory
 
 
 def repository_root(directory):
-    try:
-        out = subprocess.run(["git", "-C", directory, "rev-parse", "--show-toplevel"],
-                             capture_output=True, text=True, timeout=5)
-    except Exception:
-        return None
-    if out.returncode != 0:
-        return None
-    return out.stdout.strip()
+    return git_text(directory, [], ["rev-parse", "--show-toplevel"]) or None
 
 
 def policy_directories(directory):

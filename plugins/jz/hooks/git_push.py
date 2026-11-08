@@ -18,6 +18,7 @@ remote's refs are taken as published.
 
 import os
 import subprocess
+import time
 
 # The long options of git push (builtin/push.c, git 2.50). git resolves any
 # unambiguous prefix of a long option and accepts no- in front of a boolean,
@@ -36,6 +37,29 @@ PUSH_LONG_OPTIONS_WITH_VALUE = {"repo", "receive-pack", "exec", "push-option", "
 PUSH_SHORT_OPTIONS_WITH_VALUE = "o"
 SHORT_FLAGS = {"d": "delete", "n": "dry-run"}
 GIT_TIMEOUT_SECONDS = 10
+COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
+
+
+class GuardTimeout(Exception):
+    """The run's deadline passed. The dispatcher asks instead of letting the host's timeout fail open."""
+
+
+_deadline = [None]
+
+
+def set_deadline(seconds):
+    """Give every git and scanner call in this run a shared budget."""
+    _deadline[0] = time.monotonic() + seconds
+
+
+def remaining(limit):
+    """The timeout for one call: `limit`, or less when the run's deadline is nearer. Raises GuardTimeout once it has passed."""
+    if _deadline[0] is None:
+        return limit
+    left = _deadline[0] - time.monotonic()
+    if left <= 0:
+        raise GuardTimeout()
+    return min(limit, left)
 
 HEADS = "refs/heads/"
 TAGS = "refs/tags/"
@@ -55,15 +79,22 @@ SAFE_CONFIG = ["-c", "core.fsmonitor=false", "-c", "log.showSignature=false",
                "-c", "core.splitIndex=false", "-c", "splitIndex.sharedIndexExpire=never"]
 
 
-def run_git(directory, options, args):
-    """Run one read-only git call with prompts, locks, the pager and repository-run programs off."""
-    environment = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0",
-                       GIT_PAGER="cat", GIT_EDITOR="true")
+def run_git(directory, options, args, environment=None):
+    """Run one read-only git call with prompts, locks, the pager and repository-run programs off.
+
+    The one git runner every guard uses. Returns the completed process, or
+    None when git is missing, failed to start or ran past its timeout.
+    """
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0",
+               GIT_PAGER="cat", GIT_EDITOR="true")
+    if environment:
+        env.update(environment)
+    timeout = remaining(GIT_TIMEOUT_SECONDS)
     try:
         # SAFE_CONFIG last, so no caller option can override it.
         return subprocess.run(["git", "--no-pager", "-C", directory] + options + SAFE_CONFIG + args,
                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                              errors="replace", env=environment, timeout=GIT_TIMEOUT_SECONDS)
+                              errors="replace", env=env, timeout=timeout)
     except Exception:
         return None
 
@@ -201,6 +232,12 @@ class Push:
 
 def current_branch(directory, options):
     return git_text(directory, options, ["symbolic-ref", "-q", "--short", "HEAD"]) or None
+
+
+def origin_head(directory, options):
+    """The branch refs/remotes/origin/HEAD names, or None when the clone does not record one."""
+    out = git_text(directory, options, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"])
+    return out.split("/", 1)[-1] if out else None
 
 
 def config(directory, options, key):

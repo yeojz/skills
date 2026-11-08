@@ -25,12 +25,11 @@ import re
 
 from command_lines import git_call, git_config_overrides, git_location_options
 from gh_options import final_bool_option, gh_command
-from git_push import HEADS, resolve_commit, resolve_push, run_git, unfollowed_config_override
-from guards import Deny
+from git_push import COMMON_DEFAULTS, HEADS, origin_head, resolve_commit, resolve_push, unfollowed_config_override
+from guards import Deny, safe_text
 
 NAME = "protect-default-branches"
 
-COMMON_DEFAULTS = {"main", "master", "develop", "trunk"}
 
 MERGE_MUTATIONS = re.compile(r"\b(mergePullRequest|enablePullRequestAutoMerge|mergeBranch)\b")
 PULL_MERGE_ENDPOINT = re.compile(r"(^|/)pulls/[^/]+/merge/?$")
@@ -59,9 +58,9 @@ GH_API_TYPED_FIELD_OPTIONS = {"-F", "--field"}
 def protected_branches(directory, options, protected_by_directory):
     if directory not in protected_by_directory:
         names = set(COMMON_DEFAULTS)
-        out = run_git(directory, options, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"])
-        if out is not None and out.returncode == 0 and out.stdout.strip():
-            names.add(out.stdout.strip().split("/", 1)[-1])
+        head = origin_head(directory, options)
+        if head:
+            names.add(head)
         protected_by_directory[directory] = names
     return protected_by_directory[directory]
 
@@ -85,7 +84,7 @@ def reason_for_push(directory, options, args, config_overrides, cache):
             target = token.lstrip("+").partition(":")[2] or token
             if branch_name(target) in protected:
                 return ("This push could not be resolved (%s) and names %s, and the default branch moves only "
-                        "through a merged pull request." % (error, branch_name(target)))
+                        "through a merged pull request." % (safe_text(error), safe_text(branch_name(target))))
         return None
     if push.dry_run:
         return None
@@ -197,9 +196,7 @@ def deny(reason):
 
 
 def check(context):
-    command = context.command
-    if not re.search(r"push|merge|Merge|graphql", command):
-        return None
+    # No pre-filter on the raw text: an alias such as `git p` resolves to a push only after parsing.
     cache = {}
     for argv, directory in context.calls:
         reason = reason_for(argv, directory, cache)

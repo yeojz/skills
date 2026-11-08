@@ -8,12 +8,13 @@ comment, a line continuation, a `cd` that moves the commands after it, a
 `time` or `timeout 30` in front of the program.
 
 It does not follow a subshell, a brace group, a command substitution, a
-variable, a backtick, a wrapper given options, or a nested shell such as
-`bash -c`, `eval`, `exec`, `xargs` or `source`. Each of those is reported as
-an unfollowed construct instead, and the dispatcher asks the owner about the
-line when it also names a command a guard judges. Following them exactly
-would mean reimplementing the shell, and every construct the parser does not
-follow is one that cannot be used to slip a call past it.
+variable, a backtick, a here-document, a wrapper given options, a GIT_*
+environment variable, a git option it does not know, or a nested shell such
+as `bash -c`, `eval`, `exec`, `xargs` or `source`. Each of those is reported
+as an unfollowed construct instead, and the dispatcher asks the owner about
+the line when it also names a command a guard judges, or when the construct
+itself mentions git or gh. Following them exactly would mean reimplementing
+the shell; reporting them means the owner sees the line instead.
 """
 
 import os
@@ -22,9 +23,11 @@ import shlex
 
 SEPARATOR_CHARS = set("();<>|&\n")
 GROUPING_CHARS = set("()")
-REDIRECTIONS = {"<", ">", ">>", "<<", "<&", ">&", "&>", "<<<", ">|"}
+REDIRECTIONS = {"<", ">", ">>", "<&", ">&", "&>", "<<<", ">|", "&>>", ">>&"}
+HERE_DOCUMENTS = {"<<", "<<<"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*=")
 DURATION = re.compile(r"^[0-9]+(\.[0-9]+)?[smhd]?$")
+SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
 
 # Wrappers that run the program after them unchanged. A wrapper given an
 # option, such as `env -u X` or `timeout -s KILL 30`, is not followed: its
@@ -35,7 +38,13 @@ WRAPPERS = {"command", "env", "sudo", "nohup", "time", "timeout", "nice", "stdbu
 NESTED_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "eval", "exec", "xargs", "source", "."}
 
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
-                          "--exec-path", "--config-env"}
+                          "--exec-path", "--config-env", "--attr-source", "--super-prefix"}
+# The global flags of git that take no value. Any other option before the
+# subcommand is one the parser does not know, so the call is not followed.
+GIT_GLOBAL_FLAGS = {"--no-pager", "--paginate", "-p", "-P", "--bare", "--no-replace-objects",
+                    "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs",
+                    "--icase-pathspecs", "--no-optional-locks", "--no-lazy-fetch",
+                    "--no-advice", "--version", "--help", "-h"}
 GIT_CONFIG_OPTIONS = {"-c", "--config-env"}
 GIT_LOCATION_OPTIONS = {"--git-dir", "--work-tree", "--namespace"}
 
@@ -51,6 +60,10 @@ class Parsed:
     def __init__(self):
         self.calls = []
         self.unfollowed = []
+        # True when an unfollowed construct itself mentions git or gh, such as
+        # a `bash -c "git ..."` or a shell alias, so the dispatcher asks even
+        # when the visible text names no judged command.
+        self.hidden = False
 
     def skip(self, construct):
         if construct not in self.unfollowed:
@@ -138,7 +151,19 @@ def command_segments(tokens, parsed):
         if drop_next:
             drop_next = False
             continue
+        if token in HERE_DOCUMENTS:
+            # The body of a here-document is text the parser cannot tell from
+            # commands, so nothing after it is read.
+            parsed.skip("a here-document")
+            if current and current[-1].isdigit():
+                current.pop()
+            if current:
+                yield current
+            return
         if token in REDIRECTIONS:
+            # `2>&1`: the descriptor number in front of a redirection is not an operand.
+            if current and current[-1].isdigit():
+                current.pop()
             drop_next = True
             continue
         if token and set(token) <= SEPARATOR_CHARS:
@@ -151,6 +176,10 @@ def command_segments(tokens, parsed):
             continue
         if token in {"{", "}"}:
             parsed.skip("a brace group")
+            if current:
+                yield current
+            current = []
+            yield token
             continue
         current.append(token)
     if current:
@@ -159,7 +188,13 @@ def command_segments(tokens, parsed):
 
 def runs_apart(separator):
     """Whether a command beside this separator runs in a process of its own: a pipeline element or a background job."""
+    separator = separator.strip("\n")
     return ("|" in separator and separator != "||") or separator == "&"
+
+
+def group_depth_change(separator):
+    """How many groups a separator run opens or closes."""
+    return separator.count("(") + separator.count("{") - separator.count(")") - separator.count("}")
 
 
 def peel_wrappers(argv, parsed):
@@ -168,6 +203,11 @@ def peel_wrappers(argv, parsed):
     while rest:
         name = os.path.basename(rest[0])
         if ASSIGNMENT.match(rest[0]):
+            if rest[0].startswith("GIT_"):
+                # GIT_DIR, GIT_INDEX_FILE and GIT_CONFIG_* change what git
+                # reads as much as -c does, and nothing local records them.
+                parsed.skip("a GIT_* environment variable")
+                return None
             rest.pop(0)
             continue
         if name not in WRAPPERS:
@@ -212,8 +252,23 @@ def git_call(argv, directory):
     options, rest = split
     for name, value in options:
         if name == "-C":
-            directory = os.path.join(directory, value)
+            directory = os.path.join(directory, os.path.expanduser(value))
     return rest[0], rest[1:], os.path.normpath(directory)
+
+
+def unknown_git_option(argv):
+    """The first global option of a git call the parser does not know, or None."""
+    index = 1
+    while index < len(argv) and argv[index].startswith("-"):
+        token = argv[index]
+        index += 1
+        if token in GIT_OPTIONS_WITH_VALUE:
+            index += 1
+        elif token.partition("=")[0] in GIT_OPTIONS_WITH_VALUE and "=" in token:
+            continue
+        elif token not in GIT_GLOBAL_FLAGS:
+            return token
+    return None
 
 
 def git_options_named(argv, names):
@@ -274,10 +329,12 @@ def start_directory(cwd):
 def parse(command_line, directory):
     """Read a command line into a Parsed: its simple commands with their directories, and what was not followed.
 
-    A `cd` moves the directory of every command after it on the line, unless
-    it is a pipeline element or a background job, which runs in a process of
-    its own and moves nothing; that is reported. A `git -C` is resolved per
-    call by git_call. Unbalanced quotes leave no commands and are reported.
+    A plain `cd <dir>` moves the directory of every command after it on the
+    line. One that is a pipeline element or a background job runs in a
+    process of its own and moves nothing; one inside a subshell or brace
+    group, one with options, and a bare `cd` or `cd -` are not followed and
+    move nothing either. Each is reported. A `git -C` is resolved per call by
+    git_call. Unbalanced quotes leave no commands and are reported.
     """
     parsed = Parsed()
     try:
@@ -286,8 +343,10 @@ def parse(command_line, directory):
         parsed.skip("unbalanced quotes")
         return parsed
     segments = list(command_segments(tokens, parsed))
+    depth = 0
     for index, segment in enumerate(segments):
         if isinstance(segment, str):
+            depth = max(0, depth + group_depth_change(segment))
             continue
         argv = peel_wrappers(segment, parsed)
         if not argv:
@@ -295,14 +354,26 @@ def parse(command_line, directory):
         name = os.path.basename(argv[0])
         if name in NESTED_SHELLS:
             parsed.skip("a nested shell (%s)" % argv[0])
+            if any("git" in token.lower() or "gh" in token.lower() for token in argv[1:]):
+                parsed.hidden = True
             continue
         if argv[0] == "cd":
             before = segments[index - 1] if index > 0 and isinstance(segments[index - 1], str) else ""
             after = segments[index + 1] if index + 1 < len(segments) and isinstance(segments[index + 1], str) else ""
             if runs_apart(before) or runs_apart(after):
                 parsed.skip("a cd in a pipeline or background job")
-            elif len(argv) > 1:
-                directory = os.path.normpath(os.path.join(directory, argv[1]))
+            elif depth > 0:
+                parsed.skip("a cd inside a subshell or brace group")
+            elif len(argv) != 2 or argv[1].startswith("-") or argv[1] == "-":
+                parsed.skip("a cd the parser does not follow")
+            else:
+                directory = os.path.normpath(os.path.join(directory, os.path.expanduser(argv[1])))
             continue
+        if name == "git":
+            unknown = unknown_git_option(argv)
+            if unknown is not None:
+                parsed.skip("a git option (%s)" % unknown)
+                parsed.hidden = True
+                continue
         parsed.calls.append((argv, directory))
     return parsed

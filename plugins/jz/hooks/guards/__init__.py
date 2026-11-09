@@ -2,151 +2,42 @@
 
 A guard is a module with a NAME and a check(context) function that returns
 None to allow the call, Deny(lines) to block it, or Ask(reason) to have the
-host confirm it. The dispatcher in ../guard.py parses the payload once and
-hands every guard the same Context. A guard judges the commands the parser
-could read; the dispatcher itself asks about anything it could not follow,
-so no guard needs a fallback of its own for an unreadable line.
+host confirm it. The dispatcher in ../guard.py hands every guard the same
+Context.
+
+A guard reads the command as text. It asks whether the line mentions `git`
+or `gh` and the operation it cares about, as whole words, and nothing more:
+no shell parsing, no option tables. A commit message that happens to say
+"merge main" is denied until it is rephrased, which costs a retry and is
+the safe side. What a guard needs to know about the repository it asks git
+directly, in the directory the payload names, through one runner that
+switches off every program the repository's own configuration could make
+git run.
 """
 
 import os
 import re
-import shlex
-import stat
+import subprocess
 
-from command_lines import git_call, git_config_overrides, git_global_options, git_location_options, parse, start_directory
-from git_push import run_git
-
-# Subcommands git never reads as aliases, so no lookup is needed for them.
-KNOWN_GIT_COMMANDS = {
-    "add", "am", "apply", "archive", "bisect", "blame", "branch", "bundle", "cat-file", "checkout",
-    "cherry", "cherry-pick", "clean", "clone", "commit", "commit-tree", "config", "count-objects",
-    "describe", "diff", "fetch", "for-each-ref", "format-patch", "fsck", "gc", "grep", "hash-object",
-    "help", "init", "log", "ls-files", "ls-remote", "ls-tree", "maintenance", "merge", "merge-base",
-    "mktree", "mv", "notes", "pull", "push", "range-diff", "rebase", "reflog", "remote", "reset",
-    "restore", "rev-list", "rev-parse", "revert", "rm", "shortlog", "show", "show-ref",
-    "sparse-checkout", "stage", "stash", "status", "submodule", "switch", "symbolic-ref", "tag",
-    "update-ref", "var", "version", "worktree",
-}
-# git follows an alias that names another alias; a chain longer than this is
-# reported rather than followed.
-MAX_ALIAS_DEPTH = 5
-ALIAS_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+# A whole word: not glued to a letter, digit, underscore or hyphen on either
+# side, so `merge` is found in `git merge main` and not in `merge-base`.
+def word(text):
+    return re.compile(r"(?<![\w-])%s(?![\w-])" % re.escape(text))
 
 
-def safe_text(text, limit=120):
-    """Text from a repository or a tool, made fit for a reason the model reads: printable ASCII, cut to `limit`."""
-    cleaned = "".join(ch if 32 <= ord(ch) < 127 else "?" for ch in str(text))
-    return cleaned if len(cleaned) <= limit else cleaned[:limit - 3] + "..."
-
-
-def alias_map(directory, options, config_overrides, cache):
-    """The aliases a git call in `directory` would see: the repository's and the user's, plus the call's own -c alias.* overrides.
-
-    The overrides are read from the command's tokens, never passed to git, so
-    the lookup is one plain `git config` per directory with nothing from the
-    command in it.
-    """
-    key = (directory, tuple(options))
-    if key not in cache:
-        aliases = {}
-        out = run_git(directory, list(options), ["config", "--get-regexp", r"^alias\."])
-        for line in (out.stdout.splitlines() if out is not None and out.returncode == 0 else []):
-            name, _, value = line.partition(" ")
-            aliases[name[len("alias."):].lower()] = value
-        cache[key] = aliases
-    aliases = dict(cache[key])
-    for name, value in zip(config_overrides[::2], config_overrides[1::2]):
-        setting, has_value, expansion = value.partition("=")
-        if setting.lower().startswith("alias.") and has_value:
-            if name == "--config-env":
-                # The expansion is in an environment variable the guard cannot see.
-                return None
-            aliases[setting[len("alias."):].lower()] = expansion
-    return aliases
-
-
-def resolve_aliases(parsed):
-    """Replace a git alias with the command it stands for, so `git p` is judged as the push it runs.
-
-    The lookup happens in the directory the call runs in, after `cd` and
-    `git -C`, and follows a chain of aliases to its end. A shell alias
-    (`!...`), a chain past MAX_ALIAS_DEPTH or an alias that cannot be split
-    runs a command line the parser cannot see and is reported instead.
-    """
-    cache = {}
-    resolved = []
-    for argv, directory in parsed.calls:
-        for _ in range(MAX_ALIAS_DEPTH + 1):
-            split = git_global_options(argv)
-            if split is None or not split[1] or split[1][0] in KNOWN_GIT_COMMANDS or not ALIAS_NAME.match(split[1][0]):
-                resolved.append((argv, directory))
-                break
-            # git matches alias names without regard to case.
-            subcommand = split[1][0]
-            git_directory = git_call(argv, directory)[2]
-            aliases = alias_map(git_directory, git_location_options(argv), git_config_overrides(argv), cache)
-            if aliases is None:
-                parsed.skip("an alias set through --config-env")
-                parsed.hidden = True
-                break
-            value = aliases.get(subcommand.lower())
-            if value is None:
-                resolved.append((argv, directory))
-                break
-            try:
-                words = shlex.split(value) if not value.startswith("!") else None
-            except ValueError:
-                words = None
-            if not words:
-                parsed.skip("a shell alias (%s)" % subcommand)
-                parsed.hidden = True
-                break
-            head = argv[:len(argv) - len(split[1])]
-            argv = head + words + split[1][1:]
-        else:
-            parsed.skip("an alias chain deeper than %d" % MAX_ALIAS_DEPTH)
-            parsed.hidden = True
-    parsed.calls = resolved
-
-
-# A file a command names is read for inspection only. A device, a FIFO or
-# a socket would block or never end, and a guard runs before the owner has
-# approved the command that names it, so only a regular file is read, and
-# only this much of it.
-MAX_READ_BYTES = 1_000_000
-
-
-def read_text(path, limit=MAX_READ_BYTES):
-    """(text, complete) for the first `limit` bytes of a regular file, or None.
-
-    None for a missing path, a directory, a device, a FIFO, a socket or a
-    read error. `complete` is False when the file was longer than `limit`.
-    """
-    try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-    except OSError:
-        return None
-    try:
-        # Checked on the open descriptor, so a path swapped for a FIFO between
-        # a stat and the open cannot block the read.
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            return None
-        with os.fdopen(descriptor, "rb") as handle:
-            descriptor = None
-            data = handle.read(limit + 1)
-    except OSError:
-        return None
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
-    return data[:limit].decode("utf-8", errors="replace"), len(data) <= limit
+GIT_OR_GH = re.compile(r"(?<![\w.-])(git|gh)(?![\w-])")
+COMMON_DEFAULTS = ("main", "master", "develop", "trunk")
+GIT_TIMEOUT_SECONDS = 10
+# Configuration that would make a read-only git call run a program from the
+# repository's own config: the filesystem monitor, signature display, hooks.
+SAFE_CONFIG = ["-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "-c", "core.hooksPath=/dev/null"]
 
 
 class Deny:
     """Block the call. `lines` go to stderr, the first one the reason."""
 
     def __init__(self, *lines):
-        self.lines = [line for line in lines if line is not None]
+        self.lines = list(lines)
 
 
 class Ask:
@@ -157,31 +48,67 @@ class Ask:
 
 
 class Context:
-    """The PreToolUse payload, parsed once for every guard."""
+    """The PreToolUse payload: the command text, where it runs, and the session transcript."""
 
     def __init__(self, event):
         event = event if isinstance(event, dict) else {}
         tool_input = event.get("tool_input")
         command = tool_input.get("command") if isinstance(tool_input, dict) else None
-        self.command = command if isinstance(command, str) else ""
-        cwd = event.get("cwd")
+        self.text = command if isinstance(command, str) else ""
         self.transcript_path = event.get("transcript_path")
-        self.start = start_directory(cwd if isinstance(cwd, str) else "")
-        self._parsed = None
+        self.cwd = start_directory(event.get("cwd"))
+        self._branch = None
+
+    def has(self, *words):
+        """Whether the text names every word given, as whole words."""
+        return all(word(text).search(self.text) for text in words)
+
+    def runs(self, *words):
+        """Whether the text mentions git or gh and every word given."""
+        return bool(GIT_OR_GH.search(self.text)) and self.has(*words)
+
+    def flag(self, pattern):
+        """Whether an option spelled by `pattern` (a regex) stands on its own in the text."""
+        return re.search(r"(?<!\S)(?:%s)(?!\S)" % pattern, self.text) is not None
+
+    def git(self, *args):
+        """The stripped output of a read-only git call in the command's directory, or None when it fails."""
+        env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_PAGER="cat", GIT_EDITOR="true")
+        try:
+            out = subprocess.run(["git", "--no-pager", "-C", self.cwd] + SAFE_CONFIG + list(args),
+                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace",
+                                 env=env, timeout=GIT_TIMEOUT_SECONDS)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return out.stdout.strip() if out.returncode == 0 else None
 
     @property
-    def parsed(self):
-        if self._parsed is None:
-            self._parsed = parse(self.command, self.start)
-            resolve_aliases(self._parsed)
-        return self._parsed
+    def branch(self):
+        """The checked-out branch, or None when detached or outside a repository."""
+        if self._branch is None:
+            self._branch = self.git("symbolic-ref", "-q", "--short", "HEAD") or ""
+        return self._branch or None
 
-    @property
-    def calls(self):
-        """(argv, directory) for every simple command the parser could read."""
-        return self.parsed.calls
+    def protected_branches(self):
+        """main, master, develop, trunk, and whatever origin/HEAD names."""
+        names = set(COMMON_DEFAULTS)
+        head = self.git("symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
+        if head:
+            names.add(head.split("/", 1)[-1])
+        return names
 
-    @property
-    def unfollowed(self):
-        """The constructs on the line the parser did not follow, each named once."""
-        return self.parsed.unfollowed
+
+def start_directory(cwd):
+    """The event's cwd, or its nearest existing ancestor when a removed worktree is still being named, else the process's own."""
+    if isinstance(cwd, str) and cwd:
+        here = os.path.abspath(cwd)
+        while not os.path.isdir(here):
+            parent = os.path.dirname(here)
+            if parent == here:
+                break
+            here = parent
+        return here
+    try:
+        return os.getcwd()
+    except OSError:
+        return os.sep

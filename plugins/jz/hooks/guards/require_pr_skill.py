@@ -10,11 +10,9 @@ runs whether or not anyone remembers.
 The transcript the payload names is the evidence: a Skill tool call whose
 skill is `pr` or `<plugin>:pr` and whose result did not report an error, or
 a typed `/pr` command. A call that failed or has no result yet unlocks
-nothing. A typed command reaches the transcript inside a `<command-name>`
-tag only when the skill is installed. A payload without a transcript path,
-from another host, the test suite or a headless run, is allowed through, so
-the gate holds on Claude Code only. A subagent is judged on its own
-transcript, since the parent's loaded steps are not in its context.
+nothing. A payload without a transcript path, from another host, the test
+suite or a headless run, is allowed through, so the gate holds on Claude
+Code only. A subagent is judged on its own transcript.
 """
 
 import json
@@ -22,23 +20,12 @@ import os
 import re
 import stat
 
-from command_lines import git_call
-from gh_options import gh_command
 from guards import Deny
 
 NAME = "require-pr-skill"
 
-GATED_GIT = {"commit", "push"}
 PR = re.compile(r"(^|:)pr$")
 TYPED = re.compile(r"<command-name>/(?:[^<>/]*:)?pr</command-name>")
-
-
-def gated_call(argv):
-    call = git_call(argv, ".")
-    if call is not None:
-        return call[0] in GATED_GIT
-    gh = gh_command(argv)
-    return gh is not None and gh[0] == ("pr", "create")
 
 
 def skill_call_loads_pr(block):
@@ -63,9 +50,8 @@ def pr_loaded(path):
 
     A Skill call counts only with its result: the tool_use block carries an id,
     and the tool_result block that answers it carries the same id. A result
-    with is_error true is a load that failed, so the session never received
-    the procedure, and a call with no result yet is pending; neither unlocks
-    anything. A later call that succeeds does.
+    with is_error true is a load that failed, and a call with no result yet is
+    pending; neither unlocks anything. A later call that succeeds does.
     """
     pending = set()
     if not stat.S_ISREG(os.stat(path).st_mode):
@@ -103,7 +89,8 @@ def pr_loaded(path):
 
 
 def check(context):
-    if not any(gated_call(argv) for argv, _ in context.calls):
+    gated = (context.runs("git", "commit") or context.runs("git", "push") or context.runs("gh", "pr", "create"))
+    if not gated:
         return None
     transcript = context.transcript_path
     if not isinstance(transcript, str) or not os.path.isfile(transcript):

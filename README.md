@@ -131,7 +131,6 @@ says what it does without it.
 |---|---|---|
 | `.claude/` in `.gitignore` | `pr` Worktree section | `pr` offers to add it to `.git/info/exclude` before creating a worktree; the hook refuses to stage `.claude/` or `docs/plans/` either way |
 | `AGENTS.md` with a `## Standing orders` section | `coordinate`, pasted verbatim into every brief | the phase template's default block stands in, and adding the section is part of the first phase |
-| `AGENTS.md` with a `## Restricted words` list | `no-restricted-words` guard | only the house list applies |
 | `AGENTS.md` with an `## Enforcement` table | `improve` | the first project-side `improve` run creates it |
 | `VERIFICATION.md` at the root, or one per package | `verify`, for the `behaviour` row | the row reads what the test runs support, `unit-only` at most, unless another pasted run drove the feature |
 | `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, criteria added by `criteria`, read by `implement` and `coordinate` | `implement` and `coordinate` refuse a spec whose criteria are not signed off and offer `criteria` |
@@ -230,7 +229,7 @@ also sets.
 
 | Hook | Event | Effect |
 |---|---|---|
-| `guard-bash.sh` | PreToolUse on Bash | Parses the command line once and runs every guard in `guards/` over it. A guard that denies ends the call with its reason; the guards that ask are joined into one confirmation |
+| `guard-bash.sh` | PreToolUse on Bash | Runs every guard in `guards/` over the command text. A guard that denies ends the call with its reason; the guards that ask are joined into one confirmation |
 | `load-house-rules.sh` | SessionStart | Injects the rule files as context, since a plugin cannot ship always-on instructions |
 | `load-project-rules.sh` | SessionStart | Surfaces `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` at session start |
 
@@ -239,42 +238,30 @@ The guards, each a module in `hooks/guards/` with a `NAME` and a
 
 | Guard | Effect |
 |---|---|
-| `no-claude-artifacts` guard | Blocks any staging or commit that would include `.claude/`, `docs/plans/` or `.plans/` |
+| `protect-default-branches` guard | Blocks a `git push` that names `main`, `master`, `develop`, `trunk` or the branch `origin/HEAD` names, pushes every branch (`--all`, `--branches`, `--mirror`), picks its target with `--repo` or a wildcard, or runs with a protected branch checked out; and blocks merging a pull request: `gh pr merge` in any form, and the REST and GraphQL merge calls through `gh api`. The owner merges on GitHub |
+| `rebase-not-merge` guard | Blocks any `git merge` other than `--ff-only` or `--abort`, and any `git pull` without `--rebase`; rebase instead |
 | `require-pr-skill` guard | Denies `git commit`, `git push` and `gh pr create` until the session's transcript shows the `pr` skill loaded, by a Skill call whose result reported no error or a typed `/jz:pr`; a payload without a transcript path passes, so the gate holds on Claude Code only |
+| `no-claude-artifacts` guard | Blocks any `git add`, `stage` or `commit` while an unignored, modified or staged path under `.claude/`, `docs/plans/` or `.plans/` is in the repository; the fix is the exclusion the house rule asks for |
 | `confirm-remote-writes` guard | Asks before a `gh pr create` without `--draft`, `gh pr ready` and any force push not pinned to a sha, including a bare `--force-with-lease`, `-f` clusters and a `+refspec`; a branch push, a draft PR and a `--force-with-lease=<branch>:<sha>` push pass without a prompt |
-| `protect-default-branches` guard | Blocks a push that would update or delete `main`, `master`, `develop`, `trunk` or the branch `origin/HEAD` names, resolved from the repository's own configuration and tracking refs, and blocks merging a pull request: `gh pr merge` in any form, and the REST and GraphQL merge calls through `gh api`. The owner merges on GitHub |
-| `scan-secrets-before-push` guard | Scans the commits a `git push` would publish, with betterleaks or gitleaks when one is on PATH and a builtin set of token shapes otherwise, and asks before the push when something looks like a secret; nothing is installed |
-| `rebase-not-merge` guard | Blocks merging the default branch into a feature branch, or pulling it without `--rebase`; rebase instead. A checkout on the default branch may fast-forward itself |
-| `no-restricted-words` guard | Blocks a commit message, PR body, review or comment that carries an emoji, an agent attribution trailer, a session link, a model version slug, or a word listed under a `## Restricted words` heading in the repo's `AGENTS.md` or `CLAUDE.md` |
+| `scan-secrets-before-push` guard | Scans the commits on `HEAD` that no remote has, with betterleaks or gitleaks when one is on PATH and a builtin set of token shapes otherwise, and asks before any `git push` when something looks like a secret; nothing is installed |
 
-The guards share one parser, `command_lines.py`, which reads a line once:
-commands joined by `;`, `&&`, `||`, `|` or a newline, quoted arguments, a
-trailing comment, a line continuation, a `cd` that moves the commands after
-it, a `git -C`, a git alias resolved from the repository's config, and a bare
-wrapper such as `nohup` or `timeout 30`. It does not follow a subshell, a
-brace group, a variable or command substitution, a backtick, a here-document,
-a wrapper given options, a `GIT_*` environment variable, a git option it does
-not know, a shell alias, or a nested shell such as `bash -c`, `eval` or
-`xargs`. A line with one of those is judged on the commands that were
-visible, and when it also names something a guard judges, or the construct
-itself mentions git or gh, the owner is asked about the rest; a read-only
-`git -C "$repo" status` passes in silence. Every git call a guard makes runs
-with the repository's filesystem monitor, hooks and signature display off, on
-a scratch copy of the index where it would take the lock, under one deadline
-for the whole run. The guards that
-judge a push share `git_push.py`, which reads the push options the way git
-does and works out from the repository's configuration and tracking refs
-which refs the push would update. It never contacts the remote and never
-runs anything the command names, since a hook runs before the owner approves
-the call. The guards that judge a `gh` call share `gh_options.py`, which
-finds the subcommand past `-R o/r`; the flags that matter, `--draft` and
-`--undo`, are read as literal tokens rather than through an emulation of gh's
-option parser. `JZ_GUARDS=<name>,<name>` restricts a run to the guards named, which
-is how the suite tests one at a time.
+The guards read the command as text. Each asks whether the line mentions
+`git` or `gh` and the operation it cares about, as whole words, and nothing
+more: there is no shell parser and no option table. A commit message that
+happens to say "merge main" is denied until it is rephrased, which costs a
+retry and errs on the safe side; a line that spells `git` in a way the
+regex cannot see is the deliberate shape this guardrail does not try to
+stop. What a guard needs to know about the repository it asks git directly,
+in the directory the payload names, with the repository's filesystem
+monitor, hooks and signature display off. Every outcome is a deny, except
+the two confirmations, because a host that answers prompts itself treats an
+ask as advice rather than a stop. `JZ_GUARDS=<name>,<name>` restricts a run
+to the guards named, which is how the suite tests one at a time.
 
-The hooks have their own regression suite, which builds a throwaway repo and
-feeds the Bash guard the payloads it will see, one guard at a time. Exit 2 denies a tool call, exit 0
-allows it, and an ask decision is read from the output.
+The hooks have their own regression suite, which builds throwaway repos and
+feeds the Bash guard the payloads it will see, one guard at a time. Exit 2
+denies a tool call, exit 0 allows it, and an ask decision is read from the
+output.
 
 ```bash
 make test

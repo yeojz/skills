@@ -1,21 +1,18 @@
-"""Ask before a push whose commits carry something that looks like a secret.
+"""Ask before a push whose unpublished commits carry something that looks like a secret.
 
 A branch push no longer waits for the owner, and a pushed commit cannot be
 scrubbed: GitHub keeps it retrievable by sha after the branch is deleted.
 This scan is the last look before content goes public.
 
-Which refs the push would update is read from the repository alone, by
-git_push.resolve_push. The commits scanned are the ones reachable from the
-pushed refs but not from that remote's tracking refs; when the destination
-is a URL, or the remote has a pushurl, every remote's refs are excluded
-instead. Merge commits are rendered against their first parent, with
+The commits scanned are the ones reachable from HEAD in the command's
+repository but from no remote-tracking ref, whatever the push line says
+about refspecs. Merge commits are rendered against their first parent, with
 external diff drivers and textconv off. The patches and messages go to
 betterleaks when it is on PATH, else to gitleaks, since both read stdin and
 share their config files; with neither installed a small builtin set of
 token shapes runs instead. Nothing is installed. A finding asks, naming the
-rule, the commit and the file, so a fixture that looks like a key is a
-question for the owner, never a wall. When the push cannot be resolved, the
-guard asks rather than guessing.
+rule, the commit and the file; when the scan cannot run, the guard asks
+rather than guessing.
 """
 
 import json
@@ -24,9 +21,7 @@ import re
 import shutil
 import subprocess
 
-from command_lines import git_call, git_config_overrides, git_location_options
-from git_push import remaining, resolve_commit, resolve_push, run_git, unfollowed_config_override
-from guards import Ask, safe_text
+from guards import Ask
 
 NAME = "scan-secrets-before-push"
 
@@ -34,7 +29,7 @@ SCANNERS = ("betterleaks", "gitleaks")
 SCANNER_FINDINGS_EXIT = 3
 CONFIG_FILES = (".betterleaks.toml", ".gitleaks.toml")
 MAX_FINDINGS_NAMED = 5
-SCAN_TIMEOUT_SECONDS = 50
+SCAN_TIMEOUT_SECONDS = 40
 
 # Fallback shapes, used only when no scanner is on PATH. Each is a well-known
 # token prefix or a key block rather than a bare high-entropy string, so the
@@ -53,42 +48,20 @@ BUILTIN_RULES = [
 ALLOW_COMMENT = re.compile(r"(?:betterleaks|gitleaks):allow")
 
 
-def published_revisions(directory, options, push):
-    """rev-list arguments for the commits the push would make public at the destination.
-
-    A deletion publishes nothing. The tracking refs of the destination remote
-    are excluded; when nothing local describes the destination, every
-    remote's refs are.
-    """
-    revisions = []
-    for source, _ in push.updates:
-        if source is None:
-            continue
-        sha = resolve_commit(directory, options, source)
-        if sha is None:
-            return None, "cannot resolve the pushed ref %s to a commit" % source
-        revisions.append(sha)
-    if not revisions:
-        return [], None
-    excluded = "--remotes=" + push.remote if push.tracked else "--remotes"
-    return revisions + ["--not", excluded], None
+def safe_text(text, limit=120):
+    cleaned = "".join(ch if 32 <= ord(ch) < 127 else "?" for ch in str(text))
+    return cleaned if len(cleaned) <= limit else cleaned[:limit - 3] + "..."
 
 
-def unpublished_patch(directory, options, revision_arguments):
-    """The patches and messages of the selected commits: text, or empty when there are none."""
-    listed = run_git(directory, options, ["rev-list"] + revision_arguments)
-    if listed is None or listed.returncode != 0:
-        tail = safe_text(((listed.stderr.strip().splitlines() if listed else []) or ["no output"])[-1])
-        return None, "git rev-list failed: " + tail
-    if not listed.stdout.strip():
-        return "", None
-    shown = run_git(directory, options, ["log", "--no-color", "-p", "--diff-merges=first-parent",
-                                "--no-ext-diff", "--no-textconv", "--no-show-signature",
-                                "--format=commit %h%n%B"] + revision_arguments)
-    if shown is None or shown.returncode != 0:
-        tail = safe_text(((shown.stderr.strip().splitlines() if shown else []) or ["no output"])[-1])
-        return None, "git log failed: " + tail
-    return shown.stdout, None
+def unpublished_patch(context):
+    """The patches and messages of HEAD's commits on no remote: text, "" when there are none, None when git failed."""
+    listed = context.git("rev-list", "HEAD", "--not", "--remotes")
+    if listed is None:
+        return None
+    if not listed:
+        return ""
+    return context.git("log", "--no-color", "-p", "--diff-merges=first-parent", "--no-ext-diff", "--no-textconv",
+                       "--no-show-signature", "--format=commit %h%n%B", "HEAD", "--not", "--remotes")
 
 
 def locate(lines, line_number):
@@ -100,8 +73,7 @@ def locate(lines, line_number):
         if text.startswith("commit "):
             commit = text.split(" ", 1)[1]
             break
-    where = "the message" if file_path is None else file_path
-    return "%s in commit %s" % (where, commit or "?")
+    return "%s in commit %s" % ("the message" if file_path is None else file_path, commit or "?")
 
 
 def scanner_config(directory):
@@ -114,12 +86,11 @@ def scanner_config(directory):
 
 def scan_with(tool, directory, patch):
     """Run an installed scanner over the patch stream. Returns (findings, error)."""
-    command = [tool, "stdin", "--no-banner", "--no-color", "--redact",
-               "--report-format", "json", "--report-path", "-",
-               "--exit-code", str(SCANNER_FINDINGS_EXIT)] + scanner_config(directory)
+    command = [tool, "stdin", "--no-banner", "--no-color", "--redact", "--report-format", "json",
+               "--report-path", "-", "--exit-code", str(SCANNER_FINDINGS_EXIT)] + scanner_config(directory)
     try:
-        result = subprocess.run(command, input=patch, capture_output=True, text=True,
-                                errors="replace", timeout=remaining(SCAN_TIMEOUT_SECONDS), cwd=directory)
+        result = subprocess.run(command, input=patch, capture_output=True, text=True, errors="replace",
+                                timeout=SCAN_TIMEOUT_SECONDS, cwd=directory)
     except Exception as failure:
         return [], "%s could not run: %s" % (tool, failure)
     if result.returncode == 0:
@@ -132,11 +103,8 @@ def scan_with(tool, directory, patch):
     except ValueError:
         return [], "%s reported findings but its report could not be read" % tool
     lines = patch.splitlines()
-    findings = []
-    for entry in report:
-        rule = entry.get("RuleID") or entry.get("Description") or "secret"
-        line_number = entry.get("StartLine") or 0
-        findings.append("%s at %s" % (safe_text(rule, 60), safe_text(locate(lines, line_number))))
+    findings = ["%s at %s" % (safe_text(entry.get("RuleID") or entry.get("Description") or "secret", 60),
+                              safe_text(locate(lines, entry.get("StartLine") or 0))) for entry in report]
     return findings or ["%s reported findings" % tool], None
 
 
@@ -153,36 +121,24 @@ def scan_builtin(patch):
     return findings
 
 
-def scan_incomplete(error):
-    return ("The secret scan did not complete (" + error + "), so the commits this push would "
-            "publish are unscanned. Confirm the push or fix the cause.")
+def incomplete(error):
+    return Ask("The secret scan did not complete (" + error + "), so the commits this push would publish are unscanned. "
+               "Confirm the push or fix the cause.")
 
 
-def reason_for_push(directory, options, args, config_overrides):
-    override = unfollowed_config_override(config_overrides)
-    if override:
-        return scan_incomplete("the push carries %s, a command-line configuration override the hook does not follow; "
-                               "put the setting in the repository's configuration" % override)
-    push, error = resolve_push(directory, options, args)
-    if error:
-        return scan_incomplete(error)
-    if push.dry_run:
+def check(context):
+    if not context.runs("git", "push") or context.flag(r"--dry-run|-n"):
         return None
-    revision_arguments, error = published_revisions(directory, options, push)
-    if error:
-        return scan_incomplete(error)
-    if not revision_arguments:
-        return None
-    patch, error = unpublished_patch(directory, options, revision_arguments)
-    if error:
-        return scan_incomplete(error)
+    patch = unpublished_patch(context)
+    if patch is None:
+        return incomplete("git could not list or show the unpublished commits")
     if not patch:
         return None
     tool = next((name for name in SCANNERS if shutil.which(name)), None)
     if tool:
-        findings, error = scan_with(tool, directory, patch)
+        findings, error = scan_with(tool, context.cwd, patch)
         if error:
-            return scan_incomplete(error)
+            return incomplete(error)
         source = tool
     else:
         findings = scan_builtin(patch)
@@ -191,17 +147,6 @@ def reason_for_push(directory, options, args, config_overrides):
         return None
     named = "; ".join(findings[:MAX_FINDINGS_NAMED])
     more = "" if len(findings) <= MAX_FINDINGS_NAMED else "; and %d more" % (len(findings) - MAX_FINDINGS_NAMED)
-    return ("Possible secret in the commits this push would publish, found by %s: %s%s. "
-            "A pushed commit stays retrievable by sha even after the branch is deleted. "
-            "Confirm only if these are not credentials." % (source, named, more))
-
-
-def check(context):
-    for argv, directory in context.calls:
-        call = git_call(argv, directory)
-        if call is None or call[0] != "push":
-            continue
-        reason = reason_for_push(call[2], git_location_options(argv), call[1], git_config_overrides(argv))
-        if reason:
-            return Ask(reason)
-    return None
+    return Ask("Possible secret in the commits this push would publish, found by %s: %s%s. "
+               "A pushed commit stays retrievable by sha even after the branch is deleted. "
+               "Confirm only if these are not credentials." % (source, named, more))

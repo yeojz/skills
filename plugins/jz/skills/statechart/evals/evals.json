@@ -1,0 +1,54 @@
+{
+  "skill_name": "statechart",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/statechart Our checkout retries the charge when the bank call times out. Can a customer ever be charged twice? Draw it for the product manager.",
+      "expected_output": "Agrees the rules with the reader in plain words, writes a TLA+ spec and config in a scratch folder outside the repo with each rule as an INVARIANT and Next as a disjunction of named actions, writes a view module with reader-facing labels, runs the bundled command with --out, and hands off the Mermaid chart with one line per broken rule and its numbered path, plus what the model leaves out.",
+      "files": [],
+      "expectations": [
+        "Writes the spec and config in a scratch folder outside the repository",
+        "Writes each agreed rule as an INVARIANT and Next as a disjunction of named actions",
+        "Runs scripts/statechart from the skill directory with an --out folder",
+        "Shows chart.mmd as a mermaid code block whose labels use the reader's words, not variable or action names",
+        "Gives one line per broken rule with its path as the report numbers it",
+        "Says what the model leaves out"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/statechart model the upload job queue and check for stuck states",
+      "expected_output": "The command reports that it cannot find TLC and Java through mise. The agent does not run mise install, brew or any downloader; it stops and gives the user the printed install command to run themselves, then continues once the user confirms.",
+      "files": [],
+      "expectations": [
+        "Does not run mise install, brew install, npm install or any download itself",
+        "Quotes the install command the statechart command printed and asks the user to run it",
+        "Does not claim any result before TLC has run"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The statechart for the media player has 34 arrows and nobody can read it. Make it readable.",
+      "expected_output": "Coarsens labels in state() first, keeps states that break different rules apart and keeps bug path states, only then returns null from step() for steps the reader does not need, following the hiding rules, reruns with a new --out folder, and says in the hand-off which steps the chart hides.",
+      "files": [],
+      "expectations": [
+        "Changes state() to merge labels before hiding any step",
+        "Does not merge chart states that break different rules and keeps every state on a bug path",
+        "Hides a step only by returning null from step(), for all steps of that arrow",
+        "Reruns with a new --out folder",
+        "Lists the hidden steps in the hand-off"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The statechart report lists NoDeadlock as broken, but the last state is just 'Order delivered', which is a normal end. Is the flow broken?",
+      "expected_output": "Explains that a correct end state with no step out breaks NoDeadlock, adds a Done action to Next that is true only in the end states and changes nothing, labels it in step(), reruns, and reports the new result.",
+      "files": [],
+      "expectations": [
+        "Says the end state breaks NoDeadlock only because it has no step out",
+        "Adds a Done action true only in end states with UNCHANGED vars rather than removing the deadlock check",
+        "Reruns the command and quotes the new rule results"
+      ]
+    }
+  ]
+}

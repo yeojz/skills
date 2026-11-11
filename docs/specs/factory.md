@@ -135,8 +135,19 @@ within one session's context without the owner managing it.
   the ADR tier, the recommendation, `handsfree`'s pick and the second opinion
   must all match, otherwise the owner chooses.
 - The second opinion comes from the other family where present, otherwise
-  from a fresh session one tier up, and it sees the question and options
-  only.
+  from this family, and it sees the question and options only. The majority
+  rule below the ADR tier is the owner's choice (round 10, Q6 option A).
+- Second opinions are asked once per round, covering every question in that
+  round that needs one, never once per question.
+- Below the ADR tier the second opinion comes from one assessor thread per
+  run, at the standard tier, which reads the spec, the glossary and the ADRs
+  once and works from the facts the asking skill gathered. At half its
+  context it is retired and a new one starts from the decision log.
+- An ADR-tier second opinion comes from a fresh session at the top tier that
+  does its own research, since these are few and independence matters most
+  there.
+- A question the asking skill states as an assumption gets no second
+  opinion; `handsfree` objects to it or lets it stand.
 - `intake` writes no spec text itself. It investigates, reproduces a bug,
   then runs `grill` in spec mode and `criteria` through `handsfree`, so both
   skills run the same way on both paths. The owner's one approval of the

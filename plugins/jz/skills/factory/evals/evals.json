@@ -61,7 +61,7 @@
     {
       "id": 5,
       "prompt": "Resume the factory on docs/specs/parsers.md. I lost the earlier session. What is it waiting on? (In this workspace job 02 is at needs-owner after its builder wrote fork-1.md with STATUS: FORK, about adding a YAML parsing dependency, and job 03 is mid-review.)",
-      "expected_output": "Asks nobody for a hand-over note, runs job next and job status, puts the fork to the owner as one line with the question and the fork file path without choosing an option, keeps job 03 moving, and when the owner answers passes their words unchanged on stdin to job answer.",
+      "expected_output": "Asks nobody for a hand-over note, runs job next and job status, puts the fork to the owner as one line with the question and the fork file path without choosing an option, keeps job 03 moving, and when the owner answers passes their words unchanged, saved to a file, to job answer.",
       "files": [],
       "expectations": [
         "Runs job next and job status on the spec, and does NOT ask the owner what the earlier session was doing or look for a hand-over note",
@@ -69,7 +69,7 @@
         "Does NOT pick an option for the fork, tell a builder to proceed with the recommendation, or add the dependency",
         "Continues job 03 from its recorded stage, starting only the reviewers whose file for the round is missing",
         "Does NOT edit job.json by hand to move job 02 out of needs-owner",
-        "When the owner replies, runs job answer with the reply word for word on stdin, then job next, and starts a new builder whose prompt names the feedback file"
+        "When the owner replies, saves the reply word for word to a file and runs job answer with --from, then job next, and starts a new builder whose prompt names the feedback file"
       ]
     }
   ]

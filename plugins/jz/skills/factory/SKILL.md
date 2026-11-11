@@ -213,19 +213,19 @@ Job 02-the-gate-script needs you: keep the lock file change or drop the new pack
 
 Then keep going: run Step 2 and drain every job that does not depend on the
 waiting one. When the owner answers, pass their words unchanged, never a
-summary or a letter you chose for them:
+summary or a letter you chose for them. Save the reply to
+`$dir/owner-reply.txt` with the file-write tool, never through a shell
+heredoc, where a guard may deny the wording or a line may end the heredoc:
 
 ```bash
-"$job" answer "$dir" <<'OWNER'
-<the owner's reply, word for word>
-OWNER
+"$job" answer "$dir" --from "$dir/owner-reply.txt"
 ```
 
 The script saves it as `feedback-<K>.md` and moves the job to `build`.
 
 A hard escalation condition on an approved job is the one case with a second
 way out. When the owner accepts the condition as it stands, pass their words
-to `"$job" accept "$dir"` the same way; the script records what was accepted
+to `"$job" accept "$dir" --from <file>` the same way; the script records what was accepted
 and moves the job on to `merging` or `merge-ready`. When they want a change,
 use `answer`. Only the owner's own words go to `accept`, never a reply from
 `handsfree` or an agent.
@@ -273,7 +273,7 @@ answered from `status`: each job's stage, and the question behind each
 | Reading a diff, a log or a review body to judge a job | `head -3` of the file; the script and the next agent read the rest |
 | Starting reviewers while the gate reads `GATE: FAIL` | `job advance <dir> build`, then a new builder with the `checks.md` path |
 | Resuming a builder, or retrying a failed fix round on the same tier | A new builder from the pushed head, one tier up, up to top |
-| Deciding a builder's fork, or rewording the owner's answer | One line to the owner; their words on stdin to `job answer` |
+| Deciding a builder's fork, or rewording the owner's answer | One line to the owner; their words, saved to a file, to `job answer --from` |
 | Editing `job.json` or `run.json` to move a job | `job advance`; a refusal names the evidence that is missing |
 | Pasting spec text, a diff or findings into a prompt | The filled template: paths, round and purpose |
 | `gh pr merge`, or marking the final pull request ready | `job merge` for a step; the owner merges the final pull request |

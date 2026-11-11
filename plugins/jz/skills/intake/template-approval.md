@@ -8,7 +8,7 @@ Delete this comment before showing it.
 
 # Approval: <spec title>
 
-Spec: `docs/specs/<slug>.md`. Status: draft, waiting for your approval.
+Spec: `docs/specs/<slug>.md`. Status: <the spec's own status line, read with grep; it must read draft here>, waiting for your approval.
 Request: <typed text, a failing command, or issue <n>>, saved in `<notes folder>/request.md`.
 Outcome: Accept. <Why, in one line.>
 
@@ -42,9 +42,9 @@ Reproduced on `<sha>`, <k> of 3 runs failed:
 
 ## Steps
 
-| Step | Serves | Blocked by | Risk | Surfaces | Review gate | Factory-eligible |
-|---|---|---|---|---|---|---|
-| 1: <title> | R1 | none | <low, medium or high> | <none, ui, security> | <none, or owner reviews before merge> | <yes, or no with the reason> |
+| Step | Serves | Blocked by | Owns | Risk | Surfaces | Review gate | Factory-eligible |
+|---|---|---|---|---|---|---|---|
+| 1: <title> | R1 | none | <the paths the step may edit, in backticks; a step that names none is not eligible> | <low, medium or high> | <none, ui, security> | <none, or owner reviews before merge> | <yes, or no with the reason> |
 
 ## Requests in this batch
 

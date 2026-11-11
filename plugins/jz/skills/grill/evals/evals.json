@@ -4,46 +4,38 @@
     {
       "id": 1,
       "prompt": "grill me on this plan: move the CLI's vault commands behind a plugin interface so third parties can add their own storage backends.",
-      "expected_output": "The agent reads the repo's instruction files and glossary, fans out subagents for facts about the current CLI and storage code, then asks the first round: numbered questions, each with three or four lettered options, the recommendation first with a one-sentence reason and the trade-off that decides it. It stops and waits. No code is written and no files are created in decision mode.",
+      "expected_output": "The agent reads the repo's instruction files and glossary, fans out subagents for facts about the current CLI and storage code, then asks the first round: numbered questions, each with three or four lettered options, the recommendation first with a one-sentence reason the trade-off that decides it and a Tier: ADR or Tier: below mark. It stops and waits. No code is written and no files are created in decision mode.",
       "files": [],
       "expectations": [
         "Reads CONTEXT.md, AGENTS.md or CLAUDE.md, CONTRIBUTING.md and docs/adr before the first question",
         "Dispatches at least one read-only subagent for a fact about the existing code instead of asking the user for it",
         "Every question in the round is numbered and offers three or four lettered options with the recommendation first",
         "Each question names the trade-off that decides between its options",
+        "Every question carries a Tier: ADR or Tier: below mark, and the plugin interface shape, a public API, is marked ADR",
         "The round ends with the agent waiting; it does not answer its own questions or continue to a second round in the same reply",
         "No source file, CONTEXT.md or ADR is written"
       ]
     },
     {
       "id": 2,
-      "prompt": "kick off a new serverless OpenID Connect provider library in this empty repo, with docs. The old oidclib repo at ../oidclib is a reference but not the truth.",
-      "expected_output": "Spec mode. Branches into its own worktree, names facts taken from the predecessor repo without copying its decisions, writes CONTEXT.md as terms resolve, writes docs/specs/<slug>.md with Requirements, Decisions and Steps as decisions land, records most decisions as spec Decisions lines and only bar-passing ones as ADRs, adds Standing orders to AGENTS.md, and hands back naming criterion as next.",
+      "prompt": "kick off a new serverless OpenID Connect provider library in this empty repo, with docs. The old oidclib repo at ../oidclib is a reference but not the truth. One thing I already know: it should be secure and the code should be clean.",
+      "expected_output": "Spec mode. Branches into its own worktree, names facts taken from the predecessor repo without copying its decisions, writes CONTEXT.md as terms resolve, writes docs/specs/<slug>.md with Requirements, Decisions and Steps as decisions land, asks each step's Risk and Surfaces in the round that settles the step and writes both lines on it, refuses 'secure' and 'clean' as requirements until they name something observable, records most decisions as spec Decisions lines and only bar-passing ones as ADRs, adds Standing orders to AGENTS.md, and hands back naming criteria as next.",
       "files": [],
       "expectations": [
         "A task branch exists in its own worktree before the first file is written; nothing is written on the default branch",
         "Facts taken from the predecessor repository are named as such and no decision is copied from it",
         "CONTEXT.md is written in the same turn the first term is resolved, not at the end",
-        "docs/specs/<slug>.md is written with Requirements, Decisions and Steps sections and an empty Criteria section; no docs/design.md or docs/roadmap.md is written",
-        "Every step names the requirements it serves and the steps that block it",
+        "docs/specs/<slug>.md is written with Requirements, Decisions and Steps sections and an empty Criteria section, with no acceptance or test command in it",
+        "'Secure' and 'clean' are not written as requirements as given; the agent asks what someone would observe, as lettered options, or drops them and says so",
+        "Every step names the requirements it serves and the steps that block it, and carries a Risk line reading low, medium or high and a Surfaces line reading none, ui, security or ui, security",
+        "Risk and Surfaces for a step are asked as numbered questions with a recommendation in the round that settles the step, and the values written are the ones the owner chose",
+        "A step that touches token signing or login is recommended as Risk high with a security surface",
         "Most decisions are Decisions lines; any ADR written satisfies all three tests and is linked from its Decisions line",
-        "AGENTS.md gains a Standing orders section",
-        "The hand-back lists the ADR-tier list and names criterion as the next skill; no commit is made"
+        "The hand-back lists the ADR-tier list and names criteria as the next skill; no commit is made"
       ]
     },
     {
       "id": 3,
-      "prompt": "Q3: not sure, does our test runner support --project? Just pick whatever works.",
-      "expected_output": "The agent does not accept the user's guess or ask them to find out. It reads package.json and the vitest config, or dispatches a subagent to, answers the fact itself, and re-asks the decision that depended on it with the fact stated.",
-      "files": [],
-      "expectations": [
-        "The agent reads package.json or the test runner config, or dispatches a subagent to, rather than asking the user",
-        "The reply states the fact found with the file that shows it",
-        "The decision that depended on the fact is re-asked as a lettered question, or stated as an assumption if only one option remains"
-      ]
-    },
-    {
-      "id": 4,
       "prompt": "The account should be able to have several users, and each user logs in with their account credentials.",
       "expected_output": "The agent spots that account and user are being used for two different things and for the same thing within one sentence, names the conflict against the glossary or proposes canonical terms, invents a concrete scenario that probes the boundary, and in spec mode writes the resolved terms into CONTEXT.md with the avoided words listed.",
       "files": [],
@@ -55,7 +47,7 @@
       ]
     },
     {
-      "id": 5,
+      "id": 4,
       "prompt": "ok proceed with implementation",
       "expected_output": "With questions still open on the frontier, the agent does not start implementing. It lists what is still open, states the assumptions it would otherwise have to make, and asks the user either to answer or to confirm the shared understanding explicitly. If the frontier is empty, it summarises the settled tree and the assumptions and asks for confirmation before handing over to implementation.",
       "files": [],
@@ -67,14 +59,18 @@
       ]
     },
     {
-      "id": 6,
-      "prompt": "4A. Add the requirement for the session cookie: it should be secure and the code should be cleaner. Spec mode.",
-      "expected_output": "The agent refuses to write 'secure' or 'cleaner' as requirements because nobody could observe them, asks what would be different (for example a tampered cookie refused with 401) as lettered options, and writes no criteria or test commands into the spec.",
+      "id": 5,
+      "prompt": "Brief from a parent session: run grill in spec mode on 'add CSV export to the reports page' in this repo. Your owner is handsfree. The run folder is /repo/docs/plans/handsfree-csv-export/. Write each round to the round files and stop.",
+      "expected_output": "The agent reads the repo and gathers facts with subagents, then writes round 1 to round-1-questions.md, with numbered assumptions and questions, lettered options in no order of preference, the facts with file:line, the trade-off and a Tier mark per question and no recommendation, and to round-1-recommendations.md, with one line per question. It replies that round 1 is written and stops, without asking the questions in its reply or answering them. Started again with round-1-answers.md it applies the answers, writes the spec from where it stands, numbers the Decisions as decisions.tsv does with ADR-tier ones first and every pick, and leaves a question answered owner open while continuing with the rest.",
       "files": [],
       "expectations": [
-        "Does not write 'secure' or 'cleaner' as a requirement as given",
-        "Asks what someone would observe, offering concrete observable outcomes as lettered options, or drops the requirement and says so",
-        "Does not add an Criteria entry, acceptance command or test command to the spec; that is left to the criteria skill"
+        "round-1-questions.md and round-1-recommendations.md are written in the named folder, and the reply is a single line saying the round is written",
+        "The questions file contains no recommendation: no 'Recommended', no reason favouring one option, and the recommended option is not always listed first",
+        "Every question in the questions file carries Tier: ADR or Tier: below and the facts it rests on with file:line",
+        "The agent does not answer its own questions, start round 2 or write decided content into the spec before an answers file exists",
+        "When started again with round-1-answers.md, questions already answered are not asked again and a line reading Q<n>: owner is left open while the rest proceeds",
+        "The spec's Decisions are numbered D1, D2 as in decisions.tsv, ADR-tier ones first, each with the options, the recommendation, the handsfree pick, the second opinion or none, and the chosen letter",
+        "The agent does not ask the parent session to confirm the shared understanding or to sign anything off in the owner's place"
       ]
     }
   ]

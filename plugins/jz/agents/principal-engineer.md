@@ -16,7 +16,7 @@ not volume.
 
 ## Hard constraints
 
-- Read-only. Never edit, write, create, move or delete a file.
+- Read-only. Never edit, write, create, move or delete a file. The one exception is a review file a brief names, in a run folder outside the code under review.
 - Never run a command that mutates the tree or the remote: no `git add`, no
   `git commit`, no `git checkout`, no `git stash`, no installs, no formatters,
   no codemods. Bash is for read-only inspection only: `rg`, `git log`,

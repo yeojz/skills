@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Gate one spec step on a worktree's HEAD and print pass or fail.
+
+    gate --spec <path> --step <N> --base <ref> [--spec-ref <ref>]
+         [--worktree <dir>] [--out <dir>] [--config <path>]
+
+The branch's changes are measured against <base>. The spec and
+`factory.json` are read with `git show` from --spec-ref, which defaults to
+<base>, and never from the worktree, so a branch cannot pass by editing its
+own criteria. A factory job cut from an integration branch passes that
+branch as --base and the commit the run started from as --spec-ref.
+
+The gate fails a branch that edits a protected path, changes a file outside
+the step's Owns, fails a declared check or fails a criterion of a
+requirement the step serves. Hard escalation conditions are reported on the
+ESCALATE line without failing.
+
+With --out it writes checks.md and checks.log there and prints one line;
+without it, it prints the report first. The last line always starts
+`GATE: PASS` or `GATE: FAIL`. --config names the defaults file in place of
+the skill's config.json; the spec ref's factory.json is still laid over it.
+
+Exit 0 pass, 1 fail, 2 usage or a missing input.
+"""
+
+import argparse
+import os
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+import factorylib as lib  # noqa: E402
+
+
+def spec_in_repo(path):
+    """The spec's path from the repository root, which is how `git show` names it."""
+    if os.path.exists(path):
+        root = lib.repo_root(path)
+        return os.path.relpath(os.path.realpath(path), root)
+    return os.path.normpath(path)
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="gate", description="Gate one spec step on a worktree's HEAD.")
+    parser.add_argument("--spec", required=True, help="the spec file, read from --spec-ref")
+    parser.add_argument("--step", required=True, type=int, help="the step number")
+    parser.add_argument("--base", required=True, help="the ref the branch's changes are measured against")
+    parser.add_argument("--spec-ref", help="the ref the spec and factory.json are read from (default: --base)")
+    parser.add_argument("--worktree", default=".", help="the checkout to gate (default: the current directory)")
+    parser.add_argument("--out", help="write checks.md and checks.log into this directory")
+    parser.add_argument("--config", help="defaults file used in place of the skill's config.json")
+    args = parser.parse_args()
+
+    if not os.path.isdir(args.worktree):
+        print("gate: worktree %s is not a directory" % args.worktree, file=sys.stderr)
+        return 2
+    try:
+        worktree = lib.repo_root(args.worktree)
+        result = lib.run_gate(
+            worktree, spec_in_repo(args.spec), args.step, args.spec_ref or args.base, args.base, args.config)
+    except lib.FactoryError as failure:
+        print("gate: %s" % failure, file=sys.stderr)
+        return 2
+    if args.out:
+        lib.write_report(result, args.out)
+    else:
+        print(lib.render_report(result))
+    print(lib.verdict_line(result))
+    return 0 if result["verdict"] == "PASS" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

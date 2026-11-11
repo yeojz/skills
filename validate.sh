@@ -251,6 +251,23 @@ else
   bad "hook regression suite failed, run $PLUGIN/hooks/test-hooks.sh to see which case"
 fi
 
+printf '\nFactory scripts\n'
+# The factory's stages and gate are scripts, so they are checked the way the
+# hooks are: executable, compiling, and passing their own suite.
+FACTORY="$PLUGIN/skills/factory/scripts"
+for f in "$FACTORY/job" "$FACTORY/gate" "$FACTORY/test-factory.sh"; do
+  [ -x "$f" ] || bad "$(basename "$f"): not executable"
+done
+for f in "$FACTORY/job" "$FACTORY/gate" "$FACTORY/factorylib.py"; do
+  python3 -m py_compile "$f" 2>/dev/null || bad "$(basename "$f"): does not compile"
+  note "$(basename "$f")"
+done
+if "$FACTORY/test-factory.sh" >/dev/null 2>&1; then
+  note "factory regression suite passed"
+else
+  bad "factory regression suite failed, run $FACTORY/test-factory.sh to see which case"
+fi
+
 printf '\nPlugin validation\n'
 # Claude Code's own validator is the authority on the manifests. It is optional
 # here so a machine without the CLI still validates the rest.

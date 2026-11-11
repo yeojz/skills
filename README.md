@@ -62,31 +62,6 @@ snapshot after new commits. On Codex CLI 0.164.0 the skills load as
 session start, and `make-agents-md.sh` below writes them into the
 repository's `AGENTS.md` instead.
 
-### Upgrading from the symlink installer
-
-Earlier versions of this repo installed by symlinking into `~/.claude` and
-`~/.codex` with `install.sh`. Remove those links before installing the plugin,
-or every skill appears twice. The uninstaller only removes links that point
-into its own checkout, so run it from the checkout that created them, with the
-working tree clean, on the last commit that still has the old layout:
-
-```bash
-git checkout 3adb7f1
-```
-
-```bash
-./install.sh --uninstall claude codex
-```
-
-```bash
-git checkout main
-```
-
-The first command puts the whole old layout back at the same path, the second
-removes the links and the settings entries, and the third returns to the
-current revision. If the links were created from a different clone, run the
-same three commands there.
-
 ---
 
 ## Use it
@@ -123,6 +98,22 @@ A spec's steps run through `/jz:coordinate` from a session in the target
 repository. It starts one worker session per step and one reviewer per PR,
 reports one line per PR at merge-ready, and leaves the merge to you.
 
+Two more ways to run a spec, for when you would rather not be in the loop:
+
+- `/jz:factory docs/specs/<slug>.md` runs every eligible step unattended.
+  Scripts hold the state and the pass or fail verdict, each step is built,
+  gated, reviewed and approved by fresh subagents, and the step pull
+  requests merge into `factory/<slug>`. You merge one final pull request.
+  A step with an owner review gate, an inspection-only criterion or no
+  criterion stays with `coordinate`.
+- `/jz:handsfree <command>` wraps any of these commands and answers its
+  design questions in your place, as a second assessor: `handsfree grill`,
+  `handsfree coordinate docs/specs/<slug>.md`. A new dependency, a sign-off,
+  a merge and a question only you can answer still come to you.
+- `/jz:intake` takes a bug or request you name, investigates and reproduces
+  it, runs `grill` and `criteria` through `handsfree`, and shows you one
+  finished spec to approve or overturn by decision number.
+
 ### Set up a project
 
 The skills read these from the project. Each one is optional, and the skill
@@ -134,7 +125,8 @@ says what it does without it.
 | `AGENTS.md` with a `## Standing orders` section | `coordinate`, pasted verbatim into every brief | the phase template's default block stands in, and adding the section is part of the first phase |
 | `AGENTS.md` with an `## Enforcement` table | `improve` | the first project-side `improve` run creates it |
 | `VERIFICATION.md` at the root, or one per package | `verify`, for the `behaviour` row | the row reads what the test runs support, `unit-only` at most, unless another pasted run drove the feature |
-| `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, criteria added by `criteria`, read by `implement` and `coordinate` | `implement` and `coordinate` refuse a spec whose criteria are not signed off and offer `criteria` |
+| `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, criteria added by `criteria`, read by `implement`, `coordinate` and `factory` | `implement`, `coordinate` and `factory` refuse a spec whose criteria are not signed off and offer `criteria` |
+| `factory.json` at the root | `factory`, read from the base branch, to override concurrency, rounds, protected paths, reviewer routing or the checks the gate runs | the defaults in the skill's `config.json` apply, and the gate detects the declared scripts itself |
 | Scripts named `format`, `lint`, `typecheck`, `test` and `build` in `package.json`, or the same targets in a `Makefile` | `verify` | the concern is reported as "no script"; nothing is invented in its place |
 
 ---
@@ -154,7 +146,7 @@ plugins/jz/                       the agent-agnostic plugin
 
 ### Skills
 
-Thirteen skills, in three groups. The workflow runs in this order:
+Sixteen skills, in three groups. The workflow runs in this order:
 
 ```
 grill  ->  criteria  ->  implement  ->  verify  ->  pr  ->  review
@@ -172,6 +164,89 @@ PR structured by requirement, and `review` gives an independent read.
 per step and per review, and `handoff` carries the state when context runs
 out.
 
+A signed-off spec can run two ways. `coordinate` keeps you in the loop and
+you merge each pull request. `factory` runs unattended and you merge once:
+
+```
+grill -> criteria -> coordinate          you merge every step
+grill -> criteria -> factory             you merge one final pull request
+intake -> factory                        you approve one spec, then merge
+handsfree <command>                      any of the above, with the design
+                                         questions answered for you
+```
+
+Two ways in, one spec out. Rounded boxes are agents, plain boxes are scripts
+or files, and the shaded boxes are where the run waits on you:
+
+```mermaid
+flowchart LR
+  idea([A feature or design]) --> grill["grill: you answer each round"]:::you
+  grill --> criteria(["criteria: a check per requirement"])
+  criteria --> signoff["You sign off"]:::you
+  bug([A bug or request you name]) --> intake(["intake: investigates, reproduces"])
+  intake --> hf(["handsfree runs grill and criteria"])
+  hf --> approve["You approve, or overturn a decision"]:::you
+  approve -- "overturned: affected parts rewritten" --> hf
+  intake -- "questions only you can answer, or rejected" --> bug
+  signoff --> spec["Signed-off spec"]
+  approve --> spec
+  classDef you fill:#f1b24c,stroke:#9a5200,color:#1b1305
+```
+
+The same spec, driven two ways:
+
+```mermaid
+flowchart TB
+  spec["Signed-off spec"] --> pick
+  spec --> plan
+  subgraph coordinate ["coordinate: you stay in the loop"]
+    pick(["Coordinator picks ready steps"]) --> worker(["Worker session builds the step"])
+    worker --> check(["Coordinator checks the report"])
+    check --> reviewer(["Fresh reviewer session"])
+    reviewer -- "fix round, max 3" --> worker
+    reviewer --> ready(["Reports merge-ready"])
+    ready --> merge1["You merge each pull request"]:::you
+    worker -- "ADR-tier fork" --> fork1["You choose"]:::you
+  end
+  subgraph factory ["factory: runs unattended"]
+    plan["Plan: one job per eligible step"] --> builder(["Builder subagent, draft PR"])
+    builder --> gate["Gate: checks, criteria, Owns"]
+    gate -- "fail" --> builder
+    gate -- "pass, on the pushed head" --> reviewers(["Routed reviewers, in parallel"])
+    reviewers -- "changes, max 3 rounds" --> builder
+    reviewers -- "all pass" --> approver(["Approver, fresh context"])
+    approver -- "approve, same head commit" --> merge2["Merge into factory/slug"]
+    merge2 -- "all jobs merged" --> final["Open the final pull request"]
+    final --> merge3["You merge once"]:::you
+    builder -- "ADR-tier fork" --> owner["Needs-owner: one question to you"]:::you
+    gate -- "hard escalation condition" --> owner
+    reviewers -- "last round used" --> owner
+    approver -- "escalate" --> owner
+  end
+  plan -- "ineligible steps" --> pick
+  classDef you fill:#f1b24c,stroke:#9a5200,color:#1b1305
+```
+
+How `handsfree` answers a question for you:
+
+```mermaid
+flowchart LR
+  ask(["Asking skill: grill, criteria, a worker"]) --> q["Questions, options, facts"]
+  ask --> rec["Recommendations"]
+  q --> own(["handsfree makes its own pick first"])
+  own --> cmp(["handsfree compares the picks"])
+  rec --> cmp
+  cmp -- "below ADR tier, picks match" --> done["Decided, logged with every pick"]
+  cmp -- "below ADR tier, picks differ" --> thread(["Assessor thread: standard tier, one per run"])
+  thread -- "majority decides" --> done
+  cmp -- "ADR-tier, always" --> fresh(["Fresh top-tier session, own research"])
+  fresh -- "all three match" --> done
+  fresh -- "any differ" --> you["You choose: collected, asked once"]:::you
+  cmp -- "new dependency, or only you can answer" --> you
+  done -- "answers file; the skill starts again" --> ask
+  classDef you fill:#f1b24c,stroke:#9a5200,color:#1b1305
+```
+
 #### Workflow
 
 | Skill | Use it for |
@@ -183,6 +258,9 @@ out.
 | `pr` | Verify, commit, push and open a draft PR with a body written from the diff, structured by requirement when there is a spec; ready only when asked; rebase when the default branch moves; clean up after the merge |
 | `review` | Change review with design, maintainability, guard-deletion and criteria lenses that always report; audit mode for a whole repo or a plan, fanned out to personas into a plan file; the PR comment and red-CI sweep; an adversarial mode across two model families |
 | `coordinate` | Drive a spec's steps to merge-ready: one fresh worker per step with the step's criteria and behaviour target as Done means, one fresh reviewer per PR, bounded fix rounds, the units and decisions ledgers, one line per PR |
+| `factory` | Run a signed-off spec unattended: a job per eligible step, a script that owns every stage and refuses an unsupported move, a gate script that runs the checks and criteria from the base branch, reviewers routed by risk and surfaces, an approver, a sha-pinned merge into `factory/<slug>`, and one final pull request for the owner |
+| `handsfree` | Wrap any command and answer its design questions in the owner's place: its own pick before reading the recommendation, a second opinion from another model once per round, all three picks matching at the ADR tier, every decision numbered and logged; never a sign-off, a merge or a new dependency |
+| `intake` | Turn a bug or request the owner names into a spec for one approval: investigate and reproduce, run `grill` and `criteria` through `handsfree`, show one screen with every decision, and rewrite what an overturned decision affects |
 | `handoff` | Write a resumable handoff before context runs out, with decisions read from the `coordinate` ledger rather than from memory |
 
 #### Task

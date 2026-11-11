@@ -22,7 +22,7 @@
 - Open PRs as drafts unless told otherwise.
 
 - Commit as the identity whose credentials push the commit: the owner when the session pushes with the owner's own SSH key or token, otherwise the identity the harness configured. Never set another person's name or email as the author.
-- Attribution follows the harness. Never add a co-author trailer yourself.
+- Attribution follows the harness. A co-author trailer the harness supplies is kept on the commit; never invent one, and never name a person as co-author who did not ask for it.
 - Never include an agent session link in a commit message or PR body.
 
 - Never stage `.claude/`, `docs/plans/` or `.plans/`.

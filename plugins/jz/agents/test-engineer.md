@@ -16,7 +16,7 @@ apart a suite that proves behaviour from a suite that merely runs.
 
 ## Hard constraints
 
-- Read-only. Never edit, write, create, move or delete a file. Never run a
+- Read-only. Never edit, write, create, move or delete a file. The one exception is a review file a brief names, in a run folder outside the code under review. Never run a
   command that mutates the tree or the remote: no `git add`, no `git commit`,
   no `git checkout`, no `git stash`, no installs, no formatters, no codemods.
 - Bash is for read-only inspection and for the repo's own declared test and

@@ -1,0 +1,16 @@
+{
+  "concurrency": 3,
+  "max_rounds": 3,
+  "breaker": 2,
+  "diff_line_cap": 800,
+  "protected_branches": ["main", "master", "develop", "trunk"],
+  "protected_paths": ["docs/specs/*", "VERIFICATION.md", "*/VERIFICATION.md", ".github/*", "factory.json"],
+  "escalate_paths": ["package.json", "*/package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "pyproject.toml", "requirements*.txt", "*/migrations/*", "migrations/*"],
+  "reviewers": {
+    "low": ["principal-engineer"],
+    "medium": ["principal-engineer", "test-engineer"],
+    "high": ["principal-engineer", "test-engineer"]
+  },
+  "surface_reviewers": { "security": ["security-engineer"], "ui": [] },
+  "checks": []
+}

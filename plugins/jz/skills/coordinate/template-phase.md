@@ -99,7 +99,7 @@ Message the coordinator when the PR is ready, and again if blocked, with:
 - Run the gate and every criterion under Done means and paste their output with exit codes; never say done, fixed or passing until every criterion reads pass or met.
 - Never weaken, skip or delete a test to reach green; root-cause the failure.
 - Never commit `docs/plans/`, `.claude/` or `.plans/`.
-- No emoji, model names, AI identifiers or session links in commits, PR text, reviews or comments, except an ADR's Sign-off line and the PR Decisions line that repeats it; the repo's restricted words stay out too.
+- No emoji, model names, AI identifiers or session links in commits, PR text, reviews or comments, except an ADR's Sign-off line, the PR Decisions line that repeats it and a co-author trailer the harness supplies on a commit; the repo's restricted words stay out too.
 - Invented data only in fixtures and examples, with `example.com` for every domain.
 - Do not wait on an unmerged PR; base on its branch and say so.
 - An ADR-tier fork is a question to the coordinator with lettered options, not a decision; park it and continue what does not depend on it.

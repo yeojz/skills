@@ -1,0 +1,1088 @@
+#!/usr/bin/env python3
+"""Record and move the stage of every job in a factory run.
+
+    job plan <spec> [--base <ref>]     create the run and one job per eligible step
+    job next <spec>                    one line per job: start|resume|hold|wait|done <job> <stage> <note>
+    job advance <job-dir> <stage> [--pr <number>] [--reason <text>]
+    job answer <job-dir> [--from <file>]   the owner's words, from the file or stdin; back to build
+    job accept <job-dir> [--from <file>]   the owner's words; an approved, escalated job moves on
+    job merge <job-dir>                sync, gate again, merge the step pull request
+    job final <spec> [--title <text>]  gate the integration branch, open the final draft pull request
+    job status <spec>                  table of every job
+
+This script is the only writer of `job.json` and `run.json`. A move is made
+only when the files the agents and the gate wrote support it; a refusal is
+one line on stderr and exit 1. Usage errors exit 2.
+
+Run state lives in `docs/plans/factory-<spec-slug>/` of the target
+repository. A <job-dir> is `docs/plans/factory-<spec-slug>/jobs/<job>`,
+where <job> is the id `job next` prints.
+"""
+
+import argparse
+import contextlib
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+import factorylib as lib  # noqa: E402
+
+STAGES = ("planned", "build", "gate", "review", "approve", "merging", "merged",
+          "merge-ready", "needs-owner", "blocked")
+# Stages that hold a concurrency slot.
+ACTIVE = ("build", "gate", "review", "approve", "merging")
+# Stages a job rests at; the circuit breaker reads the order they were reached in.
+RESTING = ("merged", "merge-ready", "needs-owner", "blocked")
+STOPPED = ("needs-owner", "blocked")
+
+
+class Refusal(Exception):
+    """A move the evidence does not support. The job is left as it was."""
+
+
+class Escalated(Refusal):
+    """A refusal that moved the job to needs-owner before it was raised."""
+
+
+def stamp():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def short(sha):
+    return (sha or "")[:10]
+
+
+# locations
+
+class Run(object):
+    """Where one spec's run state lives."""
+
+    def __init__(self, repo, slug):
+        self.repo = repo
+        self.slug = slug
+        self.directory = os.path.join(repo, "docs", "plans", "factory-" + slug)
+        self.file = os.path.join(self.directory, "run.json")
+        self.jobs_directory = os.path.join(self.directory, "jobs")
+
+    def exists(self):
+        return os.path.isfile(self.file)
+
+    def load(self):
+        if not self.exists():
+            raise Refusal("no run for this spec; run `job plan` first")
+        return lib.read_json(self.file)
+
+    def job_directory(self, job_id):
+        return os.path.join(self.jobs_directory, job_id)
+
+    def jobs(self):
+        """Every job, in step order."""
+        found = []
+        if os.path.isdir(self.jobs_directory):
+            for name in sorted(os.listdir(self.jobs_directory)):
+                path = os.path.join(self.jobs_directory, name, "job.json")
+                if os.path.isfile(path):
+                    found.append(lib.read_json(path))
+        return sorted(found, key=lambda job: job["step"])
+
+    def relative(self, path):
+        return os.path.relpath(path, self.repo)
+
+
+def run_for_spec(spec_argument):
+    """The run a spec path names, and the spec's path from the repository root."""
+    path = os.path.abspath(spec_argument)
+    try:
+        repo = lib.repo_root(path)
+    except lib.FactoryError as failure:
+        raise Refusal(str(failure))
+    relative = os.path.relpath(os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path)), repo)
+    return Run(repo, lib.spec_slug(path)), relative
+
+
+def run_for_job(job_argument):
+    """The run and the job directory a <job-dir> argument names."""
+    directory = os.path.abspath(job_argument)
+    if not os.path.isfile(os.path.join(directory, "job.json")):
+        # A path printed from the repository root still works from a subdirectory.
+        root = lib.git(os.getcwd(), "rev-parse", "--show-toplevel", check=False)
+        candidate = os.path.join(root, job_argument) if root else directory
+        if not os.path.isfile(os.path.join(candidate, "job.json")):
+            raise Refusal("%s is not a job directory: it holds no job.json" % job_argument)
+        directory = candidate
+    directory = os.path.realpath(directory)
+    run_directory = os.path.dirname(os.path.dirname(directory))
+    slug = os.path.basename(run_directory)[len("factory-"):]
+    return Run(lib.repo_root(run_directory), slug), directory
+
+
+@contextlib.contextmanager
+def locked(directory):
+    """Hold the directory's lock file for the length of one command."""
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, ".lock"), "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def save(directory, job):
+    lib.write_json(os.path.join(directory, "job.json"), job)
+
+
+def load(directory):
+    return lib.read_json(os.path.join(directory, "job.json"))
+
+
+def enter(job, stage, note):
+    """Record a move. Every change of stage goes through here."""
+    job["history"].append({"from": job["stage"], "to": stage, "at": stamp(), "round": job["round"], "note": note})
+    job["stage"] = stage
+    job["note"] = note
+    job["rested_at"] = time.time() if stage in RESTING else None
+
+
+def line(verb, job, note=None):
+    text = "%s %s %s" % (verb, job["id"], job["stage"])
+    note = job["note"] if note is None else note
+    return "%s %s" % (text, note) if note else text
+
+
+# evidence
+
+def header(path, label):
+    """The header lines of a file an agent or the gate wrote."""
+    if not os.path.isfile(path):
+        raise Refusal("%s is missing" % label)
+    with open(path, encoding="utf-8", errors="replace") as source:
+        lines = [source.readline().strip() for _ in range(6)]
+    found = {"first": lines[0], "commit": "", "question": "", "escalate": []}
+    for text in lines[1:]:
+        if text.startswith("COMMIT:") and not found["commit"]:
+            found["commit"] = text[len("COMMIT:"):].strip()
+        elif text.startswith("QUESTION:") and not found["question"]:
+            question = text[len("QUESTION:"):].strip()
+            found["question"] = "" if question.lower() == "none" else question
+        elif text.startswith("ESCALATE:"):
+            reasons = text[len("ESCALATE:"):].strip()
+            if reasons.lower() != "none":
+                found["escalate"] = [reason.strip() for reason in reasons.split(";") if reason.strip()]
+    return found
+
+
+def worktree_head(job):
+    if not job.get("worktree") or not os.path.isdir(job["worktree"]):
+        raise Refusal("job %s has no worktree at %s" % (job["id"], job.get("worktree")))
+    return lib.git(job["worktree"], "rev-parse", "HEAD")
+
+
+def recorded_head(job):
+    """HEAD, refused when it is no longer the commit the build was recorded at."""
+    head = worktree_head(job)
+    if head != job["head"]:
+        raise Refusal("HEAD is %s but the build was recorded at %s; a new commit needs a new round" % (
+            short(head), short(job["head"])))
+    return head
+
+
+def reviewed_head(job, head):
+    """The commit the round's evidence names for this head.
+
+    `job merge` rebases an approved head and gates the result again, so
+    after a sync the reviews and the decision still name the commit from
+    before it.
+    """
+    synced = job.get("synced")
+    return synced["from"] if synced and synced["to"] == head else head
+
+
+def require_commit(found, head, label):
+    if not lib.sha_matches(found["commit"], head):
+        raise Refusal("%s names COMMIT %s but HEAD is %s" % (label, found["commit"] or "nothing", short(head)))
+
+
+def round_directory(directory, job):
+    return os.path.join(directory, "round-%d" % job["round"])
+
+
+def gate_evidence(run, directory, job):
+    path = os.path.join(round_directory(directory, job), "checks.md")
+    return header(path, run.relative(path)), run.relative(path)
+
+
+def review_evidence(run, directory, job):
+    """Each routed reviewer's header for this round, by name; None where the file is missing."""
+    found = {}
+    for name in job["reviewers"]:
+        path = os.path.join(round_directory(directory, job), "review-%s.md" % name)
+        found[name] = header(path, run.relative(path)) if os.path.isfile(path) else None
+    return found
+
+
+def require_reviews(run, directory, job, head):
+    verdicts = {}
+    for name, found in review_evidence(run, directory, job).items():
+        label = run.relative(os.path.join(round_directory(directory, job), "review-%s.md" % name))
+        if found is None:
+            raise Refusal("%s is missing" % label)
+        if found["first"] != "VERDICT: PASS":
+            raise Refusal("%s reads `%s`, not `VERDICT: PASS`" % (label, found["first"]))
+        require_commit(found, head, label)
+        verdicts[name] = "PASS"
+    return verdicts
+
+
+def require_approval(run, directory, head):
+    path = os.path.join(directory, "decision.md")
+    found = header(path, run.relative(path))
+    if found["first"] != "APPROVE":
+        raise Refusal("%s reads `%s`, not `APPROVE`" % (run.relative(path), found["first"]))
+    require_commit(found, head, run.relative(path))
+
+
+def last_round_note(job, paths, reason):
+    note = "last round used (round %d): %s" % (job["round"], ", ".join(paths))
+    return "%s: %s" % (note, reason) if reason else note
+
+
+def next_numbered(directory, prefix):
+    numbers = [int(found.group(1)) for found in
+               (re.fullmatch(re.escape(prefix) + r"-(\d+)\.md", name) for name in os.listdir(directory)) if found]
+    return max(numbers) + 1 if numbers else 1
+
+
+def require_integration_tip(run, run_state):
+    """Refuse when the integration branch holds a commit `job merge` did not put there.
+
+    A job is cut from that branch and its diff is measured against it, so a
+    commit pushed there directly would never be gated.
+    """
+    branch = run_state["integration_branch"]
+    ref = "origin/%s" % branch if lib.has_remote(run.repo) else branch
+    tip = lib.git(run.repo, "rev-parse", "--verify", "--quiet", "%s^{commit}" % ref, check=False)
+    if tip != run_state["integration_tip"]:
+        raise Refusal("%s is at %s, not at %s where this run's last merge left it" % (
+            ref, tip or "nothing", run_state["integration_tip"]))
+
+
+def regate(run, run_state, directory, job):
+    """Gate the head once more before a direct job rests at merge-ready.
+
+    The round's checks.md is a file any agent can write; this result is not.
+    """
+    result = lib.run_gate(job["worktree"], run_state["spec"], job["step"], job["base"]["sha"], job["gate_base"])
+    report = run.relative(lib.write_report(result, round_directory(directory, job), "merge-checks"))
+    if result["verdict"] != "PASS":
+        raise Refusal("the gate before merge-ready failed: %s (%s)" % ("; ".join(result["reasons"]), report))
+    return result
+
+
+# plan
+
+def plan_lines(run_state, jobs):
+    lines = []
+    for job in jobs:
+        lines.append("job %s step %d %s %s" % (job["id"], job["step"], run_state["mode"], job["branch"]))
+    for entry in run_state["skipped"]:
+        lines.append("skipped step %d %s" % (entry["step"], entry["reason"]))
+    for entry in run_state["ineligible"]:
+        lines.append("ineligible step %d %s" % (entry["step"], entry["reason"]))
+    return lines
+
+
+def command_plan(args):
+    run, spec_path = run_for_spec(args.spec)
+    with locked(run.directory):
+        if run.exists():
+            # A second session plans the same spec to pick the run up; it
+            # must find the run as it stands.
+            print("\n".join(plan_lines(run.load(), run.jobs())))
+            return 0
+        repo = run.repo
+        base_ref = args.base or lib.git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+        base_sha = lib.git(repo, "rev-parse", "--verify", "--quiet", "%s^{commit}" % base_ref, check=False)
+        if not base_sha:
+            raise Refusal("base %s does not name a commit" % base_ref)
+        text = lib.show(repo, base_sha, spec_path)
+        if text is None:
+            raise Refusal("spec %s is not committed at %s; the gate reads it from there" % (spec_path, base_ref))
+        on_disk = os.path.join(repo, spec_path)
+        if os.path.isfile(on_disk):
+            with open(on_disk, encoding="utf-8") as source:
+                if source.read().rstrip("\n") != text.rstrip("\n"):
+                    raise Refusal("spec %s differs from its copy at %s; commit it first" % (spec_path, base_ref))
+        spec = lib.parse_spec(text)
+        if not spec["status"].startswith("criteria signed off"):
+            raise Refusal("spec status is `%s`, not `criteria signed off`" % (spec["status"] or "missing"))
+        config = lib.load_config(repo, base_sha)
+
+        skipped, ineligible, eligible = [], [], []
+        for step in spec["steps"]:
+            if step["status"].lower().startswith("done"):
+                skipped.append({"step": step["number"], "title": step["title"], "reason": "status %s" % step["status"]})
+                continue
+            reason = lib.ineligible_reason(spec, step)
+            if reason:
+                ineligible.append({"step": step["number"], "title": step["title"], "reason": reason})
+            else:
+                eligible.append(step)
+        if not eligible:
+            for entry in ineligible:
+                print("ineligible step %d %s" % (entry["step"], entry["reason"]))
+            raise Refusal("spec %s has no eligible step" % spec_path)
+
+        mode = "direct" if len(eligible) == 1 else "integration"
+        origin = lib.has_remote(repo)
+        integration = None
+        gate_base = base_sha
+        if mode == "integration":
+            integration = "factory/%s" % run.slug
+            existing = lib.git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/%s" % integration, check=False)
+            if existing and existing != base_sha:
+                raise Refusal("branch %s already exists at %s, not at the base %s" % (
+                    integration, short(existing), short(base_sha)))
+            if not existing:
+                lib.git(repo, "branch", integration, base_sha)
+            if origin:
+                lib.git(repo, "push", "--quiet", "origin", "refs/heads/%s:refs/heads/%s" % (integration, integration))
+            gate_base = "origin/%s" % integration if origin else integration
+
+        default = lib.default_branch(repo)
+        if not default:
+            default = base_ref if base_ref in config["protected_branches"] else "main"
+
+        # A job whose Blocked by names a step the factory will not run can
+        # never start, and neither can a job behind it.
+        finished = {entry["step"] for entry in skipped}
+        runnable = {step["number"] for step in eligible}
+        barred = {}
+        changed = True
+        while changed:
+            changed = False
+            for step in eligible:
+                if step["number"] in barred:
+                    continue
+                for blocker in step["blocked_by"]:
+                    if blocker in finished or (blocker in runnable and blocker not in barred):
+                        continue
+                    barred[step["number"]] = "blocked by Step %d, which the factory does not run" % blocker
+                    changed = True
+                    break
+
+        jobs = []
+        for step in eligible:
+            identifier = lib.job_id(step)
+            surfaces = lib.step_surfaces(step)
+            job = {
+                "id": identifier,
+                "step": step["number"],
+                "title": step["title"],
+                "serves": step["serves"],
+                "blocked_by": step["blocked_by"],
+                "risk": step["risk"],
+                "surfaces": surfaces,
+                "reviewers": lib.route_reviewers(config, step["risk"], surfaces),
+                "stage": "planned",
+                "round": 1,
+                "round_limit": config["max_rounds"],
+                "base": {"ref": base_ref, "sha": base_sha},
+                "gate_base": gate_base,
+                "branch": "factory-job/%s/%s" % (run.slug, identifier),
+                "worktree": os.path.join(repo, ".claude", "worktrees", identifier),
+                "pr": None,
+                "head": None,
+                "gate": None,
+                "escalate": [],
+                "accepted": None,
+                "synced": None,
+                "reviews": {},
+                "question": "",
+                "note": "",
+                "rested_at": None,
+                "history": [],
+            }
+            if step["number"] in barred:
+                enter(job, "blocked", barred[step["number"]])
+                # Never started, so it is not one of the run's finished jobs.
+                job["rested_at"] = None
+            jobs.append(job)
+            save(run.job_directory(identifier), job)
+
+        run_state = {
+            "spec": spec_path,
+            "slug": run.slug,
+            "title": spec["title"],
+            "base": {"ref": base_ref, "sha": base_sha},
+            "mode": mode,
+            "integration_branch": integration,
+            "integration_tip": base_sha if integration else None,
+            "default_branch": default,
+            "concurrency": config["concurrency"],
+            "breaker": config["breaker"],
+            "max_rounds": config["max_rounds"],
+            "skipped": skipped,
+            "ineligible": ineligible,
+            "final": None,
+            "created": stamp(),
+        }
+        # Written last: a run exists only once every job file does.
+        lib.write_json(run.file, run_state)
+        print("\n".join(plan_lines(run_state, jobs)))
+    return 0
+
+
+# next
+
+def breaker_reason(run_state, jobs):
+    rested = sorted((job for job in jobs if job.get("rested_at")), key=lambda job: job["rested_at"])
+    count = run_state["breaker"]
+    recent = rested[-count:]
+    if count > 0 and len(recent) == count and all(job["stage"] in STOPPED for job in recent):
+        return "circuit breaker: the last %d finished jobs ended at needs-owner or blocked (%s)" % (
+            count, ", ".join("%s %s" % (job["id"], job["stage"]) for job in recent))
+    return None
+
+
+def unmet_blockers(job, jobs):
+    """Why a planned job cannot start yet, or None."""
+    by_step = {other["step"]: other for other in jobs}
+    for blocker in job["blocked_by"]:
+        other = by_step.get(blocker)
+        if other is not None and other["stage"] != "merged":
+            return "blocked by %s (%s)" % (other["id"], other["stage"])
+    return None
+
+
+def command_next(args):
+    run, _ = run_for_spec(args.spec)
+    run_state = run.load()
+    jobs = run.jobs()
+    stop = breaker_reason(run_state, jobs)
+    in_use = len([job for job in jobs if job["stage"] in ACTIVE])
+    lines = []
+    if stop:
+        lines.append("stop %s" % stop)
+    for job in jobs:
+        stage = job["stage"]
+        if stage in ("merged", "merge-ready", "blocked"):
+            lines.append(line("done", job))
+        elif stage == "needs-owner":
+            lines.append(line("wait", job))
+        elif stage in ACTIVE:
+            lines.append(line("resume", job, "round %d%s" % (job["round"], ", " + job["note"] if job["note"] else "")))
+        else:
+            blocked = unmet_blockers(job, jobs)
+            if blocked:
+                lines.append(line("hold", job, blocked))
+            elif stop:
+                lines.append(line("hold", job, "the circuit breaker is open"))
+            elif in_use >= run_state["concurrency"]:
+                lines.append(line("hold", job, "concurrency %d is in use" % run_state["concurrency"]))
+            else:
+                in_use += 1
+                lines.append(line("start", job, "step %d" % job["step"]))
+    print("\n".join(lines))
+    return 0
+
+
+# advance
+
+def start_build(run, run_state, directory, job):
+    jobs = run.jobs()
+    by_step = {other["step"]: other for other in jobs}
+    eligible_steps = set(by_step)
+    skipped = {entry["step"] for entry in run_state["skipped"]}
+    for blocker in job["blocked_by"]:
+        if blocker in skipped:
+            continue
+        if blocker not in eligible_steps:
+            enter(job, "blocked", "blocked by Step %d, which the factory does not run" % blocker)
+            job["rested_at"] = None
+            save(directory, job)
+            raise Refusal("%s is blocked by Step %d, which the factory does not run; it is now blocked" % (
+                job["id"], blocker))
+    blocked = unmet_blockers(job, jobs)
+    if blocked:
+        raise Refusal("%s is %s" % (job["id"], blocked))
+    stop = breaker_reason(run_state, jobs)
+    if stop:
+        raise Refusal(stop)
+    in_use = len([other for other in jobs if other["stage"] in ACTIVE])
+    if in_use >= run_state["concurrency"]:
+        raise Refusal("concurrency %d is in use" % run_state["concurrency"])
+
+    repo = run.repo
+    start = job["base"]["sha"]
+    if run_state["mode"] == "integration":
+        if lib.has_remote(repo):
+            lib.git(repo, "fetch", "--quiet", "origin", run_state["integration_branch"])
+        require_integration_tip(run, run_state)
+        start = job["gate_base"]
+    worktree, branch = job["worktree"], job["branch"]
+    if os.path.isdir(worktree):
+        if lib.git(worktree, "rev-parse", "--abbrev-ref", "HEAD", check=False) != branch:
+            raise Refusal("%s exists and is not a checkout of %s" % (worktree, branch))
+    elif lib.git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/%s" % branch, check=False):
+        lib.git(repo, "worktree", "add", "--quiet", worktree, branch)
+    else:
+        lib.git(repo, "worktree", "add", "--quiet", "-b", branch, worktree, start)
+    enter(job, "build", "")
+
+
+def build_to_gate(run, directory, job, args):
+    path = os.path.join(directory, "build.md")
+    found = header(path, run.relative(path))
+    if found["first"] != "STATUS: READY":
+        raise Refusal("%s reads `%s`, not `STATUS: READY`" % (run.relative(path), found["first"]))
+    head = worktree_head(job)
+    require_commit(found, head, run.relative(path))
+    if lib.git(job["worktree"], "status", "--porcelain"):
+        raise Refusal("the worktree has uncommitted or untracked files")
+    if lib.has_remote(run.repo):
+        pushed = lib.git(run.repo, "rev-parse", "--verify", "--quiet",
+                         "refs/remotes/origin/%s" % job["branch"], check=False)
+        if pushed != head:
+            raise Refusal("HEAD %s is not pushed: origin/%s is at %s" % (
+                short(head), job["branch"], short(pushed) or "nothing"))
+    if job["pr"] is None and args.pr is None:
+        raise Refusal("--pr <number> is required on the first round")
+    if job["pr"] is not None and args.pr is not None and args.pr != job["pr"]:
+        raise Refusal("--pr %d differs from the recorded pull request %d" % (args.pr, job["pr"]))
+    if job["pr"] is None:
+        job["pr"] = args.pr
+    job["head"] = head
+    job["synced"] = None
+    job["gate"] = None
+    job["escalate"] = []
+    job["reviews"] = {}
+    enter(job, "gate", "")
+
+
+def build_stopped(run, directory, job, args, target):
+    path = os.path.join(directory, "build.md")
+    found = header(path, run.relative(path))
+    allowed = ["STATUS: BLOCKED"] if target == "blocked" else ["STATUS: BLOCKED", "STATUS: FORK"]
+    if found["first"] not in allowed:
+        raise Refusal("%s reads `%s`, not %s" % (
+            run.relative(path), found["first"], " or ".join("`%s`" % status for status in allowed)))
+    source = run.relative(path)
+    question = found["question"]
+    if found["first"] == "STATUS: FORK":
+        fork = os.path.join(directory, "fork-%d.md" % (next_numbered(directory, "fork") - 1))
+        if not os.path.isfile(fork):
+            raise Refusal("build.md reads `STATUS: FORK` but the job directory holds no fork-<K>.md")
+        source = run.relative(fork)
+        question = header(fork, source)["question"] or question
+    job["question"] = args.reason or question
+    note = "%s (%s)" % (job["question"], source) if job["question"] else "see %s" % source
+    enter(job, target, note)
+
+
+def retry(job, note):
+    job["round"] += 1
+    job["gate"] = None
+    job["escalate"] = []
+    job["reviews"] = {}
+    enter(job, "build", note)
+
+
+def gate_moves(run, directory, job, args, target):
+    found, label = gate_evidence(run, directory, job)
+    head = recorded_head(job)
+    failed = found["first"] == "GATE: FAIL"
+    last = job["round"] >= job["round_limit"]
+    if target == "review":
+        if found["first"] != "GATE: PASS":
+            raise Refusal("%s reads `%s`, not `GATE: PASS`" % (label, found["first"]))
+        require_commit(found, head, label)
+        job["gate"] = "PASS"
+        job["escalate"] = found["escalate"]
+        enter(job, "review", "")
+    elif target == "build":
+        if not failed:
+            raise Refusal("%s reads `%s`, not `GATE: FAIL`" % (label, found["first"]))
+        if last:
+            raise Refusal("round %d is the last round; move the job to needs-owner" % job["round"])
+        job["gate"] = "FAIL"
+        retry(job, "gate failed: %s" % label)
+    elif target == "needs-owner":
+        if failed and last:
+            job["gate"] = "FAIL"
+            job["question"] = last_round_note(job, [label], args.reason)
+        elif args.reason:
+            job["question"] = args.reason
+        else:
+            raise Refusal("--reason is required for a move to needs-owner")
+        enter(job, "needs-owner", job["question"])
+    else:
+        raise Refusal("blocked is for a builder's `STATUS: BLOCKED`; a failed last round moves to needs-owner")
+
+
+def review_moves(run, directory, job, args, target):
+    head = recorded_head(job)
+    evidence = review_evidence(run, directory, job)
+    changes = [run.relative(os.path.join(round_directory(directory, job), "review-%s.md" % name))
+               for name, found in evidence.items() if found and found["first"] == "VERDICT: CHANGES"]
+    verdicts = {name: found["first"][len("VERDICT: "):] for name, found in evidence.items()
+                if found and found["first"].startswith("VERDICT: ")}
+    last = job["round"] >= job["round_limit"]
+    if target == "approve":
+        job["reviews"] = require_reviews(run, directory, job, head)
+        enter(job, "approve", "")
+    elif target == "build":
+        if not changes:
+            raise Refusal("no review of round %d reads `VERDICT: CHANGES`" % job["round"])
+        if last:
+            raise Refusal("round %d is the last round; move the job to needs-owner" % job["round"])
+        job["reviews"] = verdicts
+        retry(job, "changes asked: %s" % ", ".join(changes))
+    elif target == "needs-owner":
+        if changes and last:
+            job["reviews"] = verdicts
+            job["question"] = last_round_note(job, changes, args.reason)
+        elif args.reason:
+            job["question"] = args.reason
+        else:
+            raise Refusal("--reason is required for a move to needs-owner")
+        enter(job, "needs-owner", job["question"])
+    else:
+        raise Refusal("blocked is for a builder's `STATUS: BLOCKED`; a failed last round moves to needs-owner")
+
+
+def approve_moves(run, run_state, directory, job, args, target):
+    if target == "needs-owner":
+        path = os.path.join(directory, "decision.md")
+        question = args.reason
+        if not question and os.path.isfile(path):
+            found = header(path, run.relative(path))
+            if found["first"] == "ESCALATE":
+                question = found["question"] or "the approver escalated: see %s" % run.relative(path)
+        if not question:
+            raise Refusal("--reason is required for a move to needs-owner")
+        job["question"] = question
+        enter(job, "needs-owner", question)
+        return
+    wanted = "merging" if run_state["mode"] == "integration" else "merge-ready"
+    if target != wanted:
+        raise Refusal("a %s run moves an approved job to %s, not %s" % (run_state["mode"], wanted, target))
+    head = recorded_head(job)
+    require_approval(run, directory, head)
+    if target == "merge-ready":
+        job["escalate"] = regate(run, run_state, directory, job)["escalate"]
+    if job["escalate"]:
+        # A hard escalation condition is the owner's to accept, whatever the
+        # approver decided, so the refusal parks the job itself.
+        job["question"] = "hard escalation: %s" % "; ".join(job["escalate"])
+        enter(job, "needs-owner", job["question"])
+        save(directory, job)
+        raise Escalated("ESCALATE is not none (%s); %s is now at needs-owner" % (
+            "; ".join(job["escalate"]), job["id"]))
+    enter(job, target, "")
+
+
+def advance(run, run_state, directory, job, args):
+    source, target = job["stage"], args.stage
+    if source == "needs-owner" and target == "needs-owner":
+        # A refusal that parked the job may be followed by the caller's own move.
+        return
+    if source == "planned" and target == "build":
+        start_build(run, run_state, directory, job)
+    elif source == "build" and target == "gate":
+        build_to_gate(run, directory, job, args)
+    elif source == "build" and target in ("needs-owner", "blocked"):
+        build_stopped(run, directory, job, args, target)
+    elif source == "gate" and target in ("review", "build", "needs-owner", "blocked"):
+        gate_moves(run, directory, job, args, target)
+    elif source == "review" and target in ("approve", "build", "needs-owner", "blocked"):
+        review_moves(run, directory, job, args, target)
+    elif source == "approve" and target in ("merging", "merge-ready", "needs-owner"):
+        approve_moves(run, run_state, directory, job, args, target)
+    elif source in STOPPED and target == "build":
+        raise Refusal("%s leaves %s only through `job answer`" % (job["id"], source))
+    elif source == "needs-owner" and target in ("merging", "merge-ready"):
+        raise Refusal("%s leaves needs-owner for %s only through `job accept`" % (job["id"], target))
+    elif source == "merging" and target == "merged":
+        raise Refusal("%s reaches merged only through `job merge`" % job["id"])
+    else:
+        raise Refusal("no move from %s to %s" % (source, target))
+
+
+def command_advance(args):
+    run, directory = run_for_job(args.job_dir)
+    run_state = run.load()
+    # Starting a job counts the slots other jobs hold, so two starts must
+    # not run at once.
+    outer = locked(run.directory) if args.stage == "build" else contextlib.nullcontext()
+    with outer, locked(directory):
+        job = load(directory)
+        advance(run, run_state, directory, job, args)
+        save(directory, job)
+        print(line("moved", job, "round %d%s" % (job["round"], ", " + job["note"] if job["note"] else "")))
+    return 0
+
+
+# answer and accept
+
+def owner_words(args):
+    """The owner's words, from --from or stdin, exactly as given."""
+    if args.source:
+        try:
+            with open(args.source, encoding="utf-8") as source:
+                words = source.read()
+        except OSError as failure:
+            raise Refusal("cannot read %s: %s" % (args.source, failure))
+    else:
+        words = sys.stdin.read()
+    if not words.strip():
+        raise Refusal("the owner's words are expected in --from <file> or on stdin, and they are empty")
+    return words
+
+
+def command_answer(args):
+    run, directory = run_for_job(args.job_dir)
+    run_state = run.load()
+    with locked(directory):
+        job = load(directory)
+        builder_blocked = job["stage"] == "blocked" and job["history"][-1]["from"] == "build"
+        if job["stage"] != "needs-owner" and not builder_blocked:
+            raise Refusal("%s is at %s; `job answer` takes a job at needs-owner, or one its builder blocked" % (
+                job["id"], job["stage"]))
+        words = owner_words(args)
+        name = "feedback-%d.md" % next_numbered(directory, "feedback")
+        lib.write_atomic(os.path.join(directory, name), words)
+        job["round"] += 1
+        job["round_limit"] = job["round"] + run_state["max_rounds"] - 1
+        job["gate"] = None
+        job["escalate"] = []
+        job["reviews"] = {}
+        job["accepted"] = None
+        job["question"] = ""
+        enter(job, "build", "owner answered: %s" % run.relative(os.path.join(directory, name)))
+        save(directory, job)
+        print(line("answered", job, "round %d, %s" % (job["round"], name)))
+    return 0
+
+
+def command_accept(args):
+    run, directory = run_for_job(args.job_dir)
+    run_state = run.load()
+    with locked(directory):
+        job = load(directory)
+        if job["stage"] != "needs-owner":
+            raise Refusal("%s is at %s; `job accept` takes a job at needs-owner" % (job["id"], job["stage"]))
+        if not job["head"]:
+            raise Refusal("%s has no gated head to accept" % job["id"])
+        head = recorded_head(job)
+        found, label = gate_evidence(run, directory, job)
+        if found["first"] != "GATE: PASS":
+            raise Refusal("%s reads `%s`, not `GATE: PASS`" % (label, found["first"]))
+        evidence = reviewed_head(job, head)
+        require_commit(found, evidence, label)
+        require_reviews(run, directory, job, evidence)
+        require_approval(run, directory, evidence)
+        words = owner_words(args)
+        target = "merging" if run_state["mode"] == "integration" else "merge-ready"
+        reasons = found["escalate"]
+        if target == "merge-ready":
+            reasons = regate(run, run_state, directory, job)["escalate"]
+            unasked = [reason for reason in reasons if reason not in job["escalate"]]
+            if unasked:
+                raise Refusal("the gate escalates what the owner was not asked about: %s" % "; ".join(unasked))
+        name = "acceptance-%d.md" % next_numbered(directory, "acceptance")
+        lib.write_atomic(os.path.join(directory, name), words)
+        job["accepted"] = {"head": head, "reasons": reasons, "file": name, "at": stamp()}
+        job["question"] = ""
+        enter(job, target, "owner accepted: %s" % ("; ".join(reasons) or "no escalation"))
+        save(directory, job)
+        print(line("accepted", job, "round %d, %s" % (job["round"], name)))
+    return 0
+
+
+# merge and final
+
+def gh(cwd, *args):
+    """Run gh; returns its stdout, or raises Refusal with its last error line."""
+    try:
+        done = subprocess.run(["gh"] + list(args), cwd=cwd, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as failure:
+        raise Refusal("gh could not be run: %s" % failure)
+    if done.returncode != 0:
+        message = done.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise Refusal("gh %s failed: %s" % (" ".join(args[:2]), message[-1] if message else "exit %d" % done.returncode))
+    return done.stdout.decode("utf-8", "replace").strip()
+
+
+def merge(run, run_state, directory, job):
+    """Sync, gate again and merge. Raises Refusal with the reason on any failure."""
+    repo, worktree, branch = run.repo, job["worktree"], job["branch"]
+    integration = run_state["integration_branch"]
+    config = lib.load_config(repo, job["base"]["sha"])
+    if job["pr"] is None:
+        raise Refusal("no pull request is recorded")
+    # run.json is a file an agent could write, so the only branch this
+    # command merges into is the one the run's own directory names.
+    if integration != "factory/%s" % run.slug:
+        raise Refusal("run.json names the integration branch %s, not factory/%s" % (integration, run.slug))
+
+    try:
+        pull = json.loads(gh(worktree, "pr", "view", str(job["pr"]), "--json", "baseRefName,headRefOid"))
+    except ValueError:
+        raise Refusal("gh pr view did not return JSON")
+    base_name = pull.get("baseRefName")
+    if base_name in config["protected_branches"]:
+        raise Refusal("pull request %d targets the protected branch %s" % (job["pr"], base_name))
+    if base_name != integration:
+        raise Refusal("pull request %d targets %s, not %s" % (job["pr"], base_name, integration))
+
+    old = recorded_head(job)
+    if job["accepted"] and job["accepted"]["head"] != old:
+        raise Refusal("the owner accepted %s but HEAD is %s" % (short(job["accepted"]["head"]), short(old)))
+    if pull.get("headRefOid") != old:
+        raise Refusal("pull request %d is at %s but the approved head is %s" % (
+            job["pr"], short(pull.get("headRefOid")), short(old)))
+    if lib.git(worktree, "status", "--porcelain"):
+        raise Refusal("the worktree has uncommitted or untracked files")
+
+    origin = lib.has_remote(repo)
+    if origin:
+        lib.git(repo, "fetch", "--quiet", "origin", integration)
+    require_integration_tip(run, run_state)
+    target = job["gate_base"]
+    if lib.git(worktree, "rebase", "--quiet", target, check=False) is None:
+        lib.git(worktree, "rebase", "--abort", check=False)
+        raise Refusal("the rebase onto %s stopped on a conflict" % target)
+    new = lib.git(worktree, "rev-parse", "HEAD")
+
+    def undo(reason):
+        # The remote still holds the old head, so the worktree goes back to
+        # it and the next builder starts from what was reviewed.
+        lib.git(worktree, "reset", "--quiet", "--hard", old, check=False)
+        return Refusal(reason)
+
+    try:
+        result = lib.run_gate(worktree, run_state["spec"], job["step"], job["base"]["sha"], target)
+    except lib.FactoryError as failure:
+        raise undo("the gate after the sync could not run: %s" % failure)
+    report = run.relative(lib.write_report(result, round_directory(directory, job), "merge-checks"))
+    if result["verdict"] != "PASS":
+        raise undo("the gate after the sync failed: %s (%s)" % ("; ".join(result["reasons"]), report))
+    allowed = job["accepted"]["reasons"] if job["accepted"] else []
+    unanswered = [reason for reason in result["escalate"] if reason not in allowed]
+    if unanswered:
+        raise undo("the gate after the sync escalates what the owner has not accepted: %s (%s)" % (
+            "; ".join(unanswered), report))
+
+    if origin and new != old:
+        try:
+            lib.git(worktree, "push", "--quiet", "--force-with-lease=%s:%s" % (branch, old),
+                    "origin", "%s:%s" % (branch, branch))
+        except lib.FactoryError as failure:
+            raise undo("the push of the synced branch was rejected: %s" % failure)
+    if new != old:
+        job["synced"] = {"from": reviewed_head(job, old), "to": new}
+    job["head"] = new
+    if job["accepted"]:
+        # The rebased commit carries the same change the owner accepted.
+        job["accepted"]["head"] = new
+    # Saved before the merge so a failure after the push still records the pushed head.
+    save(directory, job)
+    gh(worktree, "pr", "merge", str(job["pr"]), "--merge", "--match-head-commit", new)
+    if origin:
+        # The next job is cut from the integration branch as it is now.
+        lib.git(repo, "fetch", "--quiet", "origin", integration, check=False)
+    ref = "origin/%s" % integration if origin else integration
+    parents = (lib.git(repo, "rev-list", "--parents", "-n", "1", ref, check=False) or "").split()
+    # Only this merge may move the recorded tip: the new tip must be the
+    # merge of the head just pinned into the tip the run knew. Anything
+    # else stays unrecorded, and the next start, merge or final refuses.
+    if parents[1:] == [run_state["integration_tip"], new]:
+        run_state["integration_tip"] = parents[0]
+        lib.write_json(run.file, run_state)
+    return new
+
+
+def command_merge(args):
+    run, directory = run_for_job(args.job_dir)
+    # The run lock is held too: a merge moves the recorded integration tip,
+    # and two merges must not race it.
+    with locked(run.directory), locked(directory):
+        run_state = run.load()
+        job = load(directory)
+        if job["stage"] != "merging":
+            raise Refusal("%s is at %s; `job merge` takes a job at merging" % (job["id"], job["stage"]))
+        try:
+            head = merge(run, run_state, directory, job)
+        except (Refusal, lib.FactoryError) as failure:
+            job["question"] = "merge failed: %s" % failure
+            enter(job, "needs-owner", job["question"])
+            save(directory, job)
+            raise Escalated("%s; %s is now at needs-owner" % (failure, job["id"]))
+        enter(job, "merged", "pull request %d merged at %s" % (job["pr"], short(head)))
+        save(directory, job)
+        print(line("merged", job))
+    return 0
+
+
+def final_body(run_state, jobs, result):
+    lines = [
+        "## Summary",
+        "",
+        "Every step of `%s` that the factory ran, merged into `%s` as one merge commit per step." % (
+            run_state["spec"], run_state["integration_branch"]),
+        "",
+        "| Job | Pull request | Gate | Reviews | Stage |",
+        "|---|---|---|---|---|",
+    ]
+    for job in jobs:
+        reviews = ", ".join("%s %s" % (name, verdict) for name, verdict in sorted(job["reviews"].items()))
+        lines.append("| %s | %s | %s | %s | %s |" % (
+            job["id"], "#%d" % job["pr"] if job["pr"] else "", job["gate"] or "", reviews, job["stage"]))
+    if run_state["ineligible"]:
+        lines.extend(["", "Steps the factory did not run:", ""])
+        for entry in run_state["ineligible"]:
+            lines.append("- Step %d, %s: %s" % (entry["step"], entry["title"], entry["reason"]))
+    lines.extend(["", "## Verification", "", "The gate on `%s` at `%s`: %s." % (
+        run_state["integration_branch"], result["commit"], lib.verdict_line(result))])
+    return "\n".join(lines) + "\n"
+
+
+def command_final(args):
+    run, _ = run_for_spec(args.spec)
+    with locked(run.directory):
+        run_state = run.load()
+        if run_state["mode"] != "integration":
+            raise Refusal("a direct run has no final pull request; its job ends at merge-ready")
+        if run_state["final"] and run_state["final"].get("pr"):
+            print("final %s %s" % (run_state["final"]["pr"], run_state["final"]["gate"]))
+            return 0
+        jobs = run.jobs()
+        never_started = [job for job in jobs if job["stage"] == "blocked" and job["history"][-1]["from"] == "planned"]
+        open_jobs = [job for job in jobs if job["stage"] != "merged" and job not in never_started]
+        if open_jobs:
+            raise Refusal("not every job is merged: %s" % ", ".join(
+                "%s %s" % (job["id"], job["stage"]) for job in open_jobs))
+        if not [job for job in jobs if job["stage"] == "merged"]:
+            raise Refusal("no job is merged")
+
+        repo, integration = run.repo, run_state["integration_branch"]
+        base = run_state["base"]["sha"]
+        tip = integration
+        if lib.has_remote(repo):
+            lib.git(repo, "fetch", "--quiet", "origin", integration)
+            tip = "origin/%s" % integration
+        require_integration_tip(run, run_state)
+        checkout = os.path.join(repo, ".claude", "worktrees", "factory-%s-final" % run.slug)
+        if os.path.isdir(checkout):
+            lib.git(repo, "worktree", "remove", "--force", checkout)
+        lib.git(repo, "worktree", "add", "--quiet", "--detach", checkout, tip)
+        # A requirement that a step outside this run also serves is not
+        # finished by this branch, so its criteria would fail here by design.
+        spec = lib.parse_spec(lib.show(repo, base, run_state["spec"]))
+        merged_steps = {job["step"] for job in jobs if job["stage"] == "merged"}
+        done_steps = merged_steps | {entry["step"] for entry in run_state["skipped"]}
+        finished = {req for step in spec["steps"] if step["number"] in merged_steps for req in step["serves"]}
+        finished -= {req for step in spec["steps"] if step["number"] not in done_steps for req in step["serves"]}
+        try:
+            result = lib.run_gate(checkout, run_state["spec"], None, base, base, finished_reqs=sorted(finished))
+        finally:
+            lib.git(repo, "worktree", "remove", "--force", checkout, check=False)
+        report = run.relative(lib.write_report(result, run.directory, "final-checks"))
+        if result["verdict"] != "PASS":
+            run_state["final"] = {"gate": "FAIL", "commit": result["commit"], "pr": None}
+            lib.write_json(run.file, run_state)
+            raise Refusal("the gate on %s failed: %s (%s)" % (integration, "; ".join(result["reasons"]), report))
+
+        title = args.title or "feat: %s" % (run_state["title"][:1].lower() + run_state["title"][1:])
+        created = gh(repo, "pr", "create", "--draft", "--base", run_state["default_branch"],
+                     "--head", integration, "--title", title, "--body", final_body(run_state, jobs, result))
+        pull = created.splitlines()[-1] if created else "opened"
+        run_state["final"] = {"gate": "PASS", "commit": result["commit"], "pr": pull}
+        lib.write_json(run.file, run_state)
+        print("final %s PASS" % pull)
+    return 0
+
+
+# status
+
+def command_status(args):
+    run, _ = run_for_spec(args.spec)
+    run.load()
+    rows = [("job", "stage", "round", "pull request", "gate", "reviews", "note")]
+    for job in run.jobs():
+        reviews = ",".join("%s:%s" % (name, verdict) for name, verdict in sorted(job["reviews"].items()))
+        rows.append((job["id"], job["stage"], "%d/%d" % (job["round"], job["round_limit"]),
+                     str(job["pr"]) if job["pr"] else "-", job["gate"] or "-", reviews or "-", job["note"] or "-"))
+    widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]) - 1)]
+    for row in rows:
+        padded = [row[column].ljust(widths[column]) for column in range(len(widths))]
+        print("  ".join(padded + [row[-1]]))
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="job", description="Record and move the stage of every job in a factory run.")
+    commands = parser.add_subparsers(dest="command", metavar="command")
+    commands.required = True
+
+    plan = commands.add_parser("plan", help="create the run and one job per eligible step")
+    plan.add_argument("spec")
+    plan.add_argument("--base", help="the ref the run starts from (default: the current branch)")
+    plan.set_defaults(run=command_plan)
+
+    following = commands.add_parser("next", help="one line per job: what to do with it now")
+    following.add_argument("spec")
+    following.set_defaults(run=command_next)
+
+    move = commands.add_parser("advance", help="move a job, or refuse with the reason")
+    move.add_argument("job_dir", metavar="job-dir")
+    move.add_argument("stage", choices=STAGES)
+    move.add_argument("--pr", type=int, help="the step's pull request, required on the first move to gate")
+    move.add_argument("--reason", help="the one question for the owner, for a move to needs-owner")
+    move.set_defaults(run=command_advance)
+
+    answer = commands.add_parser("answer", help="the owner's words on stdin; the job builds again")
+    answer.add_argument("job_dir", metavar="job-dir")
+    answer.add_argument("--from", dest="source", metavar="FILE", help="read the owner's words from this file, not stdin")
+    answer.set_defaults(run=command_answer)
+
+    accept = commands.add_parser("accept", help="the owner's words on stdin; an approved, escalated job moves on")
+    accept.add_argument("job_dir", metavar="job-dir")
+    accept.add_argument("--from", dest="source", metavar="FILE", help="read the owner's words from this file, not stdin")
+    accept.set_defaults(run=command_accept)
+
+    merging = commands.add_parser("merge", help="sync, gate again and merge the step pull request")
+    merging.add_argument("job_dir", metavar="job-dir")
+    merging.set_defaults(run=command_merge)
+
+    final = commands.add_parser("final", help="gate the integration branch and open the final draft pull request")
+    final.add_argument("spec")
+    final.add_argument("--title", help="the pull request title (default: feat: <the spec's title>)")
+    final.set_defaults(run=command_final)
+
+    status = commands.add_parser("status", help="table of every job")
+    status.add_argument("spec")
+    status.set_defaults(run=command_status)
+
+    args = parser.parse_args()
+    try:
+        return args.run(args)
+    except Refusal as refusal:
+        print("refused: %s" % str(refusal).replace("\n", " "), file=sys.stderr)
+        return 1
+    except lib.FactoryError as failure:
+        print("refused: %s" % str(failure).replace("\n", " "), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

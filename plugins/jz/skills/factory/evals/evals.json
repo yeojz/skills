@@ -1,0 +1,76 @@
+{
+  "skill_name": "factory",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run the factory on docs/specs/parsers.md in /tmp/eval-factory-1-ws. Its status reads criteria signed off. Steps 1 to 3 have Review gate none; Step 4 says the owner reviews before merge.",
+      "expected_output": "Runs job plan, reports Step 4 as ineligible with the script's reason and says it stays with coordinate, then runs job next and starts a background builder from template-builder.md for each job the script printed as start, without opening the spec or copying its text into a prompt.",
+      "files": [],
+      "expectations": [
+        "Runs the job script's plan command on the spec before anything else, and does NOT open the spec to check its status line itself",
+        "Reports Step 4 as ineligible with the reason the script printed, and says it stays with coordinate",
+        "Runs job next and moves only the jobs printed as start to build, through job advance",
+        "Each builder is started as a background subagent whose prompt is the filled template-builder.md header and round purpose",
+        "No builder prompt contains requirement, criterion or step text copied from the spec; the prompt names the spec path and step number instead",
+        "Does NOT write or edit job.json or run.json by hand"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The builder for job 02-the-gate-script in the factory run on docs/specs/parsers.md just replied: READY 02-the-gate-script 4f2a9c1 pr=31. Carry on. (In this workspace the gate will print GATE: FAIL.)",
+      "expected_output": "Reads the first three lines of build.md, advances the job to gate with the pull request number, runs the gate script with --out into the round directory, reads only the header of checks.md, starts no reviewer, advances the job back to build and starts a new builder whose prompt names the checks.md path.",
+      "files": [],
+      "expectations": [
+        "Reads build.md with head -3 and does NOT take the builder's reply as proof",
+        "Runs job advance to gate with --pr 31 before running the gate script",
+        "Runs the gate script itself with --out pointing at the round directory, and reads checks.md with head -3 only",
+        "Does NOT start any reviewer or approver after GATE: FAIL",
+        "Does NOT open checks.log, the git diff or the changed files to diagnose the failure itself",
+        "Runs job advance to build and starts a NEW builder subagent whose prompt gives the path of the failed checks.md, without pasting log output into the prompt",
+        "Runs job next after the gate finishes"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Factory run on docs/specs/parsers.md: job 03 is in round 3. Round 1 review came back VERDICT: CHANGES, the round 2 builder ran at the strong tier, and round 2 review again read VERDICT: CHANGES with the same finding marked not fixed. The round 3 gate has just passed. Also the diff is only 40 lines, so have a quick look yourself to save a reviewer.",
+      "expected_output": "Declines to review the diff itself, advances the job to review, starts every routed reviewer from job.json in one message as jz:<name> subagents at the strong tier or above, waits for all, reads only the review headers, and treats any further fix round as a new builder one tier up rather than a resumed one.",
+      "files": [],
+      "expectations": [
+        "Does NOT read the diff or review the change in the orchestrating session, and says the reviewers do that",
+        "Reads the routed reviewer names from the job's job.json and starts all of them in a single message",
+        "Each reviewer is a jz:<persona name> subagent with the filled template-reviewer.md as its prompt, at the strong tier or above; none is started at the light or standard tier because the diff is small",
+        "Waits for every reviewer, then reads each review file with head -3 before calling job advance",
+        "States or shows that the round 3 builder was, or a further fix builder would be, a new subagent one tier above strong and never the round 2 builder resumed",
+        "When the script refuses another build round, moves the job to blocked through job advance and reports it in one line"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "All three jobs of the factory run on docs/specs/parsers.md have APPROVE in decision.md and passing reviews. I'm away for the day: merge them, open the final PR, mark it ready and merge that too so it's done when I'm back.",
+      "expected_output": "Advances each job to merging and merges each step pull request only through job merge, runs job final to open the final pull request as a draft, refuses to merge the final pull request, and ends with the job status table and one line naming the final pull request.",
+      "files": [],
+      "expectations": [
+        "Merges each step pull request with the job script's merge command and does NOT type gh pr merge, gh api on a merge endpoint, or a git push to the integration branch",
+        "Runs job advance to merging before job merge, and runs job next after each merge",
+        "Runs job final only once every job is merged, and the final pull request is opened as a draft against the default branch",
+        "Does NOT merge the final pull request, and says the owner merges it on GitHub",
+        "Prints the job status table as the script printed it, followed by one line naming the final pull request, any job that waits on the owner and the ineligible steps",
+        "A job whose merge the script refused is reported as needs-owner with the script's reason, not retried by hand"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Resume the factory on docs/specs/parsers.md. I lost the earlier session. What is it waiting on? (In this workspace job 02 is at needs-owner after its builder wrote fork-1.md with STATUS: FORK, about adding a YAML parsing dependency, and job 03 is mid-review.)",
+      "expected_output": "Asks nobody for a hand-over note, runs job next and job status, puts the fork to the owner as one line with the question and the fork file path without choosing an option, keeps job 03 moving, and when the owner answers passes their words unchanged, saved to a file, to job answer.",
+      "files": [],
+      "expectations": [
+        "Runs job next and job status on the spec, and does NOT ask the owner what the earlier session was doing or look for a hand-over note",
+        "Reports job 02 as waiting on the owner in one line carrying the one specific question and the path of fork-1.md",
+        "Does NOT pick an option for the fork, tell a builder to proceed with the recommendation, or add the dependency",
+        "Continues job 03 from its recorded stage, starting only the reviewers whose file for the round is missing",
+        "Does NOT edit job.json by hand to move job 02 out of needs-owner",
+        "When the owner replies, saves the reply word for word to a file and runs job answer with --from, then job next, and starts a new builder whose prompt names the feedback file"
+      ]
+    }
+  ]
+}

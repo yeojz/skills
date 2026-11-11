@@ -1,6 +1,6 @@
 ---
 name: coordinate
-description: Use when a spec's steps have to be driven through separate worker and reviewer sessions to merge-ready, with the owner merging on GitHub. Triggers on requests like "coordinate the spec", "drive the spec with workers", "start worker sessions for steps 2 to 4", "drain the steps across sessions", "I will review on GitHub", "coordinate auto", "auto mode", "decide the forks without me", "where are we", "PR 42 is ready for review", "the reviewer said after fixes", or when a session that starts other sessions picks up a step of a spec in docs/specs/.
+description: Use when a spec's steps have to be driven through separate worker and reviewer sessions to merge-ready, with the owner merging on GitHub. Triggers on requests like "coordinate the spec", "drive the spec with workers", "start worker sessions for steps 2 to 4", "drain the steps across sessions", "I will review on GitHub", "where are we", "PR 42 is ready for review", "the reviewer said after fixes", or when a session that starts other sessions picks up a step of a spec in docs/specs/.
 ---
 
 # coordinate
@@ -14,22 +14,6 @@ to merge. Every brief comes from this skill's templates, and every session,
 verdict and decision is written to two ledgers, so "where are we" is
 answered from a file. This session never implements, never reviews and
 never merges.
-
-## Modes
-
-| Mode | Trigger | ADR-tier forks |
-|---|---|---|
-| owner | The default | Lettered options to the owner; the row parks |
-| auto | "coordinate auto", "auto mode", "decide the forks without me" | An independent option review, then the coordinator decides; the owner gets only a new dependency or a disagreement (Step 10) |
-
-```text
-Coordinate docs/specs/parsers.md in auto mode. I will merge on GitHub.
-```
-
-Auto changes only who settles an ADR-tier fork. The `criteria signed off`
-gate, the review, the fix rounds and the merge are the same in both modes.
-Record the mode as the first `decisions.tsv` row, kind `mode`, so it
-survives a handoff; "back to owner mode" appends another.
 
 ## Workflow
 
@@ -63,7 +47,7 @@ notes="<notes folder>"; mkdir -p "$notes" || echo "cannot create $notes"
 
 `units.tsv` has one row per step, rewritten as it moves; `base` is the
 default branch or `<parent branch>@<sha>` for a stacked step.
-`decisions.tsv` is append-only: one row per mode, fork, verdict or relay,
+`decisions.tsv` is append-only: one row per fork, verdict or relay,
 with a pointer to its evidence.
 
 | State | Meaning |
@@ -205,11 +189,11 @@ parent's commits. Then `verify`, push with
 
 ### Step 10: Forks
 
-| Fork | Members | Owner mode | Auto mode |
-|---|---|---|---|
-| New dependency | A package, service or tool the repo does not use yet | Owner | Owner |
-| ADR-tier | Public API shape, data model, a specification reading, anything that would earn an ADR or that grill's hand-back listed as the owner's | Owner | Option review |
-| Everything else | Naming inside a package, test layout, an internal helper, commit order | Decide | Decide |
+| Fork | Members | Do |
+|---|---|---|
+| New dependency | A package, service or tool the repo does not use yet | Owner |
+| ADR-tier | Public API shape, data model, a specification reading, anything that would earn an ADR or that grill's hand-back listed as the owner's | Owner |
+| Everything else | Naming inside a package, test layout, an internal helper, commit order | Decide |
 
 **Owner:** lettered options with a recommendation; park the row and keep
 draining the others. When the owner answers, append a row with the same
@@ -218,23 +202,10 @@ draining the others. When the owner answers, append a row with the same
 **Decide:** log a `fork` row with the reason, tell the worker, and name it
 in the next report.
 
-**Option review.** The worker keeps building what doesn't depend on the
-fork.
-
-1. Save the question, constraints and options as `fork-<unit>-<n>.md`,
-   without the worker's recommendation or its reasons.
-2. Fill `template-option-review.md` and start a fresh session one tier above
-   the worker's, up to top; at top already, the other family where present.
-   It researches on its own, returns a pick with evidence, and edits
-   nothing. Log its verdict.
-3. Compare its pick with the worker's recommendation:
-
-| The two views | Do |
-|---|---|
-| Same option, and you find no reason against it | Decide it: a `fork` row with `auto` in `result` and both files as evidence. Relay it with the Sign-off line an ADR it earns carries: `(C) <this session's model>, (W) <worker's>, (R) <option reviewer's>` |
-| Different options, or you doubt the shared pick | Owner, with both views in one line each and why they part, and no recommendation |
-
-Name every auto decision in the next report to the owner, one line each.
+A run started through `handsfree` has its ADR-tier forks answered by that
+skill, which holds the rules for it. Log each answer as a `fork` row with
+its decision number as evidence, and name each one in the next report to
+the owner. A new dependency stays the owner's.
 
 ### Step 11: "Where are we"
 
@@ -243,9 +214,8 @@ notes="<notes folder>"
 column -t -s $'\t' "$notes/units.tsv"; tail -20 "$notes/decisions.tsv"
 ```
 
-Answer from the table, plus the forks the owner owes and, in auto mode, the
-forks decided with a model sign-off. Correct a row that disagrees with
-`gh pr view` in the file first.
+Answer from the table, plus the forks the owner owes. Correct a row that
+disagrees with `gh pr view` in the file first.
 
 ## Common Mistakes
 
@@ -254,5 +224,5 @@ forks decided with a model sign-off. Correct a row that disagrees with
 | Moving a row on a session's word | Check it against `gh pr view` and the brief |
 | Retrying a failed fix round on the same tier, or carrying its unpushed work | One tier up, fresh, from the pushed head |
 | A plain rebase of a stacked step after a squash merge | `rebase --onto` the parent tip, then range-diff |
-| Showing the option reviewer the worker's recommendation | Options and constraints only |
+| Deciding an ADR-tier fork or a new dependency here | Lettered options to the owner; park the row |
 | Paraphrasing the standing orders | Paste them verbatim, in every brief and relay |

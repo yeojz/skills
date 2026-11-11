@@ -1,0 +1,73 @@
+{
+  "skill_name": "handsfree",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "handsfree grill: write a spec for adding rate limiting to the public API in this repo. Decide the forks without me.",
+      "expected_output": "Opens docs/plans/handsfree-<slug>/ with decisions.tsv, starts grill in spec mode as a subagent whose brief says its owner is handsfree and names the run folder, and asks the owner no design question itself. When the subagent reports round 1 written, the session reads round-1-questions.md, writes round-1-picks.md with a letter and a reason per question, and only then opens round-1-recommendations.md. It applies the decision rules, writes round-1-answers.md, appends a numbered row per decision and starts grill again with the answers file.",
+      "files": [],
+      "expectations": [
+        "grill runs as a subagent whose brief says the owner is handsfree and names the run folder; the session running handsfree writes no round of questions and no spec text itself",
+        "round-1-picks.md is written, with a letter and a one-sentence reason for every question, before any read of round-1-recommendations.md appears in the transcript",
+        "No research command or code read is run for a question marked Tier: below; the pick cites facts from the questions file",
+        "A below-tier question where the pick and the recommendation match is decided with no second opinion asked",
+        "Each decided question gets a decisions.tsv row with a D number, the options, the recommendation, the own pick, the second opinion or none, the decision and the reason",
+        "round-1-answers.md holds one line per question in the form Q4: B, and grill is started again with that file rather than being asked to continue from memory"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Running handsfree coordinate docs/specs/parsers.md. Round 3 is written. It holds Q7 (Tier: ADR): should the parser keep spans as byte offsets (A) or line and column pairs (B)? Q8 (Tier: below): cache file name, A or B. Q9 (Tier: below): test layout, A or B. Q10 (Tier: ADR): error type, a union (A) or a class hierarchy (B). The worker's recommendations file reads Q7: A, Q8: A, Q9: B, Q10: A.",
+      "expected_output": "The session writes its own picks for Q7 to Q10 from the questions file before reading the recommendations. It then sends at most two second opinion requests for the round, both in one batch: one to the assessor thread at the standard tier covering every below-tier question where its pick and the recommendation differ, and one to a fresh top tier session covering Q7 and Q10 together, on the other family where present. Neither brief carries a recommendation, the session's pick or who disagreed. An ADR-tier question is decided only when all three picks match; otherwise it goes to owner-questions.md.",
+      "files": [],
+      "expectations": [
+        "Q7 and Q10 are not decided on the strength of the session's pick matching the recommendation; a second opinion is asked for both even when the first two picks agree",
+        "Q7 and Q10 go to one fresh session in one brief, at the top tier, not one session per question, and that brief says research is expected",
+        "Below-tier questions whose two picks differ go to the assessor thread in one brief at the standard tier that says to use the facts given; a below-tier question whose two picks match is not sent",
+        "No second opinion brief contains the letters the worker recommended, the worker's reasons, the session's own picks or a statement of who disagreed",
+        "An ADR-tier question where the second opinion differs from either other pick is written to owner-questions.md and answered Q<n>: owner, with every pick listed and no recommendation added",
+        "A below-tier split is decided for the option two of the three picks chose, and the decisions.tsv reason names the dissenting pick",
+        "After the round, the assessor thread is sent the decisions alone, such as D12: B"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "handsfree round 2 of grill on docs/specs/export.md. The questions file has Q4 (Tier: below): generate the PDF with a new library pdfkit, not in package.json today (A), or with the HTML print path the app already has (B). Q5 (Tier: below): should the export include archived projects, A yes or B no; the facts say the code and the existing spec do not say which the customers expect. The recommendations file reads Q4: A, Q5: A. Your picks were Q4: A, Q5: A.",
+      "expected_output": "Neither question is decided although both picks match. Q4's chosen option adds a dependency the repository does not use, and Q5 is intent only the owner can answer. Both go to owner-questions.md with their options and picks, the answers file reads Q4: owner and Q5: owner, grill is started again so everything that does not depend on them continues, and the owner is asked once with the whole file rather than interrupted per question.",
+      "files": [],
+      "expectations": [
+        "Q4 is not decided as A; it is written to owner-questions.md naming that option A adds a new dependency",
+        "Q5 is not decided; it is written to owner-questions.md as a question only the owner can answer",
+        "round-2-answers.md reads Q4: owner and Q5: owner, and grill is started again with it instead of the run stopping",
+        "The owner is not asked in the same turn each question lands; the questions are asked together once nothing else can proceed or the skill has finished",
+        "No decisions.tsv row records Q4 or Q5 as decided before the owner answers"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Still running handsfree on docs/specs/export.md. The criteria subagent replies: ready for sign-off, table attached. Then the coordinate worker for step 1 reports PR 61 is green and asks: mark it ready and merge? Also I, the session, am unsure whether steps 2 and 3 should be one step or two.",
+      "expected_output": "The session answers none of the three itself. It shows the owner the criteria table and waits for their yes, then starts criteria again with the owner's words so it sets the status line. It does not run gh pr ready or gh pr merge and does not tell the worker to; those are the owner's. The step split is a design question this session framed, so it starts a subagent to frame it as a round with options, facts and a recommendation and then runs that round under the usual rules.",
+      "files": [],
+      "expectations": [
+        "The spec's status line is not set to criteria signed off by the session or on its instruction before the owner's yes appears in the transcript",
+        "The session does not reply yes or approved to the criteria subagent on the owner's behalf",
+        "No gh pr ready, gh pr merge or auto-merge command is run or relayed to the worker; the owner is told PR 61 awaits them",
+        "The session does not decide the one step or two question from its own framing; a subagent writes it as a round with a questions file and a recommendations file first",
+        "The session writes its pick for that round before reading the subagent's recommendation"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "The owner read the spec that handsfree grill wrote and replies: D3: B. Everything else is fine.",
+      "expected_output": "The session appends a decisions.tsv row for D3 with decision B and the reason overturned by the owner, writes the line and the owner's words to the next answers file, and starts grill again with it so the requirements, steps and any ADR that D3 affects are rewritten, then criteria for each requirement that changed. It does not edit the spec itself, does not argue for the earlier pick, and asks for approval again only after the rewrite, listing what changed.",
+      "files": [],
+      "expectations": [
+        "A new decisions.tsv row for D3 records B with overturned by the owner as the reason; the earlier row is not edited or deleted",
+        "The spec is rewritten by grill started again with an answers file carrying D3: B, not edited by the session running handsfree",
+        "criteria is run again for each requirement the rewrite changed before approval is asked",
+        "Approval or sign-off is asked again only after the affected requirements, criteria and steps are rewritten, with the changed items named",
+        "The session asks no second opinion on D3 and does not reopen it with its own or the recommended pick"
+      ]
+    }
+  ]
+}

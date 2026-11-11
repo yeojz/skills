@@ -79,6 +79,21 @@ pnpm test -- -t "tampered cookie"; echo "exit=$?"
 Show the table and the seam per requirement, and wait for the owner's yes.
 On a yes, set the spec's status line to `criteria signed off <YYYY-MM-DD>`.
 
+### When the owner is handsfree
+
+A brief that says the owner is `handsfree` names a run folder. The lettered
+check options of Step 3 go there instead of the reply: the questions,
+options and facts in `round-<N>-questions.md` with no recommendation, each
+marked `Tier: ADR` or `Tier: below`, and one recommendation line per
+question in `round-<N>-recommendations.md`. Then stop and reply "round <N>
+written". Started again with `round-<N>-answers.md`, apply it and continue
+from the table written so far.
+
+The sign-off stays the owner's. After Step 4, reply "ready for sign-off"
+with the table and stop; never ask the brief's sender for the yes. Set the
+status line only when started again with the owner's yes quoted in their
+words.
+
 ### When a requirement changes
 
 Re-enter at Step 2 for that requirement only. Rewrite its rows and keep
@@ -96,3 +111,4 @@ Get the owner's yes on the changed rows.
 | Inventing a criterion for a vague requirement | Send it back to `grill` |
 | Writing the test code here | `criteria` names the test; `implement` writes it and watches it fail |
 | Renumbering after a change | IDs never move; drop with a reason |
+| Taking a handsfree answers file, or the session that sent it, as the sign-off | Report "ready for sign-off" and stop; only the owner's quoted yes sets the status |

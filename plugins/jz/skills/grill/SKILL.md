@@ -50,8 +50,11 @@ or on a subagent still running, waits for a later round.
 
 Number each question. Give three or four lettered options, the
 recommendation first with one sentence on why, and the trade-off that decides.
+Mark every question `Tier: ADR` or `Tier: below`: ADR when the answer would
+earn an ADR by the three tests in Step 4 or is on the ADR-tier list in
+Step 6, below otherwise.
 A question with one sensible answer is an assumption: state it in the round's
-preamble and let the owner object.
+preamble, numbered `A1`, `A2`, and let the owner object.
 
 ```markdown
 ## Round 2
@@ -63,6 +66,7 @@ Q4. Where does the session live between requests?
   B. In the Store, keyed by an id in the cookie. Revocable at once, one read per request.
   C. Both: the cookie carries the id and a short-lived copy of the claims.
   Decides it: whether logout has to revoke immediately.
+  Tier: ADR
 ```
 
 Then stop and wait. Accept short answers such as `4A 5B`.
@@ -100,7 +104,20 @@ The spec comes from `template-spec.md`. Its rules:
 - **A step is a vertical slice**: it can be demoed or checked on its own and
   fits in one fresh session. Prefactoring comes first. Each step lists the
   requirements it serves, the steps that block it, what it owns, the one
-  result you'll see, its ADRs, and whether the owner reviews it before merge.
+  result you'll see, its ADRs, whether the owner reviews it before merge,
+  its Risk and its Surfaces.
+- **Risk and Surfaces are asked, never assumed.** Put both in the round that
+  settles the step, as questions with a recommendation.
+
+  | Line | Value | When |
+  |---|---|---|
+  | Risk | low | Contained and easy to verify |
+  | Risk | medium | Several files or behaviours, or shared code |
+  | Risk | high | Data, money, auth, migrations, concurrency, or anything hard to undo |
+  | Surfaces | ui | Someone sees the change on a screen |
+  | Surfaces | security | Auth, permissions, input reaching a query, shell or HTML, secrets, payments |
+  | Surfaces | none | Neither. A step with both reads `ui, security` |
+
 - **Leave the Criteria section empty.** `criteria` fills it, next.
 
 ### Step 5: Recompute and repeat
@@ -128,6 +145,37 @@ Spec mode ends with:
 
 Committing the files is the `pr` skill's job, on the owner's word.
 
+### When the owner is handsfree
+
+A brief that says the owner is `handsfree` names a run folder. Everything
+above holds, with these differences:
+
+- Write each round to two files in that folder instead of the reply, then
+  stop and reply "round <N> written". `round-<N>-questions.md` holds the
+  assumptions, the numbered questions, their lettered options in no order
+  of preference, the facts each one rests on with `file:line`, the
+  trade-off and the `Tier:` mark. It holds no recommendation and no hint of
+  one. `round-<N>-recommendations.md` holds one line per question: the
+  letter and one sentence.
+- Started again with `round-<N>-answers.md`, apply it and continue from the
+  spec written so far; never ask a settled question again. `Q4: B` is the
+  answer. `Q4: owner` is still open: go on with what doesn't depend on it.
+  `A1: object` turns that assumption into a question in the next round. A
+  line such as `D3: B` overturns that decision: rewrite the requirements,
+  steps and ADR it affects, and name the changed requirements in the reply.
+- Number the spec's Decisions as the folder's `decisions.tsv` numbers them,
+  ADR-tier ones first, each with the options, every pick and the chosen one:
+
+```markdown
+- **D3, ADR tier.** Where the session lives. A cookie only, B the Store, C both. Recommendation B, handsfree B, second opinion B. Chosen: B. ADR-0002.
+- **D1.** Name of the claims helper. A `readClaims`, B `parseClaims`. Recommendation B, handsfree A, second opinion A. Chosen: A.
+```
+
+- An ADR from one of these decisions takes the model sign-off line of
+  `template-adr.md`. The frontier being empty ends the run with the Step 6
+  hand-back; the confirmation in Step 5 is the owner's and is not asked of
+  the brief's sender.
+
 ## Common Mistakes
 
 | Mistake | Fix |
@@ -141,3 +189,5 @@ Committing the files is the `pr` skill's job, on the owner's word.
 | Writing criteria or acceptance commands in the spec | That's the `criteria` skill's job |
 | A step that only builds one layer | Slice vertically, so the step can be checked on its own |
 | Acting before the owner confirms | Say the frontier is empty, list the assumptions, wait |
+| A step with no Risk or Surfaces line, or one filled in without asking | Ask both in the round that settles the step |
+| A recommendation, or the favoured option listed first, in a handsfree questions file | Recommendations go in their own file only |

@@ -37,11 +37,15 @@ Glossary: `CONTEXT.md`. ADRs: `docs/adr/`.
 - You see: <one observable result>
 - ADRs: <ADR-NNNN, or none>
 - Review gate: <owner reviews before merge, or none>
+- Risk: <low, medium or high>
+- Surfaces: <none, ui, security, or ui, security>
 
 <!--
 Rules:
 - Requirements are numbered R1, R2 and never renumbered; a dropped one stays with "(dropped: <reason>)".
 - A step can be demoed or checked on its own and fits in one fresh session. Prefactoring goes first.
+- Every step carries a Risk line and a Surfaces line, each asked in the round that settled the step. Risk is high for data, money, auth, migrations, concurrency or anything hard to undo. Surfaces lists ui when someone sees the change on a screen and security for auth, permissions, input reaching a query, shell or HTML, secrets or payments.
+- A spec written through `handsfree` numbers its Decisions `D1`, `D2` as the run's decision log does, ADR-tier ones first, each with the options, every pick and the chosen one.
 - No file paths or code in Requirements; they describe outcomes, and code changes.
 Delete this comment before saving.
 -->

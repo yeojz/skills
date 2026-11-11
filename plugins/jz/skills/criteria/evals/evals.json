@@ -44,6 +44,18 @@
         "Runs the check for R1 before sign-off",
         "On finding it already passes, does not record it as a proof; says the requirement is already met or rewrites the criterion so it can fail"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "Brief from a parent session: write the criteria for docs/specs/csv-export.md. Your owner is handsfree; the run folder is /repo/docs/plans/handsfree-csv-export/. R2 could be checked by a unit test of the serializer or by a drive step that downloads the file.",
+      "expected_output": "The choice of check for R2 goes to round-<N>-questions.md as lettered options with the facts and a Tier mark and no recommendation, with the recommendation in round-<N>-recommendations.md, and the agent stops. Started again with the answers file it writes the rows, runs each check once, then replies ready for sign-off with the table and stops. It does not set the status line and does not ask the parent session for the yes.",
+      "files": [],
+      "expectations": [
+        "The check options for R2 are written to the round questions file as lettered options with no recommendation in that file, and the recommendation is in the recommendations file",
+        "The agent stops after writing the round and continues from the table written so far when given the answers file",
+        "After checking each criterion, the reply reads ready for sign-off with the table; the parent session is not asked to sign off",
+        "The spec's status line still reads draft at the end; it is not set to criteria signed off without the owner's quoted yes"
+      ]
     }
   ]
 }

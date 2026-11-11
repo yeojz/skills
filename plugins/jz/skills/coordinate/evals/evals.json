@@ -127,31 +127,6 @@
         "The escalated session starts from the pushed head; no patch, stash or snapshot of the worker's unpushed changes is made or applied",
         "The escalated brief names the review file and what round 1 tried, and a decisions.tsv relay row records the route, the tier and why"
       ]
-    },
-    {
-      "id": 11,
-      "prompt": "Coordinate docs/specs/parsers.md in auto mode. Worker on step 2 (strong tier) asks: should the TypeScript parser keep spans as byte offsets or as line and column pairs? Options A byte offsets, B line and column, recommends A because the Rust side already uses byte offsets.",
-      "expected_output": "The agent records auto mode in decisions.tsv, saves the question, constraints and both options to fork-2-1.md without the worker's recommendation or its reason, fills template-option-review.md and starts a fresh option reviewer at top, one tier above the worker. When the reviewer also picks A, the coordinator decides A, logs a fork row marked auto with both files as evidence, relays it with the Sign-off line any ADR carries, naming the coordinator, worker and option reviewer models as (C), (W) and (R), and names it in the next report. The row is not parked.",
-      "files": [],
-      "expectations": [
-        "A decisions.tsv row of kind mode records auto before any fork is handled",
-        "fork-2-1.md holds the question, the constraints and options A and B, and neither the recommendation nor the reason the Rust side uses byte offsets appears in it or in the option-review brief",
-        "The option reviewer is a fresh session at top, one tier above the worker's strong, and is not the worker, a fork of it or the coordinator",
-        "With both views on A, the coordinator decides A, writes a fork row with auto in result, and relays it with the Sign-off line (C) <coordinator model>, (W) <worker model>, (R) <option reviewer model>, by display name, never a version slug",
-        "The step 2 row is not moved to parked, and the auto decision is named in the next report to the owner"
-      ]
-    },
-    {
-      "id": 12,
-      "prompt": "Auto mode. Option review on step 3 came back picking B (a hand-written parser); the worker recommended A (adopt tree-sitter, not used in the repo yet). Separately, step 4's worker asks whether the cache key should include the file mtime, A yes or B no; the reviewer and the worker both picked A.",
-      "expected_output": "Step 3 is parked and goes to the owner: A is a new dependency, and the two views disagree. The owner gets lettered options with each view in one line and why they part, with no side picked. Step 4's fork is decided by the coordinator as A with an auto fork row, because both views agree and it adds no dependency.",
-      "files": [],
-      "expectations": [
-        "Step 3 is not decided by the coordinator; its row moves to parked",
-        "The owner's message for step 3 names that option A adds a new dependency and gives both views as lettered options with why they differ, without a recommendation",
-        "Step 4's fork is decided as A, logged as a fork row with auto in result, and relayed to the worker",
-        "Both option reviews are logged as verdict rows in decisions.tsv"
-      ]
     }
   ]
 }

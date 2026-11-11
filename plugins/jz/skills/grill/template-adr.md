@@ -1,6 +1,6 @@
 # <Short title of the decision>
 
-Sign-off: <the git user.name of the person who chose, or (C) <coordinator model>, (W) <worker model>, (R) <option reviewer model>>
+Sign-off: <the git user.name of the person who chose, or (C) <model of the session running handsfree>, (W) <model of the asking skill's session>, (R) <model that gave the second opinion>>
 
 <One to three sentences: the context, what was decided, and why.>
 
@@ -14,10 +14,11 @@ Write an ADR only when all three hold:
 
 Sign-off is always present and never edited later. A person's choice reads
 their `git config user.name`, for example `Sign-off: Jane Doe`. A decision
-coordinate's auto mode made names the three models by display name, as the
-briefs' Model tier lines give them, for example
-`Sign-off: (C) Opus 5.5, (W) Opus 5.5, (R) Fable 5.1`, for the coordinator,
-the worker and the option reviewer. Someone who disagrees with a
+made through the `handsfree` skill names the three models by display name,
+as the briefs' Model tier lines give them, for example
+`Sign-off: (C) Opus 5.5, (W) Opus 5.5, (R) Fable 5.1`: (C) the session
+running handsfree, (W) the session of the skill that asked, a worker under
+`coordinate`, and (R) the second opinion. Someone who disagrees with a
 model sign-off writes a new ADR that supersedes it.
 
 Optional sections, only when they add something:

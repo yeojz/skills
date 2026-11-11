@@ -62,22 +62,22 @@ within one session's context without the owner managing it.
   request targets the default branch and stops at merge-ready. Several bugs
   approved in one reply share one integration branch and one final pull
   request.
-- **R12 Auto answers for the owner.** A skill started through `auto` has its
-  design questions answered without the owner. `auto` writes its own pick
+- **R12 Handsfree answers for the owner.** Any skill started through `handsfree` has its
+  design questions answered without the owner. `handsfree` writes its own pick
   for every question before it reads the asking skill's recommendation. An
   ADR-tier question always gets a second opinion from another model, and
   any other question gets one when the first two picks differ. Every answer
   is logged with a number, the options, each pick and the reason. A question
   whose picks do not settle it under the decision rules, a new dependency,
   and a question only the owner can answer go to the owner, collected and
-  asked once. `auto` never answers a sign-off, a merge, or a remote write
+  asked once. `handsfree` never answers a sign-off, a merge, or a remote write
   that asks.
-- **R14 Overturning.** A spec produced through `auto` lists its decisions
+- **R14 Overturning.** A spec produced through `handsfree` lists its decisions
   with ADR-tier ones first. The owner overturns any decision by its number
   and letter, and the affected requirements, criteria and steps are
   rewritten before approval is asked again.
 - **R15 One coordinate mode.** `coordinate` on its own brings every ADR-tier
-  fork to the owner. The same run started through `auto` has those forks
+  fork to the owner. The same run started through `handsfree` has those forks
   answered as R12 describes, and reports each one in its next line to the
   owner.
 - **R13 Bounded context.** Every agent's reply to the factory session is one
@@ -119,34 +119,38 @@ within one session's context without the owner managing it.
 - The owner approves an intake spec before any build (round 4, Q5 option A).
 - A request too large for one step stays in `intake`; the owner reads the
   finished spec and overturns what they disagree with (round 5).
-- `auto` is its own skill: it answers in the owner's place for any skill
+- `handsfree` is its own skill: it answers in the owner's place for any skill
   that asks lettered questions, and it replaces `coordinate`'s auto mode
   (round 8). `coordinate`'s option review template moves to it.
-- `auto` never answers a question its own context framed. `grill` and
-  `criteria` run as subagents and `auto` answers them; under `coordinate`
-  the workers raise the forks and the session running `auto` answers them.
-- `auto` is a second assessor on every question, never a pass-through
+- `handsfree` takes any command: it wraps whichever skill the owner names,
+  the factory included. Under it a factory job's ADR-tier fork is answered
+  rather than parked, and a hard escalation condition still goes to the
+  owner (round 9).
+- `handsfree` never answers a question its own context framed. `grill` and
+  `criteria` run as subagents and `handsfree` answers them; under `coordinate`
+  the workers raise the forks and the session running `handsfree` answers them.
+- `handsfree` is a second assessor on every question, never a pass-through
   (round 8). The decision rules: below the ADR tier, two matching picks
   decide and a second opinion breaks a split, with the dissent logged; at
-  the ADR tier, the recommendation, `auto`'s pick and the second opinion
+  the ADR tier, the recommendation, `handsfree`'s pick and the second opinion
   must all match, otherwise the owner chooses.
 - The second opinion comes from the other family where present, otherwise
   from a fresh session one tier up, and it sees the question and options
   only.
 - `intake` writes no spec text itself. It investigates, reproduces a bug,
-  then runs `grill` in spec mode and `criteria` through `auto`, so both
+  then runs `grill` in spec mode and `criteria` through `handsfree`, so both
   skills run the same way on both paths. The owner's one approval of the
   intake spec is the sign-off `criteria` asks for (rounds 6 and 7).
 - Each round passes through files: the asking skill writes its questions in
-  one file and its recommendations in another and stops, and `auto` writes
+  one file and its recommendations in another and stops, and `handsfree` writes
   its picks, reads the recommendations, writes the answers and starts the
-  skill again from the spec written so far. The session running `auto`
+  skill again from the spec written so far. The session running `handsfree`
   holds the decisions, never the interview.
 - `grill` gains two things: each question is marked ADR-tier or not, and a
   round can be written to files as above. Its interview of the owner is
   otherwise unchanged.
-- An ADR from an `auto` decision carries the model sign-off line, naming the
-  session running `auto`, the asking skill's session and the second
+- An ADR from an `handsfree` decision carries the model sign-off line, naming the
+  session running `handsfree`, the asking skill's session and the second
   opinion.
 - A new dependency chosen by `intake` is always listed as an ADR-tier
   decision, and a step that adds one stays ineligible for the factory.
@@ -222,13 +226,13 @@ within one session's context without the owner managing it.
 - ADRs: ADR-0001
 - Review gate: owner reviews before merge
 
-### Step 6: The auto skill
+### Step 6: The handsfree skill
 
 - Status: not started
 - Serves: R12, R14, R15
 - Blocked by: Step 1
-- Owns: `plugins/jz/skills/auto/`, `plugins/jz/skills/coordinate/`, the question tier mark and round files in `plugins/jz/skills/grill/SKILL.md` and its evals
-- You see: `grill` started through `auto` produces a spec whose decisions are numbered with every pick, an ADR-tier decision shows three picks, and `coordinate` no longer has a Modes section
+- Owns: `plugins/jz/skills/handsfree/`, `plugins/jz/skills/coordinate/`, the question tier mark and round files in `plugins/jz/skills/grill/SKILL.md` and its evals
+- You see: `grill` started through `handsfree` produces a spec whose decisions are numbered with every pick, an ADR-tier decision shows three picks, and `coordinate` no longer has a Modes section
 - ADRs: none
 - Review gate: owner reviews before merge
 

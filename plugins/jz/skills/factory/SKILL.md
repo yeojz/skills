@@ -39,6 +39,14 @@ the current branch and refuses one with uncommitted edits, so the spec is
 committed through the `pr` skill first. On a spec that already has a run,
 `plan` starts nothing over.
 
+The script keeps a dashboard page in the run folder and rewrites it after
+every command. Give the owner its path once, at the start, and never read
+the page yourself:
+
+```bash
+"$job" dashboard "$spec"
+```
+
 Report each ineligible step with the reason the script printed, and say that
 it stays with `coordinate`. `run.json` names the mode: `direct` for one
 eligible step, whose pull request targets the default branch, and

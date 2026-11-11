@@ -106,6 +106,9 @@ Two more ways to run a spec, for when you would rather not be in the loop:
   requests merge into `factory/<slug>`. You merge one final pull request.
   A step with an owner review gate, an inspection-only criterion or no
   criterion stays with `coordinate`.
+  The run's state is a set of files the `job` script alone writes, and the
+  script draws them as `docs/plans/factory-<slug>/dashboard.html`, a page
+  you open from disk that reloads itself as the run moves.
 - `/jz:handsfree <command>` wraps any of these commands and answers its
   design questions in your place, as a second assessor: `handsfree grill`,
   `handsfree coordinate docs/specs/<slug>.md`. A new dependency, a sign-off,
@@ -284,6 +287,43 @@ flowchart LR
 `review`'s audit mode fans out to the four personas under `agents/`, which install as the
 subagent types `jz:principal-engineer`, `jz:security-engineer`,
 `jz:test-engineer` and `jz:technical-writer`.
+
+### Following a factory run
+
+A factory run is a state machine kept on disk, under
+`docs/plans/factory-<slug>/` in the target repository, never committed:
+
+| File | Holds |
+|---|---|
+| `run.json` | The spec, the base commit, the mode, the integration branch and its recorded tip, the steps left out and why, the final pull request |
+| `jobs/<job>/job.json` | One job: its stage, round, branch, pull request, gate verdict, each reviewer's verdict, escalation reasons, the question it waits on, and a history of every stage move with its time |
+| `jobs/<job>/build.md`, `round-<N>/checks.md`, `round-<N>/review-<name>.md`, `decision.md` | What the builder, the gate, each reviewer and the approver wrote, each opening with its verdict line |
+| `dashboard.html` | The page drawn from the two JSON files |
+
+A job is always at one of ten stages, the boxes of the factory lane in the
+diagram above: `planned`, `build`, `gate`, `review`, `approve`, `merging`,
+then `merged` or `merge-ready`, with `needs-owner` and `blocked` as the two
+places it can stop. Only the `job` script changes a stage, and it refuses a
+move the files do not support.
+
+Three ways to see where a run is:
+
+```bash
+job="plugins/jz/skills/factory/scripts/job"
+"$job" status docs/specs/<slug>.md            # a table, one row per job
+"$job" status docs/specs/<slug>.md --json     # the run and every job, for another tool
+"$job" dashboard docs/specs/<slug>.md         # the path of the page to open
+```
+
+The dashboard shows what waits on you with its question, a column per stage
+with each job's round and verdicts, the steps the factory left out, and each
+job's history with the time spent in every stage. It is rewritten after
+every `job` command and reloads itself every ten seconds, with no server.
+
+`coordinate` records its steps in `units.tsv` and `decisions.tsv` in its
+notes folder, and `handsfree` records every decision in `decisions.tsv` in
+`docs/plans/handsfree-<slug>/`. Those are ledgers the session writes, with
+no dashboard; "where are we" in a `coordinate` session prints them.
 
 ### Rules
 

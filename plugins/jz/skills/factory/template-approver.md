@@ -12,6 +12,7 @@ Repo: <absolute path to the main checkout>
 Worktree: <absolute path; run in it, never edit it>
 Branch: `<branch>`, pull request <number>
 Base: `<base branch>` at `<base sha>`
+Diff base: `<gate_base from job.json>`, which the change is measured against; the spec is read at the base sha
 Spec: `<spec path>`, Step <N>
 Round: <N>
 Model tier: <top, and the host's model and reasoning effort for it>
@@ -27,7 +28,7 @@ or review it, and you edit nothing.
 
 ```bash
 git -C "<worktree>" rev-parse HEAD
-git -C "<worktree>" diff "<base sha>...HEAD"
+git -C "<worktree>" diff "<diff base>...HEAD"
 ```
 
 4. The gate's report for this round, `<job directory>/round-<N>/checks.md`: its three header lines and its two tables

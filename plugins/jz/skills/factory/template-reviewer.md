@@ -12,6 +12,7 @@ Repo: <absolute path to the main checkout>
 Worktree: <absolute path; read it, never change it>
 Branch: `<branch>`, pull request <number>
 Base: `<base branch>` at `<base sha>`
+Diff base: `<gate_base from job.json>`, which the change is measured against; the spec is read at the base sha
 Spec: `<spec path>`, Step <N>
 Round: <N>
 Review file: `<job directory>/round-<N>/review-<persona name>.md`
@@ -28,8 +29,8 @@ judge the head as it stands, through your persona's lens.
 
 ```bash
 git -C "<worktree>" rev-parse HEAD
-git -C "<worktree>" diff --stat "<base sha>...HEAD"
-git -C "<worktree>" diff "<base sha>...HEAD"
+git -C "<worktree>" diff --stat "<diff base>...HEAD"
+git -C "<worktree>" diff "<diff base>...HEAD"
 ```
 
 4. Every changed file whole, and the callers of every changed signature

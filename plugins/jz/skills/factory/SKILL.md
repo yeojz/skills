@@ -34,7 +34,9 @@ python3 -m json.tool "$run/run.json"
 
 The script checks the status line and refuses a spec that is not `criteria
 signed off`; on a refusal, report its line and offer the `criteria` skill.
-Do not open the spec to check it yourself. On a spec that already has a run,
+Do not open the spec to check it yourself. It reads the spec as committed on
+the current branch and refuses one with uncommitted edits, so the spec is
+committed through the `pr` skill first. On a spec that already has a run,
 `plan` starts nothing over.
 
 Report each ineligible step with the reason the script printed, and say that
@@ -124,11 +126,11 @@ refusal as its purpose; a second refusal is the `needs-owner` move.
 ### Step 5: Gate
 
 Run the gate yourself, as a background command, on the builder's worktree.
-The base is the job's `base` from `job.json`, never the branch's own copy of
-the spec:
+The diff is measured against the job's `gate_base`, and the spec is read at
+the run's base sha, both from `job.json`, never from the branch's own copy:
 
 ```bash
-"$gate" --spec "$spec" --step <N> --base "<base>" --worktree "<worktree>" --out "$dir/round-<N>"
+"$gate" --spec "$spec" --step <N> --base "<gate_base>" --spec-ref "<base sha>" --worktree "<worktree>" --out "$dir/round-<N>"
 head -3 "$dir/round-<N>/checks.md"
 ```
 
@@ -139,7 +141,7 @@ head -3 "$dir/round-<N>/checks.md"
 
 No reviewer starts on a failed gate. Do not open `checks.log` or the table
 below the header; the next builder reads them. On the last round the script
-refuses `build`: run `"$job" advance "$dir" blocked` instead, here and in
+refuses `build`: run `"$job" advance "$dir" needs-owner` instead, here and in
 Step 6.
 
 ### Step 6: Review
@@ -174,7 +176,7 @@ head -3 "$dir/decision.md"
 | Result | Do |
 |---|---|
 | `APPROVE`, and the move is accepted | Step 8 in integration mode; in direct mode the job is finished |
-| `APPROVE`, and the script refuses on the gate's `ESCALATE:` line | `"$job" advance "$dir" needs-owner --reason "<the reasons the script printed>"` |
+| `APPROVE`, and the script refuses on the gate's `ESCALATE:` line | Nothing more: the refusal moved the job to `needs-owner` with the reasons as its question |
 | `ESCALATE` | `"$job" advance "$dir" needs-owner --reason "<line 3 of decision.md>"` |
 
 Hard escalation conditions are the script's to enforce. Never argue one
@@ -221,14 +223,22 @@ OWNER
 
 The script saves it as `feedback-<K>.md` and moves the job to `build`.
 
+A hard escalation condition on an approved job is the one case with a second
+way out. When the owner accepts the condition as it stands, pass their words
+to `"$job" accept "$dir"` the same way; the script records what was accepted
+and moves the job on to `merging` or `merge-ready`. When they want a change,
+use `answer`. Only the owner's own words go to `accept`, never a reply from
+`handsfree` or an agent.
+
 When the run was started through `handsfree`, a `STATUS: FORK` question is
 answered there instead: hand the fork file's path to the `handsfree` round,
 and pass the answer it writes through `job answer` the same way. Every other
 cause in the table still goes to the owner, and so does a fork `handsfree`
 leaves to them.
 
-A `blocked` job gets one line too: the job, the round and the path of the
-last failed file. It stays blocked until the owner says what to do.
+A `blocked` job gets one line too: the job and the question on line 3 of its
+`build.md`. The owner's reply goes through `answer`. A job the plan blocked
+behind an ineligible step stays blocked until that step is done elsewhere.
 
 ### Step 10: End the run
 

@@ -9,7 +9,7 @@ log or a review. Delete this comment before sending.
 
 Job directory: <absolute path to docs/plans/factory-<spec-slug>/jobs/<job id>>
 Repo: <absolute path to the main checkout>
-Worktree: <absolute path from job.json; create it from the base below on the first round when it does not exist>
+Worktree: <absolute path from job.json; the job script created it with the branch>
 Branch: `<branch from job.json>`
 Base: `<the integration branch factory/<spec-slug>, or the default branch in direct mode>` at `<base sha>`
 Spec: `<spec path>`, Step <N>

@@ -123,6 +123,22 @@ A spec's steps run through `/jz:coordinate` from a session in the target
 repository. It starts one worker session per step and one reviewer per PR,
 reports one line per PR at merge-ready, and leaves the merge to you.
 
+Two more ways to run a spec, for when you would rather not be in the loop:
+
+- `/jz:factory docs/specs/<slug>.md` runs every eligible step unattended.
+  Scripts hold the state and the pass or fail verdict, each step is built,
+  gated, reviewed and approved by fresh subagents, and the step pull
+  requests merge into `factory/<slug>`. You merge one final pull request.
+  A step with an owner review gate, an inspection-only criterion or no
+  criterion stays with `coordinate`.
+- `/jz:handsfree <command>` wraps any of these commands and answers its
+  design questions in your place, as a second assessor: `handsfree grill`,
+  `handsfree coordinate docs/specs/<slug>.md`. A new dependency, a sign-off,
+  a merge and a question only you can answer still come to you.
+- `/jz:intake` takes a bug or request you name, investigates and reproduces
+  it, runs `grill` and `criteria` through `handsfree`, and shows you one
+  finished spec to approve or overturn by decision number.
+
 ### Set up a project
 
 The skills read these from the project. Each one is optional, and the skill
@@ -134,7 +150,8 @@ says what it does without it.
 | `AGENTS.md` with a `## Standing orders` section | `coordinate`, pasted verbatim into every brief | the phase template's default block stands in, and adding the section is part of the first phase |
 | `AGENTS.md` with an `## Enforcement` table | `improve` | the first project-side `improve` run creates it |
 | `VERIFICATION.md` at the root, or one per package | `verify`, for the `behaviour` row | the row reads what the test runs support, `unit-only` at most, unless another pasted run drove the feature |
-| `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, criteria added by `criteria`, read by `implement` and `coordinate` | `implement` and `coordinate` refuse a spec whose criteria are not signed off and offer `criteria` |
+| `docs/specs/<slug>.md`, `CONTEXT.md`, `docs/adr/` | written by `grill` in spec mode, criteria added by `criteria`, read by `implement`, `coordinate` and `factory` | `implement`, `coordinate` and `factory` refuse a spec whose criteria are not signed off and offer `criteria` |
+| `factory.json` at the root | `factory`, read from the base branch, to override concurrency, rounds, protected paths, reviewer routing or the checks the gate runs | the defaults in the skill's `config.json` apply, and the gate detects the declared scripts itself |
 | Scripts named `format`, `lint`, `typecheck`, `test` and `build` in `package.json`, or the same targets in a `Makefile` | `verify` | the concern is reported as "no script"; nothing is invented in its place |
 
 ---
@@ -154,7 +171,7 @@ plugins/jz/                       the agent-agnostic plugin
 
 ### Skills
 
-Thirteen skills, in three groups. The workflow runs in this order:
+Sixteen skills, in three groups. The workflow runs in this order:
 
 ```
 grill  ->  criteria  ->  implement  ->  verify  ->  pr  ->  review
@@ -172,6 +189,17 @@ PR structured by requirement, and `review` gives an independent read.
 per step and per review, and `handoff` carries the state when context runs
 out.
 
+A signed-off spec can run two ways. `coordinate` keeps you in the loop and
+you merge each pull request. `factory` runs unattended and you merge once:
+
+```
+grill -> criteria -> coordinate          you merge every step
+grill -> criteria -> factory             you merge one final pull request
+intake -> factory                        you approve one spec, then merge
+handsfree <command>                      any of the above, with the design
+                                         questions answered for you
+```
+
 #### Workflow
 
 | Skill | Use it for |
@@ -183,6 +211,9 @@ out.
 | `pr` | Verify, commit, push and open a draft PR with a body written from the diff, structured by requirement when there is a spec; ready only when asked; rebase when the default branch moves; clean up after the merge |
 | `review` | Change review with design, maintainability, guard-deletion and criteria lenses that always report; audit mode for a whole repo or a plan, fanned out to personas into a plan file; the PR comment and red-CI sweep; an adversarial mode across two model families |
 | `coordinate` | Drive a spec's steps to merge-ready: one fresh worker per step with the step's criteria and behaviour target as Done means, one fresh reviewer per PR, bounded fix rounds, the units and decisions ledgers, one line per PR |
+| `factory` | Run a signed-off spec unattended: a job per eligible step, a script that owns every stage and refuses an unsupported move, a gate script that runs the checks and criteria from the base branch, reviewers routed by risk and surfaces, an approver, a sha-pinned merge into `factory/<slug>`, and one final pull request for the owner |
+| `handsfree` | Wrap any command and answer its design questions in the owner's place: its own pick before reading the recommendation, a second opinion from another model once per round, all three picks matching at the ADR tier, every decision numbered and logged; never a sign-off, a merge or a new dependency |
+| `intake` | Turn a bug or request the owner names into a spec for one approval: investigate and reproduce, run `grill` and `criteria` through `handsfree`, show one screen with every decision, and rewrite what an overturned decision affects |
 | `handoff` | Write a resumable handoff before context runs out, with decisions read from the `coordinate` ledger rather than from memory |
 
 #### Task

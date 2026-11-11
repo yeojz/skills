@@ -188,6 +188,11 @@ check that fails, then a test, with prose last.
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
 | A SKILL.md stays under 300 lines | `validate.sh`, in CI |
 | Open as draft, mark ready only after the gate is green | `pr` Ready section: ready is flipped only when a go-ahead or brief named it, `verify` passed on the pushed head and no check has failed; no hook yet |
+| A factory job moves only on evidence, and never by a session's word | `skills/factory/scripts/job`: the only writer of `job.json`, which refuses a stage move its header lines and head commit do not support |
+| A branch cannot edit the checks, the criteria or the spec it is judged by, or files outside its step's Owns | `skills/factory/scripts/gate`: reads the spec and `factory.json` from the base ref and fails a protected path edit or a file outside Owns |
+| The factory never merges into a default branch | `skills/factory/scripts/job merge` refuses a protected base; the `protect-default-branches` guard denies a merge an agent types |
+| The factory scripts keep doing the above | `skills/factory/scripts/test-factory.sh`, run by `make test` |
+| `handsfree` forms its own pick before reading a recommendation, and never answers a sign-off, a merge or a new dependency | nothing; the `handsfree` skill states it, and the decision log records every pick |
 | Model tier matches the job | nothing; `models.md` describes it |
 | Done means a behaviour level, not only a green script | nothing; the `behaviour` row in `verify` Step 7 names the level the runs support, and `coordinate` Step 5 checks it against the behaviour target in the brief |
 | A throwaway worktree is removed only after the last step that runs in it | `validate.sh`: a skill or template that names the directory variable after its `git worktree remove` fails |
@@ -213,9 +218,18 @@ Criteria section, one or more checks per requirement (`C1.1`), each a test,
 command, drive or inspection, run once to see it fail, then signed off by
 the owner. `implement` builds a step at a time against them, `verify`
 reports them, `pr` structures the PR body by requirement, and `review`
-re-runs them. `coordinate` drives the steps across sessions. A skill that
-reads a spec reads its status line first: work starts only once it says
-`criteria signed off`.
+re-runs them. `coordinate` drives the steps across sessions with the owner
+merging each pull request. `factory` drives the eligible steps unattended
+into `factory/<slug>` and leaves one final pull request to the owner.
+`handsfree` wraps any of these and answers the design questions in the
+owner's place, and `intake` uses it to turn a named bug or request into a
+spec for one approval. A skill that reads a spec reads its status line
+first: work starts only once it says `criteria signed off`.
+
+A step also carries `Risk` and `Surfaces` lines, which route the factory's
+reviewers. The factory's state lives under `docs/plans/factory-<slug>/` and
+is written only by its `job` script; `handsfree` keeps its rounds and its
+decision log under `docs/plans/handsfree-<slug>/`. Neither is committed.
 
 ### Verification recipes
 

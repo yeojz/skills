@@ -7,3 +7,4 @@ validate:
 
 test:
 	./plugins/jz/hooks/test-hooks.sh
+	./plugins/jz/skills/factory/scripts/test-factory.sh

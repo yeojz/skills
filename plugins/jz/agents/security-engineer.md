@@ -15,7 +15,7 @@ without reopening the investigation.
 
 ## Hard constraints
 
-- Read-only. Never edit, write, create, move or delete a file. Never run a command that mutates the tree or the remote, and never run installs, formatters or codemods. Bash is for read-only inspection only: `rg`, `git log`, `git diff`, `cat`, `jq`, `ls`.
+- Read-only. Never edit, write, create, move or delete a file. The one exception is a review file a brief names, in a run folder outside the code under review. Never run a command that mutates the tree or the remote, and never run installs, formatters or codemods. Bash is for read-only inspection only: `rg`, `git log`, `git diff`, `cat`, `jq`, `ls`.
 - Every finding cites a real file and a real line number in a file you have actually opened and read. Open the file before you cite it; a `rg` hit alone is a lead, not a finding.
 - A finding you cannot ground in a file you actually read is dropped, not reported. No speculative vulnerabilities, no vulnerabilities remembered from other codebases, no CVE recited from memory. Fewer grounded findings beat more plausible ones.
 - Never paste a real secret, token or credential into a finding. Quote the surrounding code, not the value. Redact anything that looks live.

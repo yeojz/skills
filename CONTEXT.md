@@ -15,5 +15,7 @@ Vocabulary for this repository. Terms only, no implementation.
 | Integration branch | `factory/<spec-slug>`, where the factory merges a run's step pull requests | staging branch |
 | Final pull request | The one pull request from the integration branch to the default branch, merged by the owner | release PR |
 | Needs-owner | The stage of a job that waits on one specific question to the owner | escalated, needs-human |
-| Intake | The skill that turns a request the owner names into a spec for approval, answering the design questions itself | triage |
+| Intake | The skill that turns a request the owner names into a spec for approval, running `grill` and `criteria` through auto | triage |
+| Auto | The skill that answers a skill's design questions in the owner's place, as a second assessor | autopilot, auto mode |
+| Second opinion | A pick on one question from another model that sees the options and not the recommendation | option review |
 | Hard escalation condition | A property of a diff or step that sends a job to needs-owner whatever the approver says | |

@@ -62,15 +62,24 @@ within one session's context without the owner managing it.
   request targets the default branch and stops at merge-ready. Several bugs
   approved in one reply share one integration branch and one final pull
   request.
-- **R12 Self-answered interview.** When a request needs more than one step,
-  `intake` settles the design itself and the owner sees only the finished
-  spec. Every decision appears in the spec with a number, the options
-  considered, the one chosen and the reason, with ADR-tier decisions listed
-  first. Each ADR-tier decision carries the pick of an independent option
-  review, and where the two picks differ it is shown as undecided and the
-  spec cannot be approved until the owner chooses. The owner overturns any
-  decision by its number and letter, and the affected requirements, criteria
-  and steps are rewritten before approval is asked again.
+- **R12 Auto answers for the owner.** A skill started through `auto` has its
+  design questions answered without the owner. `auto` writes its own pick
+  for every question before it reads the asking skill's recommendation. An
+  ADR-tier question always gets a second opinion from another model, and
+  any other question gets one when the first two picks differ. Every answer
+  is logged with a number, the options, each pick and the reason. A question
+  whose picks do not settle it under the decision rules, a new dependency,
+  and a question only the owner can answer go to the owner, collected and
+  asked once. `auto` never answers a sign-off, a merge, or a remote write
+  that asks.
+- **R14 Overturning.** A spec produced through `auto` lists its decisions
+  with ADR-tier ones first. The owner overturns any decision by its number
+  and letter, and the affected requirements, criteria and steps are
+  rewritten before approval is asked again.
+- **R15 One coordinate mode.** `coordinate` on its own brings every ADR-tier
+  fork to the owner. The same run started through `auto` has those forks
+  answered as R12 describes, and reports each one in its next line to the
+  owner.
 - **R13 Bounded context.** Every agent's reply to the factory session is one
   line, every script prints one line per job, and the factory session reads
   no diff, log or file body during a run. What to do next comes from the job
@@ -88,8 +97,8 @@ within one session's context without the owner managing it.
 - Cost per job. The subagent transcript format it would read is not a
   documented interface.
 - A dashboard. The summary table is the report.
-- Changing `coordinate`. Its ledgers stay as they are; the gate script can be
-  run by hand from either flow.
+- Changing `coordinate` beyond moving its auto mode out. Its ledgers stay as
+  they are; the gate script can be run by hand from either flow.
 - Changing how `grill` interviews the owner. The interview stays for work the
   owner wants to settle in person; `intake` is the path that answers for
   them.
@@ -108,26 +117,37 @@ within one session's context without the owner managing it.
   is used only for mechanical scans (round 2).
 - `intake` takes only what the owner names, types or points to (round 4, Q4).
 - The owner approves an intake spec before any build (round 4, Q5 option A).
-- A request too large for one step stays in `intake`, which answers the
-  interview itself; the owner reads the finished spec and overturns what
-  they disagree with (round 5).
-- `intake` coordinates and writes no spec text itself. It starts `grill` in
-  spec mode and then `criteria` as subagents and answers their questions in
-  the owner's place, so both skills run the same way on both paths. The
-  owner's one approval of the intake spec is the sign-off `criteria` asks
-  for (rounds 6 and 7).
-- `intake` takes the asking skill's recommendation on a question below the
-  ADR tier unless the request contradicts it. On an ADR-tier question it
-  starts an option review from `coordinate`'s template, which never sees the
-  recommendation, and decides only when the two picks agree. A question only
-  the owner can answer is collected and asked once.
-- Each round passes through files: the asking skill writes its round and
-  stops, and `intake` writes the answers and starts it again from the spec
-  written so far. `intake` holds the decisions, never the interview.
-- `grill` gains one thing: each question is marked ADR-tier or not, so
-  `intake` can route it. Its interview of the owner is otherwise unchanged.
-- An ADR from an intake decision carries the model sign-off line, with
-  `intake` as the coordinator, `grill` as the worker and the option reviewer.
+- A request too large for one step stays in `intake`; the owner reads the
+  finished spec and overturns what they disagree with (round 5).
+- `auto` is its own skill: it answers in the owner's place for any skill
+  that asks lettered questions, and it replaces `coordinate`'s auto mode
+  (round 8). `coordinate`'s option review template moves to it.
+- `auto` never answers a question its own context framed. `grill` and
+  `criteria` run as subagents and `auto` answers them; under `coordinate`
+  the workers raise the forks and the session running `auto` answers them.
+- `auto` is a second assessor on every question, never a pass-through
+  (round 8). The decision rules: below the ADR tier, two matching picks
+  decide and a second opinion breaks a split, with the dissent logged; at
+  the ADR tier, the recommendation, `auto`'s pick and the second opinion
+  must all match, otherwise the owner chooses.
+- The second opinion comes from the other family where present, otherwise
+  from a fresh session one tier up, and it sees the question and options
+  only.
+- `intake` writes no spec text itself. It investigates, reproduces a bug,
+  then runs `grill` in spec mode and `criteria` through `auto`, so both
+  skills run the same way on both paths. The owner's one approval of the
+  intake spec is the sign-off `criteria` asks for (rounds 6 and 7).
+- Each round passes through files: the asking skill writes its questions in
+  one file and its recommendations in another and stops, and `auto` writes
+  its picks, reads the recommendations, writes the answers and starts the
+  skill again from the spec written so far. The session running `auto`
+  holds the decisions, never the interview.
+- `grill` gains two things: each question is marked ADR-tier or not, and a
+  round can be written to files as above. Its interview of the owner is
+  otherwise unchanged.
+- An ADR from an `auto` decision carries the model sign-off line, naming the
+  session running `auto`, the asking skill's session and the second
+  opinion.
 - A new dependency chosen by `intake` is always listed as an ADR-tier
   decision, and a step that adds one stays ineligible for the factory.
 - Each builder, reviewer and approver starts fresh and reads the spec step,
@@ -202,23 +222,23 @@ within one session's context without the owner managing it.
 - ADRs: ADR-0001
 - Review gate: owner reviews before merge
 
-### Step 6: Intake
+### Step 6: The auto skill
 
 - Status: not started
-- Serves: R9, R10, R11
-- Blocked by: Step 4
-- Owns: `plugins/jz/skills/intake/`
-- You see: a typed bug report produces a one-step spec with a criterion seen failing, and the factory refuses that spec until the owner approves it
+- Serves: R12, R14, R15
+- Blocked by: Step 1
+- Owns: `plugins/jz/skills/auto/`, `plugins/jz/skills/coordinate/`, the question tier mark and round files in `plugins/jz/skills/grill/SKILL.md` and its evals
+- You see: `grill` started through `auto` produces a spec whose decisions are numbered with every pick, an ADR-tier decision shows three picks, and `coordinate` no longer has a Modes section
 - ADRs: none
 - Review gate: owner reviews before merge
 
-### Step 7: Intake answers grill and criteria
+### Step 7: Intake
 
 - Status: not started
-- Serves: R12
-- Blocked by: Step 6
-- Owns: `plugins/jz/skills/intake/`, the question tier mark in `plugins/jz/skills/grill/SKILL.md` and its evals
-- You see: a request that needs three steps produces a spec whose decisions are numbered with their options, an ADR-tier decision shows two picks, and replying with a number and letter rewrites the steps it affects
+- Serves: R9, R10, R11, R14
+- Blocked by: Step 4, Step 6
+- Owns: `plugins/jz/skills/intake/`
+- You see: a typed bug report produces a one-step spec with a criterion seen failing, the factory refuses that spec until the owner approves it, and replying with a number and letter rewrites the steps that decision affects
 - ADRs: none
 - Review gate: owner reviews before merge
 

@@ -172,6 +172,16 @@ within one session's context without the owner managing it.
 - Every file an agent writes opens with its verdict line and a summary of
   three to five bullets, and the gate's report holds the last 80 lines of a
   log with the full log beside it.
+- A job branch is `factory-job/<spec-slug>/<job id>`, since git cannot hold
+  both a branch `factory/<slug>` and one beneath it.
+- An owner who accepts a hard escalation condition as it stands does so
+  through the job script's `accept` command, which records what was accepted
+  and lets the job merge; without it the unchanged condition would escalate
+  again after every build round.
+- `blocked` is reached only when the builder reports it cannot go on, or
+  when the plan finds a job behind an ineligible step.
+- The gate measures a job's diff against the integration branch and reads
+  the spec, the criteria and `factory.json` at the run's base sha.
 - The scripts are Python 3, which the hooks already require, and are written
   for this repository rather than copied from any other project.
 - The builder does not edit the spec. The job script records each
@@ -189,80 +199,96 @@ within one session's context without the owner managing it.
 
 ### Step 1: Risk and Surfaces in the spec
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R4, R8
 - Blocked by: none
 - Owns: `plugins/jz/skills/grill/template-spec.md`, `plugins/jz/skills/grill/SKILL.md`, `plugins/jz/skills/grill/evals/evals.json`
 - You see: a spec written by `grill` carries a Risk line and a Surfaces line on every step, with the values the owner chose
 - ADRs: none
 - Review gate: none
+- Risk: low
+- Surfaces: none
 
 ### Step 2: The gate script
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R3
 - Blocked by: Step 1
 - Owns: `plugins/jz/skills/factory/scripts/gate`, `plugins/jz/skills/factory/config.json`, the gate's tests, `Makefile`, `validate.sh`
 - You see: the gate run by hand on a branch prints `GATE: PASS` or `GATE: FAIL` with the reason, and fails a branch that edits a criterion's check
 - ADRs: none
 - Review gate: none
+- Risk: medium
+- Surfaces: security
 
 ### Step 3: The job script
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R2, R7, R8
 - Blocked by: Step 1
 - Owns: `plugins/jz/skills/factory/scripts/job`, the job script's tests
 - You see: the plan command lists one job per eligible step and each ineligible step with its reason, and an illegal stage move is refused with the reason
 - ADRs: none
 - Review gate: none
+- Risk: medium
+- Surfaces: none
 
 ### Step 4: One job to merge-ready
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R3, R4, R6, R13
 - Blocked by: Step 2, Step 3
 - Owns: `plugins/jz/skills/factory/SKILL.md`, `plugins/jz/skills/factory/evals/evals.json`, the builder, reviewer and approver briefs under `plugins/jz/skills/factory/`
 - You see: the factory run on a one-step spec opens a pull request against the default branch, gates it, reviews it, and reports merge-ready or one question
 - ADRs: none
 - Review gate: owner reviews before merge
+- Risk: medium
+- Surfaces: none
 
 ### Step 5: Integration branch and the full run
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R1, R5, R7
 - Blocked by: Step 4
 - Owns: the merge and final pull request commands of `plugins/jz/skills/factory/scripts/job`, the run section of `plugins/jz/skills/factory/SKILL.md`
 - You see: the factory run on a three-step spec merges three step pull requests into `factory/<spec-slug>` and opens one final pull request against the default branch
 - ADRs: ADR-0001
 - Review gate: owner reviews before merge
+- Risk: high
+- Surfaces: security
 
 ### Step 6: The handsfree skill
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R12, R14, R15
 - Blocked by: Step 1
 - Owns: `plugins/jz/skills/handsfree/`, `plugins/jz/skills/coordinate/`, the question tier mark and round files in `plugins/jz/skills/grill/SKILL.md` and its evals
 - You see: `grill` started through `handsfree` produces a spec whose decisions are numbered with every pick, an ADR-tier decision shows three picks, and `coordinate` no longer has a Modes section
 - ADRs: none
 - Review gate: owner reviews before merge
+- Risk: medium
+- Surfaces: none
 
 ### Step 7: Intake
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R9, R10, R11, R14
 - Blocked by: Step 4, Step 6
 - Owns: `plugins/jz/skills/intake/`
 - You see: a typed bug report produces a one-step spec with a criterion seen failing, the factory refuses that spec until the owner approves it, and replying with a number and letter rewrites the steps that decision affects
 - ADRs: none
 - Review gate: owner reviews before merge
+- Risk: medium
+- Surfaces: none
 
 ### Step 8: Documentation
 
-- Status: not started
+- Status: built; no criteria were written or signed off
 - Serves: R1, R9
 - Blocked by: Step 5, Step 7
 - Owns: `README.md`, `AUTHORING.md`
 - You see: the README's first-session walkthrough names both flows and says when to use each
 - ADRs: none
 - Review gate: none
+- Risk: low
+- Surfaces: none

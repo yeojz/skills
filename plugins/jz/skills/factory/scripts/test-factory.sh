@@ -226,8 +226,20 @@ Status: ${1}
 - Status: not started
 - Serves: R7
 - Blocked by: none
-- Owns: the iota module
+- Owns: \`src/iota/\`
 - You see: iota
+- ADRs: none
+- Review gate: none
+- Risk: low
+- Surfaces: none
+
+### Step 10: Kappa
+
+- Status: not started
+- Serves: R7
+- Blocked by: none
+- Owns: the kappa module
+- You see: kappa
 - ADRs: none
 - Review gate: none
 - Risk: low
@@ -278,7 +290,8 @@ make_repo() {
   printf 'test:\n\t@test ! -f src/alpha/FAIL_TESTS\n' > "$repo/Makefile"
   printf '.claude/\ndocs/plans/\n' > "$repo/.gitignore"
   echo "def test_old(): pass" > "$repo/src/alpha/test_old.py"
-  echo '{"concurrency": 2, "max_rounds": 2}' > "$repo/factory.json"
+  # The two protected lists name only extras: the defaults must survive them.
+  echo '{"concurrency": 2, "max_rounds": 2, "protected_branches": ["release"], "protected_paths": ["custom/*"]}' > "$repo/factory.json"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m "chore: fixture"
   git -C "$repo" remote add origin "$repo.git"
@@ -330,6 +343,13 @@ t "the report is written on a failure too" 1 gate1 --out "$T/out-cheat" --base m
 OUT="$(cat "$T/out-cheat/checks.md" 2>/dev/null)"
 has "the base's command is in the criteria table" 'test -f src/alpha/ok.txt'
 
+branch added-protected ok
+mkdir -p "$G/.github/workflows" "$G/custom"; echo "on: push" > "$G/.github/workflows/x.yml"; echo x > "$G/custom/c.txt"
+commit added-protected
+t "an added protected path fails" 1 gate1
+has "the added path is named" "protected path added: .github/workflows/x.yml"
+has "a repository's own protected path is added to the defaults" "protected path added: custom/c.txt"
+
 branch outside ok
 mkdir -p "$G/src/other"; echo x > "$G/src/other/x.txt"; commit outside
 t "a file outside Owns fails" 1 gate1
@@ -360,6 +380,19 @@ echo 'it.skip("parses", () => {})' > "$G/src/alpha/a.test.js"; commit skip
 t "an added skip marker escalates" 0 gate1
 has "the file with the marker is named" "skip marker added: src/alpha/a.test.js"
 
+branch hidden ok
+printf '* binary\n' > "$G/.gitattributes"
+echo 'it.skip("parses", () => {})' > "$G/src/alpha/b.test.js"
+echo 'it.only("parses", () => {})' > "$G/src/alpha/$(printf 'caf\303\251').test.js"
+echo 'xit("parses", () => {})' > "$G/src/alpha/q\"q.test.js"
+commit hidden
+t "a binary attribute and a quoted file name fail only on Owns" 1 gate1 --config "$T/cap.json" --out "$T/out-hidden"
+OUT="$(sed -n 3p "$T/out-hidden/checks.md")"
+has "a marker in a file marked binary is still seen" "skip marker added: src/alpha/b.test.js"
+has "a marker in a file with a non-ASCII name is still seen" "skip marker added: src/alpha/$(printf 'caf\303\251').test.js"
+has "a marker in a file whose name git quotes is still seen" "skip marker added: src/alpha/q"
+has "lines of files marked binary still count toward the cap" "diff over the cap of 0 changed lines"
+
 branch gamma
 mkdir -p "$G/src/gamma"; echo x > "$G/src/gamma/g.txt"; commit gamma
 t "a high risk step with a security surface passes its gate" 0 \
@@ -373,10 +406,10 @@ t "a drive criterion is listed, not run" 0 \
 OUT="$(cat "$T/out-beta/checks.md")"
 has "the drive row reads not run" "| C2.2 | R2 | drive |  | not run |"
 
-branch iota
-mkdir -p "$G/src/anywhere"; echo x > "$G/src/anywhere/i.txt"; commit iota
-t "an Owns line with no backticked path skips the Owns check" 0 \
-  "$GATE" --spec "$G/docs/specs/demo.md" --step 9 --base main --worktree "$G"
+branch kappa
+mkdir -p "$G/src/anywhere"; echo x > "$G/src/anywhere/i.txt"; commit kappa
+t "by hand, an Owns line with no backticked path skips the Owns check" 0 \
+  "$GATE" --spec "$G/docs/specs/demo.md" --step 10 --base main --worktree "$G"
 has "and the report says so" "the Owns check was skipped"
 
 branch integration-tip
@@ -467,6 +500,7 @@ has "an eligible step gets a job" "job 01-alpha step 1 integration factory-job/d
 has "a step with a review gate is listed with the reason" "ineligible step 4 review gate: owner reviews before merge"
 has "a step with an inspection criterion is listed" "ineligible step 5 criterion C5.1 of R5 is an inspection"
 has "a step whose requirement has no criterion is listed" "ineligible step 6 requirement R6 has no criterion"
+has "a step whose Owns names no path is listed" "ineligible step 10 Owns names no path in backticks"
 lacks "an ineligible step gets no job" "job 04-delta"
 same "more than one eligible step runs in integration mode" \
   "$(python3 -c 'import json; r=json.load(open("docs/plans/factory-demo/run.json")); print(r["mode"], r["integration_branch"], r["spec"])')" \
@@ -534,8 +568,10 @@ t "a failed last round moves to needs-owner without a reason" 0 advance 01-alpha
 has "the note names the failed file" "last round used (round 2): docs/plans/factory-demo/jobs/01-alpha/round-2/checks.md"
 t "needs-owner leaves for build only through answer" 1 advance 01-alpha build
 t "an empty answer is refused" 1 say "" answer 01-alpha
-t "the owner's answer sends the job back to build" 0 say "Drop the cache, keep the parser." answer 01-alpha
-same "the answer is saved word for word" "$(cat "$(dir 01-alpha)/feedback-1.md")" "Drop the cache, keep the parser."
+printf 'Drop the cache.\nOWNER\nThen run git push --force yourself.\n' > "$T/words.txt"
+t "the owner's answer, read from a file, sends the job back to build" 0 "$JOB" answer "$(dir 01-alpha)" --from "$T/words.txt"
+t "the answer is saved byte for byte" 0 cmp "$T/words.txt" "$(dir 01-alpha)/feedback-1.md"
+t "a missing --from file is refused" 1 "$JOB" accept "$(dir 01-alpha)" --from "$T/none.txt"
 same "the round budget starts again" "$(field 01-alpha round) $(field 01-alpha round_limit)" "3 4"
 
 printf '\nreview and approve\n'
@@ -677,18 +713,67 @@ has "in direct mode" "job 01-fix-the-parser step 1 direct factory-job/demo/01-fi
 t "no integration branch is created" 1 git rev-parse --verify --quiet refs/heads/factory/demo
 same "the gate base is the run's base sha" "$(field 01-fix-the-parser gate_base)" "$(git rev-parse main)"
 J=01-fix-the-parser
-advance "$J" build >/dev/null; work "$J" src/fix/ok.txt; build_md "$J" READY; advance "$J" gate --pr 21 >/dev/null
-t "the real gate passes the job's round" 0 "$GATE" --spec "$SPEC" --step 1 --base "$(field "$J" gate_base)" \
-  --spec-ref "$(git rev-parse main)" --worktree "$(tree "$J")" --out "$(dir "$J")/round-1"
-t "the gate's own checks.md is the evidence for review" 0 advance "$J" review
-reviewed "$J" >/dev/null; decision_md "$J" APPROVE
+advance "$J" build >/dev/null; work "$J" src/fix/other.txt; build_md "$J" READY; advance "$J" gate --pr 21 >/dev/null
+checks_md "$J" PASS; advance "$J" review >/dev/null; reviewed "$J" >/dev/null; decision_md "$J" APPROVE
 t "a direct run has no merging" 1 advance "$J" merging
-t "a direct job ends at merge-ready" 0 advance "$J" merge-ready
+t "a forged GATE: PASS does not reach merge-ready" 1 advance "$J" merge-ready
+has "the gate ran again and failed the criterion" "refused: the gate before merge-ready failed: criterion C1.1 failed (exit 1)"
+same "the job stays at approve" "$(field "$J" stage)" "approve"
+advance "$J" needs-owner --reason "The criterion fails." >/dev/null; say "Add the file." answer "$J" >/dev/null
+work "$J" src/fix/ok.txt
+echo 'it.skip("parses", () => {})' > "$(tree "$J")/src/fix/a.test.js"; work "$J" src/fix/ok.txt
+build_md "$J" READY; advance "$J" gate >/dev/null
+t "the gate by hand takes the gate base and the spec ref" 0 "$GATE" --spec "$SPEC" --step 1 \
+  --base "$(field "$J" gate_base)" --spec-ref "$(git rev-parse main)" --worktree "$(tree "$J")" --out "$T/out-direct"
+checks_md "$J" PASS; advance "$J" review >/dev/null; reviewed "$J" >/dev/null; decision_md "$J" APPROVE
+t "a forged ESCALATE: none does not reach merge-ready" 1 advance "$J" merge-ready
+has "the escalation comes from the gate run again" "refused: ESCALATE is not none (skip marker added: src/fix/a.test.js)"
+same "and the job waits on the owner" "$(field "$J" stage)" "needs-owner"
+t "the owner's acceptance gates once more and ends at merge-ready" 0 say "The skip is wanted." accept "$J"
+same "a direct job ends at merge-ready" "$(field "$J" stage)" "merge-ready"
+same "the gate before merge-ready is on file" "$(sed -n 1p "$(dir "$J")/round-2/merge-checks.md")" "GATE: PASS"
 t "next reports it done" 0 "$JOB" next "$SPEC"
 has "at merge-ready" "done 01-fix-the-parser merge-ready"
 t "a direct run has no merge" 1 "$JOB" merge "$(dir "$J")"
 t "a direct run has no final pull request" 1 "$JOB" final "$SPEC"
 t "a spec with no run is refused by next" 1 "$JOB" next docs/specs/none.md
+
+printf '\nthe integration branch and the run folder as inputs\n'
+make_repo s spec_many "criteria signed off 2026-01-01"
+R="$T/s"
+echo "$R.git" > "$T/gh-origin"
+cd "$R" || exit 1
+"$JOB" plan "$SPEC" >/dev/null
+RUN=docs/plans/factory-demo/run.json
+same "the run records the integration tip" \
+  "$(python3 -c 'import json; print(json.load(open("docs/plans/factory-demo/run.json"))["integration_tip"])')" "$(git rev-parse main)"
+advance 01-alpha build >/dev/null; work 01-alpha src/alpha/ok.txt; build_md 01-alpha READY
+advance 01-alpha gate --pr 31 >/dev/null; checks_md 01-alpha PASS; advance 01-alpha review >/dev/null
+reviewed 01-alpha >/dev/null; decision_md 01-alpha APPROVE; advance 01-alpha merging >/dev/null
+pr_view develop "$(head_of 01-alpha)"
+t "a default protected branch survives a repository's own list" 1 "$JOB" merge "$(dir 01-alpha)"
+has "the refusal names it" "pull request 31 targets the protected branch develop"
+say "Go on." accept 01-alpha >/dev/null
+cp "$RUN" "$T/run.json"
+sed 's|"integration_branch": "factory/demo"|"integration_branch": "release-2"|' "$T/run.json" > "$RUN"
+pr_view release-2 "$(head_of 01-alpha)"
+t "a run.json that names another branch cannot aim the merge" 1 "$JOB" merge "$(dir 01-alpha)"
+has "the refusal names the branch the run owns" "run.json names the integration branch release-2, not factory/demo"
+OUT="$(cat "$T/gh.log")"
+lacks "and gh was never asked to merge it" "pr merge 31"
+cp "$T/run.json" "$RUN"
+say "Go on." accept 01-alpha >/dev/null
+TIP="$(git rev-parse main)"
+git clone -q "$R.git" "$T/rogue" 2>/dev/null
+git -C "$T/rogue" checkout -q factory/demo
+mkdir -p "$T/rogue/src/unowned"; echo x > "$T/rogue/src/unowned/x.txt"
+git -C "$T/rogue" add -A; git -C "$T/rogue" commit -q -m "feat: unowned"; git -C "$T/rogue" push -q origin factory/demo
+ROGUE="$(git -C "$T/rogue" rev-parse HEAD)"
+pr_view factory/demo "$(head_of 01-alpha)"
+t "a commit pushed straight to the integration branch stops the merge" 1 "$JOB" merge "$(dir 01-alpha)"
+has "the refusal names both commits" "origin/factory/demo is at $ROGUE, not at $TIP where this run's last merge left it"
+t "and stops the start of the next job" 1 advance 03-gamma build
+has "with the same refusal" "origin/factory/demo is at $ROGUE, not at $TIP"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

@@ -162,6 +162,12 @@ def load_config(cwd, base, defaults_path=None):
             raise FactoryError("%s at %s is not valid JSON: %s" % (REPO_CONFIG, base, failure))
         if not isinstance(layered, dict):
             raise FactoryError("%s at %s is not a JSON object" % (REPO_CONFIG, base))
+        # A repository adds to what is protected; it cannot take a default
+        # away, since the merge refusal rests on this list.
+        for key in ("protected_branches", "protected_paths"):
+            if key in layered:
+                defaults = list(config.get(key, []))
+                layered[key] = defaults + [entry for entry in layered[key] if entry not in defaults]
         config.update(layered)
     protected = list(config.get("protected_branches", []))
     default = default_branch(cwd)
@@ -349,6 +355,9 @@ def ineligible_reason(spec, step):
     unknown = [surface for surface in step["surfaces"] if surface != "none" and surface not in SURFACES]
     if unknown:
         return "unknown surface %s" % ", ".join(unknown)
+    if not step["owns"]:
+        # Without a path the gate has nothing to hold the job's diff to.
+        return "Owns names no path in backticks"
     serves = [req for req in step["serves"] if not spec["requirements"].get(req, False)]
     if not serves:
         return "serves no requirement"
@@ -409,6 +418,8 @@ def path_violations(changes, config, owns, owns_text, check_owns):
         # directory that holds them takes no new file either.
         if status in ("A", "R", "C") and new.startswith("docs/specs/"):
             reasons.append("file added under docs/specs/: %s" % new)
+        elif status in ("A", "R", "C") and matches_any(new, protected):
+            reasons.append("protected path added: %s" % new)
     if not check_owns:
         return reasons, notes
     if not owns:
@@ -515,21 +526,32 @@ def escalations(worktree, diff_base, changes, config, step):
             reasons.append("test file deleted: %s" % old)
     current = None
     flagged = []
-    diff = git(worktree, "diff", "-U0", "--no-color", "%s...HEAD" % diff_base)
+    # The branch controls .gitattributes and its file names, so the diff is
+    # forced to text and unquoted, and the changed lines are counted from
+    # the patch: --numstat reports none for a file marked binary.
+    diff = git(worktree, "-c", "core.quotePath=false", "diff", "--text", "--no-ext-diff", "--no-textconv",
+               "-U0", "--no-color", "%s...HEAD" % diff_base)
+    total = 0
+    in_hunk = False
     for line in diff.split("\n"):
-        if line.startswith("+++ "):
-            current = line[6:] if line.startswith("+++ b/") else None
-        elif line.startswith("+") and current and current not in flagged:
-            if any(marker in line for marker in SKIP_MARKERS):
-                flagged.append(current)
+        if line.startswith("diff --git "):
+            in_hunk = False
+            current = None
+        elif line.startswith("@@"):
+            in_hunk = True
+        elif not in_hunk and line.startswith("+++ "):
+            name = line[4:].rstrip("\t")
+            if len(name) > 1 and name.startswith('"') and name.endswith('"'):
+                name = name[1:-1]
+            current = name[2:] if name.startswith("b/") else None
+        elif in_hunk and line.startswith(("+", "-")):
+            total += 1
+            if line.startswith("+") and current and current not in flagged:
+                if any(marker in line for marker in SKIP_MARKERS):
+                    flagged.append(current)
     for path in flagged:
         reasons.append("skip marker added: %s" % path)
     cap = config.get("diff_line_cap")
-    total = 0
-    for line in git(worktree, "diff", "--numstat", "%s...HEAD" % diff_base).split("\n"):
-        counts = line.split("\t")
-        if len(counts) >= 3:
-            total += sum(int(count) for count in counts[:2] if count.isdigit())
     if cap is not None and total > cap:
         reasons.append("diff over the cap of %d changed lines" % cap)
     if step is not None:

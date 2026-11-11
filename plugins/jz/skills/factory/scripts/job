@@ -4,8 +4,8 @@
     job plan <spec> [--base <ref>]     create the run and one job per eligible step
     job next <spec>                    one line per job: start|resume|hold|wait|done <job> <stage> <note>
     job advance <job-dir> <stage> [--pr <number>] [--reason <text>]
-    job answer <job-dir>               the owner's words on stdin; back to build with a new round budget
-    job accept <job-dir>               the owner's words on stdin; an approved, escalated job moves on
+    job answer <job-dir> [--from <file>]   the owner's words, from the file or stdin; back to build
+    job accept <job-dir> [--from <file>]   the owner's words; an approved, escalated job moves on
     job merge <job-dir>                sync, gate again, merge the step pull request
     job final <spec> [--title <text>]  gate the integration branch, open the final draft pull request
     job status <spec>                  table of every job
@@ -260,6 +260,32 @@ def next_numbered(directory, prefix):
     return max(numbers) + 1 if numbers else 1
 
 
+def require_integration_tip(run, run_state):
+    """Refuse when the integration branch holds a commit `job merge` did not put there.
+
+    A job is cut from that branch and its diff is measured against it, so a
+    commit pushed there directly would never be gated.
+    """
+    branch = run_state["integration_branch"]
+    ref = "origin/%s" % branch if lib.has_remote(run.repo) else branch
+    tip = lib.git(run.repo, "rev-parse", "--verify", "--quiet", "%s^{commit}" % ref, check=False)
+    if tip != run_state["integration_tip"]:
+        raise Refusal("%s is at %s, not at %s where this run's last merge left it" % (
+            ref, tip or "nothing", run_state["integration_tip"]))
+
+
+def regate(run, run_state, directory, job):
+    """Gate the head once more before a direct job rests at merge-ready.
+
+    The round's checks.md is a file any agent can write; this result is not.
+    """
+    result = lib.run_gate(job["worktree"], run_state["spec"], job["step"], job["base"]["sha"], job["gate_base"])
+    report = run.relative(lib.write_report(result, round_directory(directory, job), "merge-checks"))
+    if result["verdict"] != "PASS":
+        raise Refusal("the gate before merge-ready failed: %s (%s)" % ("; ".join(result["reasons"]), report))
+    return result
+
+
 # plan
 
 def plan_lines(run_state, jobs):
@@ -398,6 +424,7 @@ def command_plan(args):
             "base": {"ref": base_ref, "sha": base_sha},
             "mode": mode,
             "integration_branch": integration,
+            "integration_tip": base_sha if integration else None,
             "default_branch": default,
             "concurrency": config["concurrency"],
             "breaker": config["breaker"],
@@ -498,6 +525,7 @@ def start_build(run, run_state, directory, job):
     if run_state["mode"] == "integration":
         if lib.has_remote(repo):
             lib.git(repo, "fetch", "--quiet", "origin", run_state["integration_branch"])
+        require_integration_tip(run, run_state)
         start = job["gate_base"]
     worktree, branch = job["worktree"], job["branch"]
     if os.path.isdir(worktree):
@@ -648,6 +676,8 @@ def approve_moves(run, run_state, directory, job, args, target):
         raise Refusal("a %s run moves an approved job to %s, not %s" % (run_state["mode"], wanted, target))
     head = recorded_head(job)
     require_approval(run, directory, head)
+    if target == "merge-ready":
+        job["escalate"] = regate(run, run_state, directory, job)["escalate"]
     if job["escalate"]:
         # A hard escalation condition is the owner's to accept, whatever the
         # approver decided, so the refusal parks the job itself.
@@ -702,10 +732,18 @@ def command_advance(args):
 
 # answer and accept
 
-def owner_words():
-    words = sys.stdin.read()
+def owner_words(args):
+    """The owner's words, from --from or stdin, exactly as given."""
+    if args.source:
+        try:
+            with open(args.source, encoding="utf-8") as source:
+                words = source.read()
+        except OSError as failure:
+            raise Refusal("cannot read %s: %s" % (args.source, failure))
+    else:
+        words = sys.stdin.read()
     if not words.strip():
-        raise Refusal("the owner's words are expected on stdin, and stdin is empty")
+        raise Refusal("the owner's words are expected in --from <file> or on stdin, and they are empty")
     return words
 
 
@@ -718,7 +756,7 @@ def command_answer(args):
         if job["stage"] != "needs-owner" and not builder_blocked:
             raise Refusal("%s is at %s; `job answer` takes a job at needs-owner, or one its builder blocked" % (
                 job["id"], job["stage"]))
-        words = owner_words()
+        words = owner_words(args)
         name = "feedback-%d.md" % next_numbered(directory, "feedback")
         lib.write_atomic(os.path.join(directory, name), words)
         job["round"] += 1
@@ -751,13 +789,19 @@ def command_accept(args):
         require_commit(found, evidence, label)
         require_reviews(run, directory, job, evidence)
         require_approval(run, directory, evidence)
-        words = owner_words()
+        words = owner_words(args)
+        target = "merging" if run_state["mode"] == "integration" else "merge-ready"
+        reasons = found["escalate"]
+        if target == "merge-ready":
+            reasons = regate(run, run_state, directory, job)["escalate"]
+            unasked = [reason for reason in reasons if reason not in job["escalate"]]
+            if unasked:
+                raise Refusal("the gate escalates what the owner was not asked about: %s" % "; ".join(unasked))
         name = "acceptance-%d.md" % next_numbered(directory, "acceptance")
         lib.write_atomic(os.path.join(directory, name), words)
-        job["accepted"] = {"head": head, "reasons": found["escalate"], "file": name, "at": stamp()}
+        job["accepted"] = {"head": head, "reasons": reasons, "file": name, "at": stamp()}
         job["question"] = ""
-        target = "merging" if run_state["mode"] == "integration" else "merge-ready"
-        enter(job, target, "owner accepted: %s" % ("; ".join(found["escalate"]) or "no escalation"))
+        enter(job, target, "owner accepted: %s" % ("; ".join(reasons) or "no escalation"))
         save(directory, job)
         print(line("accepted", job, "round %d, %s" % (job["round"], name)))
     return 0
@@ -785,6 +829,10 @@ def merge(run, run_state, directory, job):
     config = lib.load_config(repo, job["base"]["sha"])
     if job["pr"] is None:
         raise Refusal("no pull request is recorded")
+    # run.json is a file an agent could write, so the only branch this
+    # command merges into is the one the run's own directory names.
+    if integration != "factory/%s" % run.slug:
+        raise Refusal("run.json names the integration branch %s, not factory/%s" % (integration, run.slug))
 
     try:
         pull = json.loads(gh(worktree, "pr", "view", str(job["pr"]), "--json", "baseRefName,headRefOid"))
@@ -808,6 +856,7 @@ def merge(run, run_state, directory, job):
     origin = lib.has_remote(repo)
     if origin:
         lib.git(repo, "fetch", "--quiet", "origin", integration)
+    require_integration_tip(run, run_state)
     target = job["gate_base"]
     if lib.git(worktree, "rebase", "--quiet", target, check=False) is None:
         lib.git(worktree, "rebase", "--abort", check=False)
@@ -851,13 +900,23 @@ def merge(run, run_state, directory, job):
     if origin:
         # The next job is cut from the integration branch as it is now.
         lib.git(repo, "fetch", "--quiet", "origin", integration, check=False)
+    ref = "origin/%s" % integration if origin else integration
+    parents = (lib.git(repo, "rev-list", "--parents", "-n", "1", ref, check=False) or "").split()
+    # Only this merge may move the recorded tip: the new tip must be the
+    # merge of the head just pinned into the tip the run knew. Anything
+    # else stays unrecorded, and the next start, merge or final refuses.
+    if parents[1:] == [run_state["integration_tip"], new]:
+        run_state["integration_tip"] = parents[0]
+        lib.write_json(run.file, run_state)
     return new
 
 
 def command_merge(args):
     run, directory = run_for_job(args.job_dir)
-    run_state = run.load()
-    with locked(directory):
+    # The run lock is held too: a merge moves the recorded integration tip,
+    # and two merges must not race it.
+    with locked(run.directory), locked(directory):
+        run_state = run.load()
         job = load(directory)
         if job["stage"] != "merging":
             raise Refusal("%s is at %s; `job merge` takes a job at merging" % (job["id"], job["stage"]))
@@ -921,6 +980,7 @@ def command_final(args):
         if lib.has_remote(repo):
             lib.git(repo, "fetch", "--quiet", "origin", integration)
             tip = "origin/%s" % integration
+        require_integration_tip(run, run_state)
         checkout = os.path.join(repo, ".claude", "worktrees", "factory-%s-final" % run.slug)
         if os.path.isdir(checkout):
             lib.git(repo, "worktree", "remove", "--force", checkout)
@@ -992,10 +1052,12 @@ def main():
 
     answer = commands.add_parser("answer", help="the owner's words on stdin; the job builds again")
     answer.add_argument("job_dir", metavar="job-dir")
+    answer.add_argument("--from", dest="source", metavar="FILE", help="read the owner's words from this file, not stdin")
     answer.set_defaults(run=command_answer)
 
     accept = commands.add_parser("accept", help="the owner's words on stdin; an approved, escalated job moves on")
     accept.add_argument("job_dir", metavar="job-dir")
+    accept.add_argument("--from", dest="source", metavar="FILE", help="read the owner's words from this file, not stdin")
     accept.set_defaults(run=command_accept)
 
     merging = commands.add_parser("merge", help="sync, gate again and merge the step pull request")

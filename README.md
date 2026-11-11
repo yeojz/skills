@@ -62,31 +62,6 @@ snapshot after new commits. On Codex CLI 0.164.0 the skills load as
 session start, and `make-agents-md.sh` below writes them into the
 repository's `AGENTS.md` instead.
 
-### Upgrading from the symlink installer
-
-Earlier versions of this repo installed by symlinking into `~/.claude` and
-`~/.codex` with `install.sh`. Remove those links before installing the plugin,
-or every skill appears twice. The uninstaller only removes links that point
-into its own checkout, so run it from the checkout that created them, with the
-working tree clean, on the last commit that still has the old layout:
-
-```bash
-git checkout 3adb7f1
-```
-
-```bash
-./install.sh --uninstall claude codex
-```
-
-```bash
-git checkout main
-```
-
-The first command puts the whole old layout back at the same path, the second
-removes the links and the settings entries, and the third returns to the
-current revision. If the links were created from a different clone, run the
-same three commands there.
-
 ---
 
 ## Use it
@@ -198,6 +173,78 @@ grill -> criteria -> factory             you merge one final pull request
 intake -> factory                        you approve one spec, then merge
 handsfree <command>                      any of the above, with the design
                                          questions answered for you
+```
+
+Two ways in, one spec out. Rounded boxes are agents, plain boxes are scripts
+or files, and the shaded boxes are where the run waits on you:
+
+```mermaid
+flowchart LR
+  idea([A feature or design]) --> grill["grill: you answer each round"]:::you
+  grill --> criteria(["criteria: a check per requirement"])
+  criteria --> signoff["You sign off"]:::you
+  bug([A bug or request you name]) --> intake(["intake: investigates, reproduces"])
+  intake --> hf(["handsfree runs grill and criteria"])
+  hf --> approve["You approve, or overturn a decision"]:::you
+  approve -- "overturned: affected parts rewritten" --> hf
+  intake -- "questions only you can answer, or rejected" --> bug
+  signoff --> spec["Signed-off spec"]
+  approve --> spec
+  classDef you fill:#f1b24c,stroke:#9a5200,color:#1b1305
+```
+
+The same spec, driven two ways:
+
+```mermaid
+flowchart TB
+  spec["Signed-off spec"] --> pick
+  spec --> plan
+  subgraph coordinate ["coordinate: you stay in the loop"]
+    pick(["Coordinator picks ready steps"]) --> worker(["Worker session builds the step"])
+    worker --> check(["Coordinator checks the report"])
+    check --> reviewer(["Fresh reviewer session"])
+    reviewer -- "fix round, max 3" --> worker
+    reviewer --> ready(["Reports merge-ready"])
+    ready --> merge1["You merge each pull request"]:::you
+    worker -- "ADR-tier fork" --> fork1["You choose"]:::you
+  end
+  subgraph factory ["factory: runs unattended"]
+    plan["Plan: one job per eligible step"] --> builder(["Builder subagent, draft PR"])
+    builder --> gate["Gate: checks, criteria, Owns"]
+    gate -- "fail" --> builder
+    gate -- "pass, on the pushed head" --> reviewers(["Routed reviewers, in parallel"])
+    reviewers -- "changes, max 3 rounds" --> builder
+    reviewers -- "all pass" --> approver(["Approver, fresh context"])
+    approver -- "approve, same head commit" --> merge2["Merge into factory/slug"]
+    merge2 -- "all jobs merged" --> final["Open the final pull request"]
+    final --> merge3["You merge once"]:::you
+    builder -- "ADR-tier fork" --> owner["Needs-owner: one question to you"]:::you
+    gate -- "hard escalation condition" --> owner
+    reviewers -- "last round used" --> owner
+    approver -- "escalate" --> owner
+  end
+  plan -- "ineligible steps" --> pick
+  classDef you fill:#f1b24c,stroke:#9a5200,color:#1b1305
+```
+
+How `handsfree` answers a question for you:
+
+```mermaid
+flowchart LR
+  ask(["Asking skill: grill, criteria, a worker"]) --> q["Questions, options, facts"]
+  ask --> rec["Recommendations"]
+  q --> own(["handsfree makes its own pick first"])
+  own --> cmp(["handsfree compares the picks"])
+  rec --> cmp
+  cmp -- "below ADR tier, picks match" --> done["Decided, logged with every pick"]
+  cmp -- "below ADR tier, picks differ" --> thread(["Assessor thread: standard tier, one per run"])
+  thread -- "majority decides" --> done
+  cmp -- "ADR-tier, always" --> fresh(["Fresh top-tier session, own research"])
+  fresh -- "all three match" --> done
+  fresh -- "any differ" --> you["You choose: collected, asked once"]:::you
+  cmp -- "new dependency, or only you can answer" --> you
+  done -- "answers file; the skill starts again" --> ask
+  classDef you fill:#f1b24c,stroke:#9a5200,color:#1b1305
 ```
 
 #### Workflow

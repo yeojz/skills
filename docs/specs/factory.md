@@ -111,6 +111,10 @@ within one session's context without the owner managing it.
 - A request too large for one step stays in `intake`, which answers the
   interview itself; the owner reads the finished spec and overturns what
   they disagree with (round 5).
+- `intake` writes the requirements, decisions and steps, then runs the
+  `criteria` skill to write the criteria, so criteria are written one way in
+  both paths. The owner's one approval of the intake spec is the sign-off
+  `criteria` asks for (round 6).
 - A new dependency chosen by `intake` is always listed as an ADR-tier
   decision, and a step that adds one stays ineligible for the factory.
 - Each builder, reviewer and approver starts fresh and reads the spec step,

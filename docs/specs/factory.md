@@ -111,10 +111,23 @@ within one session's context without the owner managing it.
 - A request too large for one step stays in `intake`, which answers the
   interview itself; the owner reads the finished spec and overturns what
   they disagree with (round 5).
-- `intake` writes the requirements, decisions and steps, then runs the
-  `criteria` skill to write the criteria, so criteria are written one way in
-  both paths. The owner's one approval of the intake spec is the sign-off
-  `criteria` asks for (round 6).
+- `intake` coordinates and writes no spec text itself. It starts `grill` in
+  spec mode and then `criteria` as subagents and answers their questions in
+  the owner's place, so both skills run the same way on both paths. The
+  owner's one approval of the intake spec is the sign-off `criteria` asks
+  for (rounds 6 and 7).
+- `intake` takes the asking skill's recommendation on a question below the
+  ADR tier unless the request contradicts it. On an ADR-tier question it
+  starts an option review from `coordinate`'s template, which never sees the
+  recommendation, and decides only when the two picks agree. A question only
+  the owner can answer is collected and asked once.
+- Each round passes through files: the asking skill writes its round and
+  stops, and `intake` writes the answers and starts it again from the spec
+  written so far. `intake` holds the decisions, never the interview.
+- `grill` gains one thing: each question is marked ADR-tier or not, so
+  `intake` can route it. Its interview of the owner is otherwise unchanged.
+- An ADR from an intake decision carries the model sign-off line, with
+  `intake` as the coordinator, `grill` as the worker and the option reviewer.
 - A new dependency chosen by `intake` is always listed as an ADR-tier
   decision, and a step that adds one stays ineligible for the factory.
 - Each builder, reviewer and approver starts fresh and reads the spec step,
@@ -199,12 +212,12 @@ within one session's context without the owner managing it.
 - ADRs: none
 - Review gate: owner reviews before merge
 
-### Step 7: Self-answered interview in intake
+### Step 7: Intake answers grill and criteria
 
 - Status: not started
 - Serves: R12
 - Blocked by: Step 6
-- Owns: `plugins/jz/skills/intake/`
+- Owns: `plugins/jz/skills/intake/`, the question tier mark in `plugins/jz/skills/grill/SKILL.md` and its evals
 - You see: a request that needs three steps produces a spec whose decisions are numbered with their options, an ADR-tier decision shows two picks, and replying with a number and letter rewrites the steps it affects
 - ADRs: none
 - Review gate: owner reviews before merge

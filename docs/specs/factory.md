@@ -10,7 +10,8 @@ The owner settles a spec with `grill` and `criteria`, and then has to stay in
 the loop for every step: `coordinate` reports each pull request and waits for
 a merge. A fully specified, machine-checkable spec cannot run from sign-off to
 a finished product on its own, and a small bug fix has to go through a full
-`grill` interview before anything can build it.
+`grill` interview before anything can build it. A long run also has to stay
+within one session's context without the owner managing it.
 
 ## Requirements
 
@@ -46,20 +47,36 @@ a finished product on its own, and a small bug fix has to go through a full
   criterion or a new dependency is not started by the factory. The plan
   lists each such step with the reason, and it stays available to
   `coordinate`.
-- **R9 Intake.** The owner names a bug as typed text, a failing command or an
-  issue number, and `intake` answers with one of four outcomes: a one-step
-  spec to approve, the fewest questions that unblock it, a hand-over to
-  `grill` with the facts gathered, or a rejection with the reason. Nothing
-  starts intake except the owner's request.
-- **R10 Intake approval.** An accepted bug is shown to the owner on one
-  screen: the problem, the cause with its file and line, the pasted failing
-  output, the requirement, the criterion, what is out of scope and every
-  assumption. The spec's status becomes `criteria signed off` only on the
-  owner's approval, and the factory refuses it before that.
+- **R9 Intake.** The owner names a request as typed text, a failing command or
+  an issue number, and `intake` answers with one of three outcomes: a spec to
+  approve, the fewest questions that only the owner can answer, or a
+  rejection with the reason. Nothing starts intake except the owner's
+  request.
+- **R10 Intake approval.** An accepted request is shown to the owner on one
+  screen: the problem, the cause with its file and line and the pasted
+  failing output for a bug, the requirements, the criteria, what is out of
+  scope and every decision made for the owner. The spec's status becomes
+  `criteria signed off` only on the owner's approval, and the factory refuses
+  it before that.
 - **R11 One bug or a batch.** A single approved bug runs as one job whose pull
   request targets the default branch and stops at merge-ready. Several bugs
   approved in one reply share one integration branch and one final pull
   request.
+- **R12 Self-answered interview.** When a request needs more than one step,
+  `intake` settles the design itself and the owner sees only the finished
+  spec. Every decision appears in the spec with a number, the options
+  considered, the one chosen and the reason, with ADR-tier decisions listed
+  first. Each ADR-tier decision carries the pick of an independent option
+  review, and where the two picks differ it is shown as undecided and the
+  spec cannot be approved until the owner chooses. The owner overturns any
+  decision by its number and letter, and the affected requirements, criteria
+  and steps are rewritten before approval is asked again.
+- **R13 Bounded context.** Every agent's reply to the factory session is one
+  line, every script prints one line per job, and the factory session reads
+  no diff, log or file body during a run. What to do next comes from the job
+  script after every finished job, so a session that was compacted or
+  replaced continues the run with no hand-over note and no question to the
+  owner.
 
 ## Out of scope
 
@@ -73,8 +90,9 @@ a finished product on its own, and a small bug fix has to go through a full
 - A dashboard. The summary table is the report.
 - Changing `coordinate`. Its ledgers stay as they are; the gate script can be
   run by hand from either flow.
-- Features through `intake`. A request that is not a reproducible bug goes to
-  `grill`.
+- Changing how `grill` interviews the owner. The interview stays for work the
+  owner wants to settle in person; `intake` is the path that answers for
+  them.
 
 ## Decisions
 
@@ -90,6 +108,18 @@ a finished product on its own, and a small bug fix has to go through a full
   is used only for mechanical scans (round 2).
 - `intake` takes only what the owner names, types or points to (round 4, Q4).
 - The owner approves an intake spec before any build (round 4, Q5 option A).
+- A request too large for one step stays in `intake`, which answers the
+  interview itself; the owner reads the finished spec and overturns what
+  they disagree with (round 5).
+- A new dependency chosen by `intake` is always listed as an ADR-tier
+  decision, and a step that adds one stays ineligible for the factory.
+- Each builder, reviewer and approver starts fresh and reads the spec step,
+  the diff and the first lines of earlier verdict files. A fix round after a
+  failed one starts a new builder from the pushed head rather than resuming
+  the old one.
+- Every file an agent writes opens with its verdict line and a summary of
+  three to five bullets, and the gate's report holds the last 80 lines of a
+  log with the full log beside it.
 - The scripts are Python 3, which the hooks already require, and are written
   for this repository rather than copied from any other project.
 - The builder does not edit the spec. The job script records each
@@ -138,7 +168,7 @@ a finished product on its own, and a small bug fix has to go through a full
 ### Step 4: One job to merge-ready
 
 - Status: not started
-- Serves: R3, R4, R6
+- Serves: R3, R4, R6, R13
 - Blocked by: Step 2, Step 3
 - Owns: `plugins/jz/skills/factory/SKILL.md`, `plugins/jz/skills/factory/evals/evals.json`, the builder, reviewer and approver briefs under `plugins/jz/skills/factory/`
 - You see: the factory run on a one-step spec opens a pull request against the default branch, gates it, reviews it, and reports merge-ready or one question
@@ -165,11 +195,21 @@ a finished product on its own, and a small bug fix has to go through a full
 - ADRs: none
 - Review gate: owner reviews before merge
 
-### Step 7: Documentation
+### Step 7: Self-answered interview in intake
+
+- Status: not started
+- Serves: R12
+- Blocked by: Step 6
+- Owns: `plugins/jz/skills/intake/`
+- You see: a request that needs three steps produces a spec whose decisions are numbered with their options, an ADR-tier decision shows two picks, and replying with a number and letter rewrites the steps it affects
+- ADRs: none
+- Review gate: owner reviews before merge
+
+### Step 8: Documentation
 
 - Status: not started
 - Serves: R1, R9
-- Blocked by: Step 5, Step 6
+- Blocked by: Step 5, Step 7
 - Owns: `README.md`, `AUTHORING.md`
 - You see: the README's first-session walkthrough names both flows and says when to use each
 - ADRs: none

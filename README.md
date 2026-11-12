@@ -163,8 +163,8 @@ fail before anything is built. `implement` builds a step at a time against
 those criteria, `verify` gates every done claim, `pr` ships it as a draft
 PR structured by requirement, and `review` gives an independent read.
 `coordinate` drives a spec's steps through that loop with one fresh session
-per step and per review, and `handoff` carries the state when context runs
-out.
+per step and per review, and `handoff` carries the state when the work
+moves to another session.
 
 A signed-off spec can run two ways. `coordinate` keeps you in the loop and
 you merge each pull request. `factory` runs unattended and you merge once:
@@ -263,7 +263,7 @@ flowchart LR
 | `factory` | Run a signed-off spec unattended: a job per eligible step, a script that owns every stage and refuses an unsupported move, a gate script that runs the checks and criteria from the base branch, reviewers routed by risk and surfaces, an approver, a sha-pinned merge into `factory/<slug>`, and one final pull request for the owner |
 | `handsfree` | Wrap any command and answer its design questions in the owner's place: its own pick before reading the recommendation, a second opinion from another model once per round, all three picks matching at the ADR tier, every decision numbered and logged; never a sign-off, a merge or a new dependency |
 | `intake` | Turn a bug or request the owner names into a spec for one approval: investigate and reproduce, run `grill` and `criteria` through `handsfree`, show one screen with every decision, and rewrite what an overturned decision affects |
-| `handoff` | Write a resumable handoff before context runs out, with decisions read from the `coordinate` ledger rather than from memory |
+| `handoff` | Write a resumable handoff when work moves to another session or a person, with decisions read from the `coordinate` ledger rather than from memory |
 
 #### Task
 
@@ -300,7 +300,7 @@ injects them at session start.
 | `git-workflow.md` | Branching, worktrees, commits, PR bodies, what never gets staged |
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |
-| `parallelism.md` | Fan independent work out to subagents by default; wait for the owner only at a lettered design fork, a remote write that asks, an action the brief marks as theirs, or a skill's own pause; log decisions and `next.md` as they happen |
+| `parallelism.md` | Fan independent work out to subagents by default; wait for the owner only at a lettered design fork, a remote write that asks, an action the brief marks as theirs, or a skill's own pause; log each decision in the flow's ledger as it is agreed |
 | `models.md` | Host-neutral model tiers mapped to Claude and Codex: grilling, coordination, implementation, review on the other family first, fix escalation and scans |
 
 ### Hooks
@@ -314,23 +314,28 @@ also sets.
 | `guard-bash.sh` | PreToolUse on Bash | Runs every guard in `guards/` over the command text. A guard that denies ends the call with its reason; the guards that ask are joined into one confirmation |
 | `load-house-rules.sh` | SessionStart | Injects the rule files as context, since a plugin cannot ship always-on instructions |
 | `load-project-rules.sh` | SessionStart | Surfaces `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` at session start |
-| `pre-compact.sh` | PreCompact | Tells the compaction summary to keep the branch, the task list, decisions not yet logged and the owner's open questions, and names each running flow with its resume command. Writes no file and never blocks |
-| `resume-after-compact.sh` | SessionStart, matcher `compact` | After a compaction, has the session confirm its branch, log what the summary marked unlogged, and resume each running flow from its folder |
+| `pre-compact.sh` | PreCompact | Tells the compaction summary to keep the branch, the task list, decisions not yet logged, the owner's open questions and each run a skill is driving, and names the folder of each flow this session marked as running. Writes no file and never blocks |
+| `resume-after-compact.sh` | SessionStart, matcher `compact` | After a compaction, has the session confirm its branch, log what the summary marked unlogged, and continue each flow it marked as running from the flow's folder and its skill's Resume paragraph |
 
-A flow is running when a folder under `docs/plans/` holds a `next.md` whose
-`state` is not `done`, whose `cwd` is this session's working directory, and
-that changed in the last week. `coordinate`, `factory`, `handsfree`,
-`intake` and `implement` overwrite that file at each step boundary, so the
-work continues after auto-compaction with no handoff. To compact before the
-window is full, leaving the summary room, set it in your own
-`~/.claude/settings.json`; a plugin cannot:
+`coordinate`, `factory`, `handsfree` and `intake` each write a `flow.md` in
+their folder under `docs/plans/` once, when the run starts: the flow's name,
+`state: running` and the session's id. The hooks name a folder only when its
+marker carries the id of the session that is compacting, and print nothing
+else from the file. Where a run stands is in its ledgers, so the work
+continues after an auto-compaction with no handoff.
+
+That makes compaction cheap, and compacting early is what keeps a long
+coordinating session small. Set the window in your own
+`~/.claude/settings.json`, or run `/autocompact 200k` in the session; a
+plugin cannot:
 
 ```json
-{ "env": { "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "75" } }
+{ "autoCompactWindow": 200000 }
 ```
 
 Codex has no documented PreCompact event, so there the two hooks do not run;
-the flows still keep `next.md` and their ledgers.
+the flows still write `flow.md` and keep their ledgers, and `coordinate`
+hands off at 55% context use.
 
 The guards, each a module in `hooks/guards/` with a `NAME` and a
 `check(context)` that returns nothing, a `Deny` or an `Ask`:

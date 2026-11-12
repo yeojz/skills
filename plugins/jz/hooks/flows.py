@@ -1,23 +1,23 @@
-"""Find the flows running in a session's working directory, for the
-compaction hooks.
+"""Name the flows this session is running, for the compaction hooks.
 
-A flow (coordinate, factory, handsfree, intake, implement) keeps its state in
-a folder under docs/plans/ and overwrites that folder's next.md at every step
-boundary. next.md is a handful of `key: value` lines:
+A flow (coordinate, factory, handsfree, intake) keeps its state in a folder
+under docs/plans/ and writes that folder's flow.md once, when the run starts:
 
     flow: coordinate
     state: running
-    cwd: /abs/path/of/the/owning/session
-    step: Step 5, unit 03
-    next: brief the reviewer for unit 03
-    resume: column -t -s $'\\t' docs/plans/x/units.tsv
-    updated: 2026-11-12T14:05
+    session: 2914f9c8-c61b-5d38-8391-ea86b5f612d7
 
-A folder is active when its next.md says a state other than `done`, names
-this session's working directory (or names none), and changed in the last
-week. Everything here is read-only and bounded, and any failure prints
-nothing, because a hook that only adds context must never stop compaction or
-a session start.
+The file marks the folder and holds nothing else. Where the run stands is in
+the flow's own ledgers, and the way back in is the Resume paragraph of the
+flow's skill. So the hooks print the flow's name, which is one of four known
+words, and its folder's path, and no text from the file.
+
+A folder is this session's when its marker says `running` and carries the
+session id the hook payload carries. A marker anyone else wrote, in another
+session or in a checked-out branch, never matches. Everything here is
+read-only and bounded. The wrapper scripts turn any failure into exit 0 with
+nothing printed, because a hook that only adds context must never stop
+compaction or a session start.
 
 Usage: flows.py pre-compact | after-compact, with the hook payload on stdin.
 """
@@ -27,169 +27,141 @@ import json
 import os
 import subprocess
 import sys
-import time
 
-KEYS = ("flow", "state", "cwd", "step", "next", "resume", "updated")
+FLOWS = ("coordinate", "factory", "handsfree", "intake")
+MARKER = "flow.md"
 MAX_FLOWS = 5
-MAX_LINES = 20
-MAX_VALUE = 300
-MAX_AGE = 7 * 24 * 3600
-READ_ONLY = {"ls", "cat", "tail", "head", "column", "wc", "grep"}
-UNSAFE = ("|", "&", "<", ">", "`", "$(", "\n")
-WITHHELD = "(withheld: not a read-only command; read next.md and decide)"
+MAX_BYTES = 4096
+MAX_BRANCH = 120
+MAX_PATH = 300
+GIT_TIMEOUT = 2
+MARKUP = "-*#>` \t"
 
 
-def clean(text):
-    """Keep printable text only and cap its length."""
-    text = "".join(ch for ch in text if ch == "\t" or ch.isprintable())
-    return text.strip()[:MAX_VALUE]
+def plain(text, limit):
+    """True for text that can be printed whole: printable and short enough.
+    Anything else is left out rather than altered, since a cut path or branch
+    names another."""
+    return 0 < len(text) <= limit and text.isprintable()
 
 
-def read_next(path):
+def read_marker(path):
+    """The marker's flow, state and session, tolerant of list and emphasis markup."""
     fields = {}
     try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
-            for _, line in zip(range(MAX_LINES), handle):
-                key, sep, value = line.partition(":")
-                key = key.strip().lower()
-                if sep and key in KEYS and key not in fields:
-                    fields[key] = clean(value)
+        with open(path, "rb") as handle:
+            text = handle.read(MAX_BYTES).decode("utf-8", errors="replace")
     except OSError:
-        return None
+        return fields
+    for line in text.splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            fields[key.strip(MARKUP).lower()] = value.strip(MARKUP)
     return fields
-
-
-def read_only(command):
-    """True when every `;`-separated part is a plain read-only command.
-
-    next.md is repository text, and the session is told to run `resume`, so a
-    planted file must not smuggle a write or a network call through it.
-    """
-    if not command or any(mark in command for mark in UNSAFE):
-        return False
-    for part in command.split(";"):
-        words = part.split()
-        if not words:
-            return False
-        head = words[0]
-        if head in READ_ONLY:
-            continue
-        if head == "git" and len(words) > 1 and words[1] in ("status", "log"):
-            continue
-        if head.strip('"\'').endswith("/scripts/job") and words[1:] == ["next"]:
-            continue
-        return False
-    return True
 
 
 def git(cwd, *args):
     try:
         done = subprocess.run(
             ["git", "-C", cwd, *args],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=GIT_TIMEOUT,
         )
     except (OSError, subprocess.SubprocessError):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
-def same_dir(left, right):
-    try:
-        return os.path.realpath(left) == os.path.realpath(right)
-    except (OSError, ValueError):
-        return False
-
-
-def active_flows(cwd):
-    root = git(cwd, "rev-parse", "--show-toplevel") or cwd
-    now = time.time()
+def roots(cwd):
+    """Where a flow's folder can sit: the directory the session is in now, the
+    one it started in, and the checkout each belongs to. The payload's cwd
+    follows a `cd`, and CLAUDE_PROJECT_DIR does not."""
     found = []
-    for path in glob.glob(os.path.join(root, "docs", "plans", "*", "next.md")):
-        try:
-            if not os.path.isfile(path) or os.path.islink(path):
+    for start in (cwd, os.environ.get("CLAUDE_PROJECT_DIR")):
+        if start and os.path.isdir(start):
+            found.append(start)
+            found.append(git(start, "rev-parse", "--show-toplevel"))
+    return {os.path.realpath(root) for root in found if root}
+
+
+def session_flows(cwd, session):
+    if not isinstance(session, str) or not session:
+        return []
+    found = {}
+    for root in roots(cwd):
+        for path in glob.glob(os.path.join(root, "docs", "plans", "*", MARKER)):
+            folder = os.path.dirname(path)
+            if not plain(folder, MAX_PATH) or not os.path.isfile(path):
                 continue
-            mtime = os.path.getmtime(path)
-        except OSError:
-            continue
-        if now - mtime > MAX_AGE:
-            continue
-        fields = read_next(path)
-        if not fields or fields.get("state", "running") == "done":
-            continue
-        if fields.get("cwd") and not same_dir(fields["cwd"], cwd):
-            continue
-        if "resume" in fields and not read_only(fields["resume"]):
-            fields["resume"] = WITHHELD
-        fields["folder"] = os.path.relpath(os.path.dirname(path), root)
-        found.append((mtime, fields))
-    found.sort(key=lambda item: item[0], reverse=True)
-    return [fields for _, fields in found[:MAX_FLOWS]]
+            fields = read_marker(path)
+            flow = fields.get("flow", "").lower()
+            if flow not in FLOWS or fields.get("state", "").lower() != "running":
+                continue
+            if fields.get("session") != session:
+                continue
+            found[folder] = (os.path.getmtime(path), flow)
+    newest = sorted(found.items(), key=lambda item: item[1][0], reverse=True)
+    return [(flow, folder) for folder, (_, flow) in newest[:MAX_FLOWS]]
 
 
-def describe(flow):
-    lines = ["- %s, folder `%s`, state %s" % (
-        flow.get("flow", "unknown flow"), flow["folder"], flow.get("state", "running"))]
-    for key in ("step", "next", "resume"):
-        if flow.get(key):
-            lines.append("  %s: %s" % (key, flow[key]))
-    return "\n".join(lines)
+def describe(flows):
+    return ["- %s, folder `%s`" % (flow, folder) for flow, folder in flows]
 
 
 def pre_compact(cwd, flows):
-    branch = git(cwd, "branch", "--show-current") or "(detached or not a repository)"
-    status = git(cwd, "status", "-sb").splitlines()
+    branch = git(cwd, "branch", "--show-current")
     out = [
         "Write the summary so the work can continue from files on disk.",
-        "Keep: the branch (%s, %s), the task list with what is done and what remains, "
+        "Keep: the branch%s, the task list with what is done and what remains, "
         "every decision agreed in this conversation with its options, marking any that is "
-        "not yet in its folder's decisions.tsv as unlogged, and every question the owner "
-        "still owes. Drop tool output and exploration that led nowhere."
-        % (branch, status[0] if status else "no status"),
+        "not yet in its folder's decisions.tsv as unlogged, every question the owner "
+        "still owes, and each run a skill is driving with its skill and its folder, spec "
+        "or plan path. Drop tool output and exploration that led nowhere."
+        % (" (%s)" % branch if plain(branch, MAX_BRANCH) else ""),
     ]
     if flows:
-        out.append("Active flows, each resumed from its folder rather than from this summary:")
-        out.extend(describe(flow) for flow in flows)
+        out.append("Flows this session marked as running, each continued from its folder "
+                   "rather than from this summary:")
+        out.extend(describe(flows))
     return "\n".join(out)
 
 
-def after_compact(cwd, flows):
+def after_compact(flows):
     out = [
-        "Context was just compacted. Before the next action, run `git status -sb` "
-        "and confirm the branch. Append any decision the summary marks unlogged to "
-        "its folder's decisions.tsv before continuing."
+        "Context was compacted. The summary is a pointer and the files on disk are the "
+        "record. `git status -sb` confirms the branch. A decision the summary marks "
+        "unlogged goes into its folder's decisions.tsv before other work. A run the "
+        "summary names continues from its folder: its skill is loaded again when its "
+        "steps are no longer in context, and its Resume paragraph says how to pick up."
     ]
     if flows:
-        out.append("Resume these flows from disk, not from the summary: read each "
-                   "folder's next.md, then run its resume command, which this hook "
-                   "has checked is read-only.")
-        out.extend(describe(flow) for flow in flows)
+        out.append("This session marked these flows as running:")
+        out.extend(describe(flows))
     return "\n".join(out)
 
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except ValueError:
         payload = {}
-    cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        payload = {}
+    cwd = payload.get("cwd")
     if not isinstance(cwd, str) or not os.path.isdir(cwd):
         cwd = os.getcwd()
-    flows = active_flows(cwd)
+    flows = session_flows(cwd, payload.get("session_id"))
     if mode == "pre-compact":
         print(pre_compact(cwd, flows))
     elif mode == "after-compact":
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": after_compact(cwd, flows),
+                "additionalContext": after_compact(flows),
             }
         }))
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:  # A context-only hook never blocks compaction or a session start.
-        pass
-    sys.exit(0)
+    main()

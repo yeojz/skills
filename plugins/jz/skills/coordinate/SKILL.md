@@ -62,24 +62,24 @@ with a pointer to its evidence.
 | `parked` | Waiting on the owner for a fork, or on `criteria` for a requirement with none |
 | `blocked` | Three fix rounds used, or a gate nobody can run |
 
-Overwrite `$notes/next.md` with the file-write tool at the end of every step
-below and whenever this session stops to wait; never append to it. Only this
-session writes it, never a worker or reviewer:
+Write `$notes/flow.md` with the file-write tool when the run starts, and
+again in a session that picks the run up. Only this session writes it, never
+a worker or reviewer:
 
 ```text
 flow: coordinate
 state: running
-cwd: <this session's absolute working directory>
-step: Step 6, unit 03
-next: <the next action, one sentence>
-resume: column -t -s $'\t' <notes>/units.tsv; tail -20 <notes>/decisions.tsv
-updated: <YYYY-MM-DDTHH:MM>
+session: ${CLAUDE_SESSION_ID}
 ```
 
-`state` is `running`, `waiting-owner` or `done`, the last once every unit is
-`merged` or the owner ends the run. Append a fork, verdict or relay to
-`decisions.tsv` the moment it lands, never in a batch: after a compaction
-the run resumes from these files, not from the conversation.
+Leave the `session` line out when its value still reads as a placeholder.
+Set `state: done` once every unit is `merged` or the owner ends the run. The
+file marks the folder for the compaction hooks and says nothing of where the
+run stands: the ledgers do. Append a fork, verdict or relay to
+`decisions.tsv` the moment it lands, never in a batch.
+
+**Resume.** After a compaction, or in a session that picks the run up, run
+Step 11 and go on from the table, never from memory of the run.
 
 ### Step 3: Pick the next steps
 
@@ -132,9 +132,11 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 
 Anything missing goes back to the worker in one line naming it. Record the
 PR and head; in the desktop app, bind the PR and turn its monitor on once.
-Never stop for context use: auto-compaction resumes the run from `next.md`
-and the ledgers. Run `handoff` only when the owner asks to move the run to
-another session.
+In Claude Code, never stop for context use: after an auto-compaction the
+run continues from the ledgers. On a host where the compaction hooks do not
+run, such as Codex, run `handoff` with the notes folder past 55% context
+use, before starting anything new. Otherwise `handoff` is for when the owner
+asks to move the run to another session.
 
 ### Step 6: Brief and start the reviewer
 

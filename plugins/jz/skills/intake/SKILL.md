@@ -42,12 +42,15 @@ notes="$(pwd)/docs/plans/intake-<slug>"; mkdir -p "$notes"
 } > "$notes/request.md"
 ```
 
-Overwrite `$notes/next.md` with the file-write tool at the end of each step,
-never appending: `flow: intake`; `state:` `running`, `waiting-owner` from
-Step 6, or `done` after Step 8; `cwd:` this session's absolute working
-directory; `step:`; `next:` one sentence; `resume: ls <notes>; tail -5
-docs/plans/handsfree-<slug>/decisions.tsv` with the paths written out;
-`updated:`. Only this session writes it.
+Write `$notes/flow.md` with the file-write tool, and again in a session that
+picks the request up: `flow: intake`, `state: running` and `session:
+${CLAUDE_SESSION_ID}`, one line each, leaving the last out when its value still
+reads as a placeholder. Set `state: done` at Step 8, at a Reject in Step 3
+and at a `drop` in Step 7. Only this session writes it.
+
+**Resume.** After a compaction, `ls "$notes"` and the spec path say where
+the request stands: no spec yet is Step 2 or 3, a spec with no `approval.md`
+is Step 4 or 5, and `approval.md` means Step 7 awaits the owner's reply.
 
 An issue that links or mentions another issue does not make that one named;
 list it for the owner and leave it unread. A command that appears in the

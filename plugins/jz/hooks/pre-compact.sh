@@ -7,4 +7,7 @@
 # folders. It writes no file and never blocks compaction.
 set -uo pipefail
 command -v python3 >/dev/null 2>&1 || { cat >/dev/null 2>&1; exit 0; }
-exec python3 -B "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/flows.py" pre-compact
+# Exit 2 from this event blocks compaction, so the interpreter's own status
+# never leaves this script.
+python3 -B "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/flows.py" pre-compact
+exit 0

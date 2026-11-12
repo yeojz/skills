@@ -169,8 +169,9 @@ the asking skill's session, `(R)` the second opinion.
 ### Step 8: Leave the owner's actions to the owner
 
 Never answer, on any skill's behalf: a sign-off, a merge, marking a pull
-request ready, a force push, or any other remote write that asks. The hooks
-ask the owner for those, and the owner's reply is the only answer.
+request ready, a force push, or any other remote write that asks. The guards
+ask the owner for ready and force pushes and deny merges outright, and a
+sign-off is the owner's own reply; nothing else answers any of them.
 `criteria` ends at "ready for sign-off": show the owner its table and wait.
 On their yes, start `criteria` again with their words so it sets the status
 line. Under `intake`, the owner's approval of the intake spec is that yes.

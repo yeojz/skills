@@ -48,8 +48,9 @@ rg -n 'process\.env\.[A-Z_]*(TOKEN|SECRET|KEY|PASSWORD)' src
 Scope a diff review to what changed, and check dependency movement explicitly:
 
 ```bash
-git diff main...HEAD --stat
-git diff main...HEAD -- package.json pnpm-lock.yaml
+base="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')"
+git diff "origin/$base"...HEAD --stat
+git diff "origin/$base"...HEAD -- package.json pnpm-lock.yaml
 ```
 
 For any dependency the diff adds, read its entry in `package.json`, then check

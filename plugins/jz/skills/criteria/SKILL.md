@@ -1,6 +1,6 @@
 ---
 name: criteria
-description: Use when a spec's requirements need acceptance criteria, scenarios and checks written before any building starts, or when a requirement changed and its criteria must follow. Triggers on requests like "write the criteria", "write acceptance criteria for this spec", "how will we know it works", "define done", "what are the pass conditions", "add criteria for R3", "R2 changed, update its criteria", "write the evals", or when grill hands back a spec with an empty Criteria section, or implement stops on a requirement with no criterion.
+description: Use when a spec's requirements need acceptance criteria, scenarios and checks written before any building starts, or when a requirement changed and its criteria must follow. Triggers on requests like "write the criteria", "how will we know it works", "define done", "add criteria for R3", "R2 changed, update its criteria", "write the evals", or when grill hands back a spec with an empty Criteria section, or implement stops on a requirement with no criterion.
 ---
 
 # criteria

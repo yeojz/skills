@@ -1,6 +1,6 @@
 ---
 name: grill
-description: Use when a plan, design or decision has to be interviewed until nothing is left assumed, before any code is written, or when a new scope needs a spec, glossary and ADRs written as the decisions land. Triggers on requests like "grill me", "grill this plan", "stress-test my thinking", "interview me about", "challenge this design", "settle the design first", "kick off the project", "write a spec", "with docs", "write the glossary and ADRs as we go", or when a coordinating session starts a scope that has no spec yet.
+description: Use when a plan, design or decision has to be interviewed until nothing is left assumed, before any code is written, or when a new scope needs a spec, glossary and ADRs written as the decisions land. Triggers on requests like "grill me", "stress-test my thinking", "challenge this design", "kick off the project", "write a spec", "with docs", or when a coordinating session starts a scope that has no spec yet.
 ---
 
 # grill

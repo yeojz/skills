@@ -54,7 +54,9 @@ not fixed or no longer applicable, each with a `file:line` on this head.
 
 Your persona is read-only for the code under review, and that holds. The one
 file you write is the review file named in the header, which is run state
-outside the change. Write it with a shell heredoc:
+outside the change. Write it with the file-write tool, never through a shell
+heredoc, where a guard may deny quoted git wording or a line may end the
+heredoc:
 
 ```markdown
 VERDICT: PASS

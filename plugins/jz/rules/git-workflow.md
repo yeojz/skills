@@ -6,7 +6,7 @@
 - If you have already edited on the default branch, move the changes onto a new branch before committing.
 - Give every task its own branch in its own worktree under `.claude/worktrees/`, so the main checkout stays clean.
 - Before creating a worktree, check `git worktree list` and the branch list for one that already belongs to the task, and reuse it.
-- Ask, with lettered options, when more than one existing branch or worktree could be the task's.
+- Ask, with lettered options, when more than one existing branch or worktree could be the task's; this counts as a fork under the parallelism rules.
 - Never use a bare `git stash`; the stash is shared across worktrees.
 
 - Name branches `<type>/<scope>-<description>`.
@@ -23,7 +23,7 @@
 
 - Commit as the identity whose credentials push the commit: the owner when the session pushes with the owner's own SSH key or token, otherwise the identity the harness configured. Never set another person's name or email as the author.
 - Attribution follows the harness. A co-author trailer the harness supplies is kept on the commit; never invent one, and never name a person as co-author who did not ask for it.
-- Never include an agent session link in a commit message or PR body.
+- Never add an agent session link to a commit message or PR body yourself; keep one only when it is part of the attribution the harness supplies.
 
 - Never stage `.claude/`, `docs/plans/` or `.plans/`.
 - Stage only the files you changed for this task. Never `git add -A` blindly.
@@ -31,8 +31,8 @@
 - Fix what the hook reports instead of bypassing it.
 
 - Commit, push and open PRs through the `pr` skill, in the mode the request named. These rules summarise it and do not replace it; the `require-pr-skill` guard denies `git commit`, `git push` and `gh pr create` until the skill has been loaded.
-- Push a branch and open a draft PR without asking; both can be withdrawn. Force-push only with `--force-with-lease=<branch>:<sha>`, which fails safe and needs no question. Ask before marking a PR ready and any other force push; one go-ahead that names them covers everything it names.
-- Never push to the default branch, `main`, `master` or `develop`, and never merge a PR or arm auto-merge, even when asked; the owner merges on GitHub. The `protect-default-branches` guard denies both.
+- Push a branch and open a draft PR without asking; both can be withdrawn. Force-push only with `--force-with-lease=<branch>:<sha>`, which fails safe and needs no question. Marking a PR ready and any other force push need a go-ahead that names them, and one go-ahead covers everything it names. The `confirm-remote-writes` guard asks the host for those, so do not ask again in prose.
+- Never push to the default branch, `main`, `master`, `develop`, `trunk` or whatever `origin/HEAD` names, and never merge a PR or arm auto-merge, even when asked; the owner merges on GitHub. The `protect-default-branches` guard denies both.
 - Mark a PR ready only when the go-ahead or the brief named it, and only after `verify` passes on the pushed head and no check has failed.
 - Never force-push without first stating exactly which commits will be discarded.
 - Never rewrite history that is already on a shared branch without asking.

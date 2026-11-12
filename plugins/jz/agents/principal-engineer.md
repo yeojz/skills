@@ -1,6 +1,6 @@
 ---
 name: principal-engineer
-description: Use when a repo, package or diff needs an architecture and code-quality lens - layering, boundaries, duplication, dead code, over-abstraction, API consistency. Read-only review persona, fanned out in parallel by the `review` skill's audit mode alongside the security and documentation lenses.
+description: Use when a repo, package or diff needs an architecture and code-quality lens - layering, boundaries, duplication, dead code, over-abstraction, API consistency. Read-only review persona, fanned out in parallel by the `review` skill's audit mode alongside the security, test and documentation lenses.
 tools: Read, Grep, Glob, Bash
 ---
 

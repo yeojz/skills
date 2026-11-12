@@ -84,9 +84,9 @@ agent wrote, with `head -3`.
 
 | Agent | Template | Subagent type | Tier, from `rules/models.md` |
 |---|---|---|---|
-| Builder | `template-builder.md` | general purpose | Strong; top when the step's Surfaces include `security` or its Risk is `high` |
+| Builder | `template-builder.md` | `general-purpose` | Strong; top when the step's Surfaces include `security` or its Risk is `high` |
 | Reviewer | `template-reviewer.md` | `jz:<name>` for each name in the job's `reviewers` | Strong; top for a `security` surface or a job past its first fix round. The other family where present, at that tier |
-| Approver | `template-approver.md` | general purpose, fresh | Top, or the other family where present |
+| Approver | `template-approver.md` | `general-purpose`, fresh | Top, or the other family where present |
 
 Name the host's model and reasoning effort for the tier in every spawn. Risk
 changes how many reviewers the script routed, never their tier, and no

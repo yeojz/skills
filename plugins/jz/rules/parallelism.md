@@ -29,6 +29,6 @@
 - Keep options to three or four, each meaningfully different.
 - Say which option you would pick and why, in one sentence.
 
-- Wait for the owner at three points only: a fork put as lettered options under the rule above, a remote write that asks (ready, a force push not pinned to a sha), and an action the brief marks as the owner's.
+- Wait for the owner only at: a fork put as lettered options under the rule above, a remote write that asks (ready, a force push not pinned to a sha), an action the brief marks as the owner's, and a pause that a loaded skill's own steps name, such as `implement` stopping after each item or `pr` showing a body before replacing it.
 - Everything else proceeds and is reported afterwards. Never stop to ask whether a branch is pushed or a PR is open; run the command that answers it.
 - An unmerged dependency is a branch to base on, not a reason to stop: record the branch and its tip, say so in the report, and rebase from that tip once it merges.

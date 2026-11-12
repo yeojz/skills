@@ -258,7 +258,7 @@ FACTORY="$PLUGIN/skills/factory/scripts"
 for f in "$FACTORY/job" "$FACTORY/gate" "$FACTORY/test-factory.sh"; do
   [ -x "$f" ] || bad "$(basename "$f"): not executable"
 done
-for f in "$FACTORY/job" "$FACTORY/gate" "$FACTORY/factorylib.py" "$FACTORY/dashboard.py"; do
+for f in "$FACTORY/job" "$FACTORY/gate" "$FACTORY/factorylib.py"; do
   python3 -m py_compile "$f" 2>/dev/null || bad "$(basename "$f"): does not compile"
   note "$(basename "$f")"
 done

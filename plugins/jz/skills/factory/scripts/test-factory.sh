@@ -667,16 +667,9 @@ has "and the question of a waiting job" "Keep the old format or replace it?"
 t "status --json prints the run and its jobs" 0 "$JOB" status "$SPEC" --json
 has "with each job's stage" '"stage": "needs-owner"'
 has "and its history of moves" '"history": ['
+has "and a schema number" '"schema": 1'
 t "the JSON parses" 0 sh -c "\"$JOB\" status \"$SPEC\" --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"run\"][\"mode\"] and d[\"jobs\"]'"
-t "dashboard prints the page's path" 0 "$JOB" dashboard "$SPEC"
-has "inside the run folder" "dashboard docs/plans/factory-demo/dashboard.html"
-BOARD="$(dirname "$(dirname "$(dir 02-beta)")")/dashboard.html"
-t "the page exists and carries the waiting job's question" 0 grep -c "Keep the old format or replace it?" "$BOARD"
-t "a note cannot close the page's data element" 1 grep -c '</script><' "$BOARD"
-STAMP="$(cksum < "$BOARD")"
 t "the owner's answer closes the breaker" 0 say "Replace it." answer 02-beta
-t "the page is rewritten when a job moves" 1 test "$STAMP" = "$(cksum < "$BOARD")"
-t "and shows the job's new stage" 0 python3 -c "import json,re,sys; d=json.loads(re.search(r'<script id=\"data\" type=\"application/json\">(.*?)</script>', open(sys.argv[1]).read(), re.S).group(1)); assert [j for j in d['jobs'] if j['id']=='02-beta'][0]['stage']=='build'" "$BOARD"
 t "a builder's blocked job is answered the same way" 0 say "Use fixtures/theta.txt." answer 08-theta
 t "next in a new process reports each job at its recorded stage" 0 "$JOB" next "$SPEC"
 lacks "the breaker is closed" "stop "

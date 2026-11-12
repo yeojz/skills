@@ -228,8 +228,8 @@ first: work starts only once it says `criteria signed off`.
 
 A step also carries `Risk` and `Surfaces` lines, which route the factory's
 reviewers. The factory's state lives under `docs/plans/factory-<slug>/` and
-is written only by its `job` script, which also redraws
-`dashboard.html` there after every command; `handsfree` keeps its rounds and its
+is written only by its `job` script, and `skills/factory/state.md` describes
+it for a tool that follows a run; `handsfree` keeps its rounds and its
 decision log under `docs/plans/handsfree-<slug>/`. Neither is committed.
 
 ### Verification recipes

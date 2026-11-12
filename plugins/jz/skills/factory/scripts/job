@@ -8,7 +8,7 @@
     job accept <job-dir> [--from <file>]   the owner's words; an approved, escalated job moves on
     job merge <job-dir>                sync, gate again, merge the step pull request
     job final <spec> [--title <text>]  gate the integration branch, open the final draft pull request
-    job status <spec>                  table of every job
+    job status <spec> [--json]         table of every job, or the run and every job as JSON
 
 This script is the only writer of `job.json` and `run.json`. A move is made
 only when the files the agents and the gate wrote support it; a refusal is
@@ -32,7 +32,6 @@ import time
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
-import dashboard  # noqa: E402
 import factorylib as lib  # noqa: E402
 
 STAGES = ("planned", "build", "gate", "review", "approve", "merging", "merged",
@@ -1019,7 +1018,8 @@ def command_status(args):
     run, _ = run_for_spec(args.spec)
     run_state = run.load()
     if args.json:
-        print(json.dumps(dashboard.snapshot(run_state, run.jobs()), indent=2))
+        # The shape is documented in state.md beside the skill; raise `schema` when a field changes meaning.
+        print(json.dumps({"schema": 1, "generated": stamp(), "run": run_state, "jobs": run.jobs()}, indent=2))
         return 0
     rows = [("job", "stage", "round", "pull request", "gate", "reviews", "note")]
     for job in run.jobs():
@@ -1031,31 +1031,6 @@ def command_status(args):
         padded = [row[column].ljust(widths[column]) for column in range(len(widths))]
         print("  ".join(padded + [row[-1]]))
     return 0
-
-
-def command_dashboard(args):
-    run, _ = run_for_spec(args.spec)
-    run.load()
-    # main() rewrites the file after every command, this one included.
-    print("dashboard %s" % run.relative(os.path.join(run.directory, dashboard.NAME)))
-    return 0
-
-
-def refresh_dashboard(args):
-    """Rewrite the run's dashboard from the state on disk, after any command.
-
-    A refused move changes nothing, so the page still matches. The page is a
-    view: a failure to write it never changes a command's result.
-    """
-    try:
-        if getattr(args, "spec", None):
-            run, _ = run_for_spec(args.spec)
-        else:
-            run, _ = run_for_job(args.job_dir)
-        if run.exists():
-            dashboard.write(run.directory, lib.read_json(run.file), run.jobs())
-    except Exception:  # noqa: BLE001
-        pass
 
 
 def main():
@@ -1103,10 +1078,6 @@ def main():
     status.add_argument("--json", action="store_true", help="print the run and every job as JSON")
     status.set_defaults(run=command_status)
 
-    board = commands.add_parser("dashboard", help="print the path of the run's dashboard page")
-    board.add_argument("spec")
-    board.set_defaults(run=command_dashboard)
-
     args = parser.parse_args()
     try:
         return args.run(args)
@@ -1116,8 +1087,6 @@ def main():
     except lib.FactoryError as failure:
         print("refused: %s" % str(failure).replace("\n", " "), file=sys.stderr)
         return 1
-    finally:
-        refresh_dashboard(args)
 
 
 if __name__ == "__main__":

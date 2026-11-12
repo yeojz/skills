@@ -1,0 +1,18 @@
+{
+  "name": "jz",
+  "description": "House skills, always-on rules, review personas and hooks: grill a spec, write its criteria, implement against them, verify before done, ship through a draft PR, review.",
+  "author": {
+    "name": "Gerald Yeo",
+    "url": "https://github.com/yeojz"
+  },
+  "homepage": "https://github.com/yeojz/skills",
+  "repository": "https://github.com/yeojz/skills",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "workflow",
+    "verification",
+    "review",
+    "hooks"
+  ]
+}

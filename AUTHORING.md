@@ -203,6 +203,8 @@ check that fails, then a test, with prose last.
 | A branch cannot edit the checks, the criteria or the spec it is judged by, or files outside its step's Owns | `skills/factory/scripts/gate`: reads the spec and `factory.json` from the base ref and fails a protected path edit or a file outside Owns |
 | The factory never merges into a default branch | `skills/factory/scripts/job merge` refuses a protected base; the `protect-default-branches` guard denies a merge an agent types |
 | The factory scripts keep doing the above | `skills/factory/scripts/test-factory.sh`, run by `make test` |
+| A coordinated step moves only on evidence, and never by a session's word | `skills/coordinate/scripts/unit`: the only writer of `units.tsv` and `decisions.tsv`, which refuses a move the worker's report, the review file and the pull request do not support |
+| The unit script keeps doing the above | `skills/coordinate/scripts/test-coordinate.sh`, run by `make test` |
 | `handsfree` forms its own pick before reading a recommendation, and never answers a sign-off, a merge or a new dependency | nothing; the `handsfree` skill states it, and the decision log records every pick |
 | Model tier matches the job | nothing; `models.md` describes it |
 | Done means a behaviour level, not only a green script | nothing; the `behaviour` row in `verify` Step 7 names the level the runs support, and `coordinate` Step 5 checks it against the behaviour target in the brief |

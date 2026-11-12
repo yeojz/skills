@@ -104,13 +104,22 @@ Never approve and never request changes; the verdict goes to the coordinator, an
 
 ## Verdict and report
 
-Message the coordinator with:
+A script reads the review file's first three lines and its Criteria table, so they are exact:
 
-- Verdict: merge as is, after fixes, or rework. After fixes means every P1 and P2 has a named fix; rework means the approach is wrong for a reason an ADR or the phase brief settles
-- Head SHA reviewed, and the detached gate: command, exit code, counts line
+```markdown
+VERDICT: after fixes
+COMMIT: <head sha reviewed>
+FINDINGS: <n> P1, <n> P2, <n> P3, <n> not fixed
+```
+
+Line 1 is `VERDICT: merge as is`, `VERDICT: after fixes` or `VERDICT: rework`. After fixes means every P1 and P2 has a named fix; rework means the approach is wrong for a reason an ADR or the phase brief settles. `not fixed` counts the earlier findings a second pass found still open, and is 0 on a first pass. Below those lines the file carries:
+
+- The detached gate: command, exit code, counts line
 - The probe result on base and on candidate
 - The criteria table: one line per criterion with the result here and the worker's row
 - One line each for Design, Maintainability and Guard deletion, clean or not, with what was checked; the guard deletion line gives the counts: rejecting guards in the diff, sampled at which sha with which test command, survived, and not sampled with a reason each
 - The findings table
-- The review file path, and the URL of the posted review or that it is held
-- A second pass on a new head classifies each earlier finding as fixed, not fixed or no longer applicable, each with a line
+- The URL of the posted review, or that it is held
+- A second pass on a new head rewrites the file for that head and classifies each earlier finding as fixed, not fixed or no longer applicable, each with a line
+
+Then message the coordinator with the three lines and the review file's path, and nothing else.

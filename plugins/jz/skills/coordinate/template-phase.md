@@ -10,7 +10,7 @@ Delete this comment before sending.
 Model tier: <the coordinating tier from rules/models.md, not the model the coordinator runs on, and the host's model and reasoning effort for it; one tier up when the step is subtle or security-sensitive; for a fix round after a failed one, one tier above the last round's>
 Repo: <absolute path to the main checkout>
 Branch: `<type>/<scope>-<description>` in its own worktree under `.claude/worktrees/`, based on `<default branch, or the unmerged dependency's branch>`
-Notes folder: <absolute path>; write the hand-over note there as `unit-<id>.md`
+Notes folder: <absolute path>; write the report there as `report-<id>.md` and the hand-over note as `unit-<id>.md`
 
 ## Read first, in this order
 
@@ -79,15 +79,24 @@ Use the `pr` skill through to Ready. This brief is the go-ahead for push, draft 
 
 ## Report
 
-Message the coordinator when the PR is ready, and again if blocked, with:
+Write `report-<unit id>.md` in the notes folder after the push, replacing any earlier one, when the PR is ready and again if blocked. A script reads its first three lines and its verify table, so they are exact:
 
-- Branch, PR URL, head SHA
-- The `verify` run on the pushed head: command, exit code, the counts line
-- One row per criterion from the verify report, each with its check, exit code and result, and the spec's Criteria table updated to match
-- The `behaviour` row of the verify report, with the command that supports it, and what was not driven and why when it is below the target
+```markdown
+STATUS: READY
+COMMIT: <pushed head sha, equal to the worktree's HEAD>
+QUESTION: none
+```
+
+Line 1 is `STATUS: READY`, `STATUS: BLOCKED` or `STATUS: FORK`. `BLOCKED` puts the one thing that would unblock the work on line 3, and `FORK` the one decision needed. `READY` is only for a head on which the gate and every criterion pass. Below those lines:
+
+- Branch and PR URL
+- The `verify` report on the pushed head as its table, `| Concern | Command | Exit | Result |`: the gate rows, then one row per criterion whose first cell starts with its id, then the `behaviour` row; the spec's Criteria table updated to match
+- What was not driven and why, when the behaviour row is below the target
 - Forks decided below the ADR tier, each with the choice made
 - Forks parked for the coordinator, as lettered options
 - The hand-over note path
+
+Then message the coordinator with the three lines and the report's path, and nothing else.
 
 ## Standing orders
 

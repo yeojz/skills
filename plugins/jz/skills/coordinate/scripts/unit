@@ -1,0 +1,541 @@
+#!/usr/bin/env python3
+"""Record and move the state of every step in a coordinated run.
+
+    unit open <notes>                       create the two ledgers; an existing run is left as it is
+    unit add <notes> <id> <title>           a new row at scoped
+    unit move <notes> <id> <state> [--branch <name>] [--base <ref>] [--session <id>]
+                                            [--pr <number>] [--reason <text>]
+    unit log <notes> <unit> <kind> <decision> [--evidence <text>] [--result <text>]
+    unit next <notes>                       one line per step: brief|start|wait|report|review|verdict|merged|stale|owner|done
+    unit status <notes>                     the table, then what the owner still owes
+
+This script is the only writer of `units.tsv` and `decisions.tsv`. A move is
+made only when the files the worker and the reviewer wrote, and the pull
+request itself, support it; a refusal is one line on stderr and exit 1.
+Usage errors exit 2.
+
+The script reads these files in the notes folder, so the coordinating
+session does not have to:
+
+    phase-<id>.md          the brief; its criteria and behaviour target
+    report-<id>.md         the worker's report; line 1 STATUS, line 2 COMMIT, line 3 QUESTION
+    review-pr<number>.md   the review; line 1 VERDICT, line 2 COMMIT, line 3 FINDINGS
+
+Run it from the main checkout: git and gh are asked there.
+"""
+
+import argparse
+import contextlib
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+# The git and file helpers are the factory's; one copy serves both skills.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "factory", "scripts"))
+
+import factorylib as lib  # noqa: E402
+
+UNIT_COLUMNS = ("id", "title", "session", "branch", "base", "pr", "head", "verdict", "state", "moved")
+DECISION_COLUMNS = ("when", "unit", "kind", "decision", "evidence", "result")
+MOVES = {
+    "scoped": ("running", "parked", "blocked"),
+    "running": ("ready", "parked", "blocked"),
+    "ready": ("in-review", "parked", "blocked"),
+    "in-review": ("merge-ready", "fixing", "parked", "blocked"),
+    "fixing": ("ready", "parked", "blocked"),
+    "merge-ready": ("merged", "fixing", "parked"),
+    "merged": (),
+}
+# A parked or blocked row leaves only for the state it came from, which its
+# park or block row holds, and only with the owner's answer as the reason.
+HELD = {"parked": "park", "blocked": "block"}
+STATES = tuple(MOVES) + tuple(HELD)
+KINDS = ("fork", "verdict", "relay", "park", "block", "note")
+FIX_VERDICTS = ("after fixes", "rework")
+MAX_FIX_ROUNDS = 3
+# The verify skill's behaviour levels, weakest first.
+BEHAVIOUR = ("not run", "type-check-only", "unit-only", "live-verified")
+CRITERION = re.compile(r"C\d+\.\d+")
+UNIT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}")
+
+
+class Refusal(Exception):
+    """A move the evidence does not support. The row is left as it was."""
+
+
+def stamp():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def cell(text):
+    """One ledger cell: a tab or a line break would split the row."""
+    return " ".join(str(text if text is not None else "").split())
+
+
+# ledgers
+
+def ledger(notes, name):
+    path = os.path.join(notes, name)
+    if not os.path.isfile(path):
+        raise Refusal("%s has no %s; run `unit open` first" % (notes, name))
+    return path
+
+
+@contextlib.contextmanager
+def locked(notes):
+    ledger(notes, "units.tsv")
+    with open(os.path.join(notes, ".lock"), "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+def read_units(notes):
+    with open(ledger(notes, "units.tsv"), encoding="utf-8") as source:
+        lines = source.read().splitlines()
+    rows = []
+    for line in lines[1:]:
+        if line.strip():
+            cells = line.split("\t")
+            rows.append(dict(zip(UNIT_COLUMNS, cells + [""] * (len(UNIT_COLUMNS) - len(cells)))))
+    return rows
+
+
+def write_units(notes, rows):
+    lines = ["\t".join(UNIT_COLUMNS)]
+    lines.extend("\t".join(cell(row[column]) for column in UNIT_COLUMNS) for row in rows)
+    lib.write_atomic(os.path.join(notes, "units.tsv"), "\n".join(lines) + "\n")
+
+
+def read_decisions(notes):
+    with open(ledger(notes, "decisions.tsv"), encoding="utf-8") as source:
+        lines = source.read().splitlines()
+    return [dict(zip(DECISION_COLUMNS, line.split("\t") + [""] * len(DECISION_COLUMNS)))
+            for line in lines[1:] if line.strip()]
+
+
+def append_decision(notes, unit, kind, decision, evidence="", result=""):
+    row = (stamp(), unit, kind, decision, evidence, result)
+    with open(ledger(notes, "decisions.tsv"), "a", encoding="utf-8") as out:
+        out.write("\t".join(cell(value) for value in row) + "\n")
+
+
+def find(rows, unit):
+    for row in rows:
+        if row["id"] == unit:
+            return row
+    raise Refusal("no step %s in units.tsv" % unit)
+
+
+# the files the sessions write
+
+def header(path, keys):
+    """The first lines of a report or review, one `KEY: value` each, in order."""
+    if not os.path.isfile(path):
+        raise Refusal("%s is not written yet" % os.path.basename(path))
+    with open(path, encoding="utf-8", errors="replace") as source:
+        lines = [source.readline().strip() for _ in keys]
+    values = {}
+    for key, line in zip(keys, lines):
+        name, sep, value = line.partition(":")
+        if not sep or name.strip() != key:
+            raise Refusal("%s line %d must read `%s: ...`" % (os.path.basename(path), len(values) + 1, key))
+        values[key] = value.strip()
+    return values
+
+
+def table_rows(path, width):
+    """The cells of every markdown table row that has `width` cells."""
+    rows = []
+    with open(path, encoding="utf-8", errors="replace") as source:
+        for line in source:
+            cells = lib.split_row(line.strip()) if line.lstrip().startswith("|") else []
+            if len(cells) == width:
+                rows.append(cells)
+    return rows
+
+
+def verify_rows(path):
+    """The rows of a verify table as (first cell, result): four cells, the
+    third an exit code or a dash. Any other table in the report is not read."""
+    return [(cells[0], cells[3].lower()) for cells in table_rows(path, 4)
+            if re.fullmatch(r"\d+|-", cells[2])]
+
+
+def brief_asks(path):
+    """The criterion ids a brief lists under Done means, and its behaviour target."""
+    if not os.path.isfile(path):
+        raise Refusal("%s is not written yet" % os.path.basename(path))
+    with open(path, encoding="utf-8", errors="replace") as source:
+        text = source.read()
+    if "<!--" in text:
+        raise Refusal("%s still holds a template comment; fill every field first" % os.path.basename(path))
+    ids = []
+    target = ""
+    for line in text.splitlines():
+        listed = re.match(r"\s*[-*]\s+(C\d+\.\d+)\b", line)
+        if listed and listed.group(1) not in ids:
+            ids.append(listed.group(1))
+        if line.lower().startswith("behaviour target:"):
+            wanted = line.partition(":")[2].lower()
+            named = [level for level in BEHAVIOUR if level in wanted]
+            target = min(named, key=wanted.index) if named else ""
+    return ids, target
+
+
+def check_report(notes, row):
+    """The worker's report against its brief. Returns the commit it reports."""
+    name = "report-%s.md" % row["id"]
+    path = os.path.join(notes, name)
+    head = header(path, ("STATUS", "COMMIT", "QUESTION"))
+    if head["STATUS"] != "READY":
+        raise Refusal("%s reads STATUS: %s: %s" % (name, head["STATUS"], head["QUESTION"]))
+    ids, target = brief_asks(os.path.join(notes, "phase-%s.md" % row["id"]))
+    if not ids:
+        raise Refusal("phase-%s.md lists no criterion under Done means" % row["id"])
+    results = {}
+    reached = ""
+    for first, last in verify_rows(path):
+        if last.startswith(("fail", "not met", "not run")):
+            raise Refusal("%s: the row `%s` reads %s" % (name, first, last))
+        named = CRITERION.match(first)
+        if named:
+            results[named.group(0)] = last
+        elif first.lower().startswith("behaviour"):
+            reached = next((level for level in reversed(BEHAVIOUR) if last.startswith(level)), "")
+    for criterion in ids:
+        if criterion not in results:
+            raise Refusal("%s has no row for %s" % (name, criterion))
+        if not results[criterion].startswith(("pass", "met")):
+            raise Refusal("%s: %s reads %s" % (name, criterion, results[criterion]))
+    if target and BEHAVIOUR.index(reached or "not run") < BEHAVIOUR.index(target):
+        raise Refusal("%s: behaviour reads %s, below the brief's %s" % (name, reached or "nothing", target))
+    return head["COMMIT"]
+
+
+def check_review(notes, row):
+    """The review's three header lines, for the head this row holds."""
+    name = "review-pr%s.md" % row["pr"]
+    head = header(os.path.join(notes, name), ("VERDICT", "COMMIT", "FINDINGS"))
+    if not lib.sha_matches(head["COMMIT"], row["head"]):
+        raise Refusal("%s reviewed %s, and the step's head is %s" % (name, head["COMMIT"] or "no commit", row["head"][:10]))
+    return name, head["VERDICT"], head["FINDINGS"]
+
+
+def check_review_criteria(notes, row):
+    """A review that says merge as is ran every criterion itself and saw it hold.
+    Its Criteria table has five cells a row, the third the result on its checkout."""
+    name = "review-pr%s.md" % row["pr"]
+    ids, _ = brief_asks(os.path.join(notes, "phase-%s.md" % row["id"]))
+    results = {}
+    for cells in table_rows(os.path.join(notes, name), 5):
+        named = CRITERION.match(cells[0])
+        if named:
+            results[named.group(0)] = cells[2].lower()
+    for criterion in ids:
+        if not results.get(criterion, "").startswith(("pass", "met")):
+            raise Refusal("%s: %s reads %s on the reviewer's checkout" % (
+                name, criterion, results.get(criterion) or "nothing"))
+
+
+# the pull request
+
+def pull_request(number):
+    """State, head and draft flag of a pull request, from gh."""
+    try:
+        done = subprocess.run(
+            ["gh", "pr", "view", str(number), "--json", "headRefOid,isDraft,state"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise Refusal("gh pr view %s did not run: %s" % (number, error))
+    if done.returncode != 0:
+        message = done.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise Refusal("gh pr view %s failed: %s" % (number, message[-1] if message else "exit %d" % done.returncode))
+    try:
+        view = json.loads(done.stdout.decode("utf-8", "replace"))
+    except ValueError:
+        raise Refusal("gh pr view %s did not answer in JSON" % number)
+    return view if isinstance(view, dict) else {}
+
+
+def remote_tip(branch):
+    """The sha origin holds for a branch, or an empty string when it has none."""
+    out = lib.git(os.getcwd(), "ls-remote", "origin", "refs/heads/%s" % branch)
+    return out.split()[0] if out.split() else ""
+
+
+def held_from(notes, unit, kind):
+    for row in reversed(read_decisions(notes)):
+        if row["unit"] == unit and row["kind"] == kind:
+            return row["result"]
+    return ""
+
+
+def fix_rounds(notes, unit):
+    """Fix rounds used since the owner last freed the step from blocked."""
+    used = 0
+    for row in read_decisions(notes):
+        if row["unit"] != unit:
+            continue
+        if row["kind"] == "note" and row["result"].startswith("blocked to "):
+            used = 0
+        elif row["kind"] == "verdict" and row["result"] in FIX_VERDICTS:
+            used += 1
+    return used
+
+
+# commands
+
+def cmd_open(args):
+    os.makedirs(args.notes, exist_ok=True)
+    for name, columns in (("units.tsv", UNIT_COLUMNS), ("decisions.tsv", DECISION_COLUMNS)):
+        path = os.path.join(args.notes, name)
+        if not os.path.exists(path):
+            lib.write_atomic(path, "\t".join(columns) + "\n")
+    print("open %s: %d steps" % (args.notes, len(read_units(args.notes))))
+
+
+def cmd_add(args):
+    if not UNIT_ID.fullmatch(args.id):
+        raise Refusal("a step id is letters, digits, dot, dash or underscore, such as 03")
+    with locked(args.notes):
+        rows = read_units(args.notes)
+        if any(row["id"] == args.id for row in rows):
+            raise Refusal("step %s is already in units.tsv" % args.id)
+        row = dict.fromkeys(UNIT_COLUMNS, "")
+        row.update(id=args.id, title=args.title, state="scoped", moved=stamp())
+        write_units(args.notes, rows + [row])
+    print("scoped %s" % args.id)
+
+
+def cmd_move(args):
+    with locked(args.notes):
+        rows = read_units(args.notes)
+        row = find(rows, args.id)
+        was = row["state"]
+        if args.state == was and (args.base or args.session):
+            # Not a move: a rebased step's new base, or the session that took a step over.
+            row["base"], row["session"] = args.base or row["base"], args.session or row["session"]
+            write_units(args.notes, rows)
+            print("kept %s %s base=%s session=%s" % (args.id, was, row["base"] or "-", row["session"] or "-"))
+            return
+        allowed = (held_from(args.notes, args.id, HELD[was]),) if was in HELD else MOVES[was]
+        if args.state not in allowed:
+            raise Refusal("%s is at %s, which leaves only for: %s" % (
+                args.id, was, ", ".join(allowed) or "nothing"))
+        for column in ("branch", "base", "session", "pr"):
+            if getattr(args, column):
+                row[column] = str(getattr(args, column))
+        note = move_evidence(args, row, was)
+        row["state"] = args.state
+        row["moved"] = stamp()
+        write_units(args.notes, rows)
+    print(" ".join(part for part in (args.state, args.id, note) if part))
+
+
+def move_evidence(args, row, was):
+    """Check what the move rests on, fill the row from it, and return the note to print."""
+    notes, state = args.notes, args.state
+    if state in HELD:
+        if not args.reason:
+            raise Refusal("a move to %s needs --reason: the question owed, or what blocks the step" % state)
+        append_decision(notes, row["id"], HELD[state], args.reason, result=was)
+        return ""
+    if was in HELD or (was == "merge-ready" and state != "merged"):
+        if not args.reason:
+            raise Refusal("leaving %s for %s needs --reason: the answer, or who asked for the change" % (was, state))
+        append_decision(notes, row["id"], "note", args.reason, result="%s to %s" % (was, state))
+        return ""
+    if state == "running":
+        brief_asks(os.path.join(notes, "phase-%s.md" % row["id"]))
+        if not row["branch"]:
+            raise Refusal("a move to running needs --branch")
+        return "branch=%s" % row["branch"]
+    if state == "ready":
+        if not row["pr"] or not row["branch"]:
+            raise Refusal("a move to ready needs the step's branch and --pr")
+        commit = check_report(notes, row)
+        if was == "fixing" and lib.sha_matches(commit, row["head"]):
+            raise Refusal("report-%s.md still reports %s, the head already reviewed" % (row["id"], row["head"][:10]))
+        view = pull_request(row["pr"])
+        head = str(view.get("headRefOid") or "")
+        if not lib.sha_matches(commit, head):
+            raise Refusal("report-%s.md reports %s, and pull request %s is at %s" % (
+                row["id"], commit or "no commit", row["pr"], head[:10] or "no head"))
+        tip = remote_tip(row["branch"])
+        if tip != head:
+            raise Refusal("origin/%s is at %s, and pull request %s is at %s" % (
+                row["branch"], tip[:10] or "nothing", row["pr"], head[:10]))
+        row["head"], row["verdict"] = head, ""
+        return "pr=%s head=%s draft=%s" % (row["pr"], head[:10], str(bool(view.get("isDraft"))).lower())
+    if state in ("merge-ready", "fixing") and was == "in-review":
+        name, verdict, findings = check_review(notes, row)
+        if state == "merge-ready":
+            if verdict != "merge as is":
+                raise Refusal("%s reads VERDICT: %s" % (name, verdict))
+            check_review_criteria(notes, row)
+            head = str(pull_request(row["pr"]).get("headRefOid") or "")
+            if head != row["head"]:
+                raise Refusal("pull request %s moved to %s after the review of %s" % (
+                    row["pr"], head[:10], row["head"][:10]))
+        else:
+            if verdict not in FIX_VERDICTS:
+                raise Refusal("%s reads VERDICT: %s; a fix round follows only: %s" % (
+                    name, verdict, ", ".join(FIX_VERDICTS)))
+            if fix_rounds(notes, row["id"]) >= MAX_FIX_ROUNDS:
+                raise Refusal("%s has used %d fix rounds; move it to blocked with the open findings" % (
+                    row["id"], MAX_FIX_ROUNDS))
+        row["verdict"] = verdict
+        append_decision(notes, row["id"], "verdict", "pull request %s at %s" % (row["pr"], row["head"][:10]),
+                        evidence=name, result=verdict)
+        round_note = " round=%d" % fix_rounds(notes, row["id"]) if state == "fixing" else ""
+        return "pr=%s head=%s review=%s%s findings=%s" % (row["pr"], row["head"][:10], name, round_note, findings)
+    if state == "merged":
+        view = pull_request(row["pr"])
+        if view.get("state") != "MERGED":
+            raise Refusal("pull request %s reads %s, not MERGED" % (row["pr"], view.get("state")))
+        if remote_tip(row["branch"]):
+            raise Refusal("origin still holds %s; run the pr skill's Cleanup first" % row["branch"])
+        return "pr=%s" % row["pr"]
+    return ""
+
+
+def cmd_log(args):
+    with locked(args.notes):
+        if args.unit != "-":
+            find(read_units(args.notes), args.unit)
+        append_decision(args.notes, args.unit, args.kind, args.decision, args.evidence, args.result)
+    print("logged %s %s" % (args.kind, args.unit))
+
+
+def newer(path, row):
+    """True when a session wrote this file after the row last moved."""
+    if not os.path.isfile(path):
+        return False
+    written = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(os.path.getmtime(path)))
+    return written >= row["moved"]
+
+
+def last_reason(decisions, unit, kind):
+    for row in reversed(decisions):
+        if row["unit"] == unit and row["kind"] == kind:
+            return row["decision"]
+    return ""
+
+
+def next_line(notes, row, decisions):
+    unit, state = row["id"], row["state"]
+    if state == "scoped":
+        if os.path.isfile(os.path.join(notes, "phase-%s.md" % unit)):
+            return "start %s phase-%s.md" % (unit, unit)
+        return "brief %s phase-%s.md is not written yet" % (unit, unit)
+    if state in ("running", "fixing"):
+        path = os.path.join(notes, "report-%s.md" % unit)
+        if newer(path, row):
+            head = header(path, ("STATUS", "COMMIT", "QUESTION"))
+            return "report %s %s %s" % (unit, head["STATUS"], head["QUESTION"])
+        return "wait %s %s" % (unit, state)
+    if state == "ready":
+        return "review %s pr=%s head=%s" % (unit, row["pr"], row["head"][:10])
+    if state == "in-review":
+        path = os.path.join(notes, "review-pr%s.md" % row["pr"])
+        if newer(path, row):
+            head = header(path, ("VERDICT", "COMMIT", "FINDINGS"))
+            return "verdict %s %s; %s" % (unit, head["VERDICT"], head["FINDINGS"])
+        return "wait %s in-review" % unit
+    if state == "merge-ready":
+        view = pull_request(row["pr"])
+        if view.get("state") == "MERGED":
+            return "merged %s pr=%s" % (unit, row["pr"])
+        if view.get("headRefOid") != row["head"]:
+            return "stale %s pr=%s moved to %s after the verdict" % (unit, row["pr"], str(view.get("headRefOid"))[:10])
+        return "wait %s merge-ready pr=%s" % (unit, row["pr"])
+    if state == "parked":
+        return "owner %s %s" % (unit, last_reason(decisions, unit, "park"))
+    if state == "blocked":
+        return "done %s blocked: %s" % (unit, last_reason(decisions, unit, "block"))
+    return "done %s %s" % (unit, state)
+
+
+def cmd_next(args):
+    decisions = read_decisions(args.notes)
+    for row in read_units(args.notes):
+        try:
+            print(next_line(args.notes, row, decisions))
+        except Refusal as refusal:
+            print("check %s %s: %s" % (row["id"], row["state"], refusal))
+
+
+def cmd_status(args):
+    rows = read_units(args.notes)
+    shown = [column for column in UNIT_COLUMNS if column != "moved"]
+    table = [shown] + [[cell(row[column]) or "-" for column in shown] for row in rows]
+    table = [[text[:10] if column == "head" else text for column, text in zip(shown, line)] for line in table]
+    widths = [max(len(line[index]) for line in table) for index in range(len(shown))]
+    for line in table:
+        print("  ".join(text.ljust(width) for text, width in zip(line, widths)).rstrip())
+    decisions = read_decisions(args.notes)
+    for row in rows:
+        if row["state"] == "parked":
+            print("owed by the owner, %s: %s" % (row["id"], last_reason(decisions, row["id"], "park")))
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="unit", description="Record and move the steps of a coordinated run.")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    opening = commands.add_parser("open", help="create the two ledgers; an existing run is left as it is")
+    opening.add_argument("notes")
+    opening.set_defaults(run=cmd_open)
+
+    adding = commands.add_parser("add", help="a new row at scoped")
+    adding.add_argument("notes")
+    adding.add_argument("id")
+    adding.add_argument("title")
+    adding.set_defaults(run=cmd_add)
+
+    move = commands.add_parser("move", help="move a step, or refuse with the reason")
+    move.add_argument("notes")
+    move.add_argument("id")
+    move.add_argument("state", choices=STATES)
+    move.add_argument("--branch", help="the step's branch, on the move to running")
+    move.add_argument("--base", help="the default branch, or <parent branch>@<sha> for a stacked step; "
+                                     "with the row's own state, records a new base and moves nothing")
+    move.add_argument("--session", help="the worker's session; with the row's own state, records a new one")
+    move.add_argument("--pr", type=int, help="the step's pull request, on the first move to ready")
+    move.add_argument("--reason", help="the question owed, what blocks the step, or the answer that frees it")
+    move.set_defaults(run=cmd_move)
+
+    log = commands.add_parser("log", help="append one row to decisions.tsv")
+    log.add_argument("notes")
+    log.add_argument("unit", help="a step id, or - for the run")
+    log.add_argument("kind", choices=KINDS)
+    log.add_argument("decision")
+    log.add_argument("--evidence", default="")
+    log.add_argument("--result", default="")
+    log.set_defaults(run=cmd_log)
+
+    following = commands.add_parser("next", help="one line per step: what it waits on")
+    following.add_argument("notes")
+    following.set_defaults(run=cmd_next)
+
+    status = commands.add_parser("status", help="the table, then what the owner still owes")
+    status.add_argument("notes")
+    status.set_defaults(run=cmd_status)
+
+    args = parser.parse_args()
+    try:
+        args.run(args)
+    except (Refusal, lib.FactoryError) as refusal:
+        print("refused: %s" % refusal, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

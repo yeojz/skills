@@ -137,6 +137,8 @@ says what it does without it.
 .claude-plugin/marketplace.json   the marketplace, for Claude Code
 .agents/plugins/marketplace.json  the same marketplace, for Codex
 plugins/jz/                       the agent-agnostic plugin
+  plugin.json                     the portable manifest, for Codex
+  .claude-plugin/plugin.json      the same manifest, for Claude Code
   skills/      loaded on demand when a request matches the description;
                a skill that fills in a template carries it as template.md
   rules/       always on, injected at session start by a hook

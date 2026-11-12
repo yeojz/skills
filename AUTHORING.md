@@ -12,10 +12,12 @@ agents load lives in `plugins/jz/`: `skills/`, `rules/`, `agents/` and
 `hooks/`. The marketplace manifests sit at the repository root,
 `.claude-plugin/marketplace.json` for Claude Code and
 `.agents/plugins/marketplace.json` for Codex, and both point at that
-directory. For Claude Code the marketplace entry is the plugin's manifest, so
-there is no `plugins/jz/.claude-plugin/plugin.json`; Codex reads the portable
-`plugins/jz/plugin.json`. Neither pins a version, so an install tracks
-commits.
+directory. Claude Code and the claude.ai marketplace sync read the plugin
+manifest from its standard location, `plugins/jz/.claude-plugin/plugin.json`;
+Codex reads the portable `plugins/jz/plugin.json`. The Claude copy holds only
+Claude's standard fields (no `$schema` or `extensions`), and `validate.sh`
+fails if it disagrees with the portable one on any field they share, so edit
+both together. Neither pins a version, so an install tracks commits.
 
 A plugin cannot ship always-on instruction files or permission entries. The
 rules reach a session through the `load-house-rules.sh` SessionStart hook,

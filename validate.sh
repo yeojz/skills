@@ -65,7 +65,8 @@ PLACEHOLDER
 
 printf '\nManifests\n'
 # Every directory under plugins/ is a plugin both marketplaces list, with a
-# portable plugin.json at its root and a source that exists.
+# portable plugin.json at its root, a matching .claude-plugin/plugin.json and
+# a source that exists.
 python3 - "$PLUGIN" <<'MANIFESTS' || fail=1
 import json, os, sys
 ok = True
@@ -108,10 +109,19 @@ for plugin_dir in plugin_dirs:
     portable_path = os.path.join(plugin_dir, 'plugin.json')
     claude_path = os.path.join(plugin_dir, '.claude-plugin', 'plugin.json')
     if os.path.isfile(portable_path):
-        # Agent-agnostic: the marketplace entry is the manifest for Claude Code,
-        # so there is no .claude-plugin/plugin.json, and Codex reads plugin.json.
-        check(not os.path.isfile(claude_path), '%s has both plugin.json and .claude-plugin/plugin.json' % plugin_dir)
+        # Codex reads the portable plugin.json; Claude Code and claude.ai read
+        # .claude-plugin/plugin.json, which holds only Claude's standard fields
+        # and must agree with the portable manifest on every field they share.
         portable = load(portable_path)
+        if os.path.isfile(claude_path):
+            claude_manifest = load(claude_path)
+            for field in ('$schema', 'extensions'):
+                check(field not in claude_manifest, '%s must not carry %s' % (claude_path, field))
+            for field, value in claude_manifest.items():
+                check(portable.get(field) == value, '%s: %s differs from %s' % (claude_path, field, portable_path))
+            print('  ' + claude_path)
+        else:
+            check(False, plugin_dir + ' has no .claude-plugin/plugin.json')
         check(portable.get('name') == plugin_name, '%s name is %r' % (portable_path, portable.get('name')))
         check(portable.get('$schema', '').startswith('https://agent-plugins.org/schemas/'), portable_path + ' needs the agent-plugins.org $schema')
         check(portable.get('description') == claude_entry.get('description'), '%s: descriptions differ between the marketplace entry and plugin.json' % plugin_name)

@@ -1,6 +1,6 @@
 ---
 name: guard-deps
-description: Use when the work is dependency or supply-chain maintenance, from advisory remediation to vetting a package before adopting it. Triggers on requests like "pnpm audit", "npm audit", "fix the audit issues", "dependabot", "address the security findings", "security advisory", "CVE-2025-12345", "add it to the audit ignore", "check if we can override ajv safely", "why is it not honoring overrides", "pin the actions", "pin actions to a hash", "supply chain", "minimumReleaseAge", "cooldown", "should we add this dependency", "is this package maintained", or when the user pastes a GitHub security alert URL such as https://github.com/<owner>/<repo>/security/dependabot/<n>.
+description: Use when the work is dependency or supply-chain maintenance, from advisory remediation to vetting a package before adopting it. Triggers on requests like "pnpm audit", "npm audit", "dependabot", "CVE-2025-12345", "add it to the audit ignore", "why is it not honoring overrides", "pin actions to a hash", "minimumReleaseAge", "cooldown", "should we add this dependency", "is this package maintained", or when the user pastes a GitHub security alert URL.
 ---
 
 # guard-deps

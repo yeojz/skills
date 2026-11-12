@@ -1,6 +1,6 @@
 ---
 name: review
-description: Use when a change, a pull request, a whole repo or a plan needs reviewing, or when a PR's review comments or red CI need dealing with. Triggers on requests like "review my changes", "review this branch", "code review", "review the changes between this branch and main", "audit the repo", "assess the codebase", "code smells", "any risks", "write a plan if you find issues", "critique this plan", "check the PR comments", "are the comments addressed", "CI is red on the PR", "please do a second check", "do a quick review", "adversarial review", "get a second opinion on this diff", or when the user pastes a pull request or a `#discussion_r...` URL.
+description: Use when a change, a pull request, a whole repo or a plan needs reviewing, or when a PR's review comments or red CI need dealing with. Triggers on requests like "review my changes", "code review", "audit the repo", "assess the codebase", "any risks", "critique this plan", "check the PR comments", "are the comments addressed", "CI is red on the PR", "adversarial review", "get a second opinion on this diff", or when the user pastes a pull request or a `#discussion_r...` URL.
 ---
 
 # review

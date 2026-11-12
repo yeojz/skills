@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Use when building the steps of a spec, or working through a written plan, remediation list or phased task document item by item, with status written back and a checkpoint per item. Triggers on requests like "implement step 2", "build the next step", "implement the plan", "execute the plan", "work through @docs/plans/...", "start priority 3", "continue with the plan", "write the test first", "TDD", "red green refactor", "add a regression test", or when the user asks which items are complete, skipped or blocked.
+description: Use when building the steps of a spec, or working through a written plan, remediation list or phased task document item by item, with status written back and a checkpoint per item. Triggers on requests like "implement step 2", "execute the plan", "work through @docs/plans/...", "continue with the plan", "write the test first", "TDD", "red green refactor", or when the user asks which items are complete, skipped or blocked.
 ---
 
 # implement

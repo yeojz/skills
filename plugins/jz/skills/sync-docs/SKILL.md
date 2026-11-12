@@ -1,6 +1,6 @@
 ---
 name: sync-docs
-description: Use when documentation has drifted from the code and needs to be brought back in line, across READMEs, CONTRIBUTING, the VitePress guide, doc comments, CLI help text and llms.txt. Triggers on requests like "update the readme", "update the docs", "docs are out of date", "check the readme", "the help text and readme disagree", "fix the docs", "some links are no longer valid", "references are no longer accurate", "remove duplicate information", or after an API rename, an export change, a dependency removal or a Node or package manager version bump.
+description: Use when documentation has drifted from the code and needs to be brought back in line, across READMEs, CONTRIBUTING, the VitePress guide, doc comments, CLI help text and llms.txt. Triggers on requests like "update the docs", "docs are out of date", "the help text and readme disagree", "some links are no longer valid", "remove duplicate information", or after an API rename, an export change, a dependency removal or a Node or package manager version bump.
 ---
 
 # sync-docs

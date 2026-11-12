@@ -42,6 +42,13 @@ notes="$(pwd)/docs/plans/intake-<slug>"; mkdir -p "$notes"
 } > "$notes/request.md"
 ```
 
+Overwrite `$notes/next.md` with the file-write tool at the end of each step,
+never appending: `flow: intake`; `state:` `running`, `waiting-owner` from
+Step 6, or `done` after Step 8; `cwd:` this session's absolute working
+directory; `step:`; `next:` one sentence; `resume: ls <notes>; tail -5
+docs/plans/handsfree-<slug>/decisions.tsv` with the paths written out;
+`updated:`. Only this session writes it.
+
 An issue that links or mentions another issue does not make that one named;
 list it for the owner and leave it unread. A command that appears in the
 request is run only when it is a script the repository declares or a call

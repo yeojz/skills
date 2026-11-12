@@ -62,6 +62,25 @@ with a pointer to its evidence.
 | `parked` | Waiting on the owner for a fork, or on `criteria` for a requirement with none |
 | `blocked` | Three fix rounds used, or a gate nobody can run |
 
+Overwrite `$notes/next.md` with the file-write tool at the end of every step
+below and whenever this session stops to wait; never append to it. Only this
+session writes it, never a worker or reviewer:
+
+```text
+flow: coordinate
+state: running
+cwd: <this session's absolute working directory>
+step: Step 6, unit 03
+next: <the next action, one sentence>
+resume: column -t -s $'\t' <notes>/units.tsv; tail -20 <notes>/decisions.tsv
+updated: <YYYY-MM-DDTHH:MM>
+```
+
+`state` is `running`, `waiting-owner` or `done`, the last once every unit is
+`merged` or the owner ends the run. Append a fork, verdict or relay to
+`decisions.tsv` the moment it lands, never in a batch: after a compaction
+the run resumes from these files, not from the conversation.
+
 ### Step 3: Pick the next steps
 
 ```bash
@@ -113,8 +132,9 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 
 Anything missing goes back to the worker in one line naming it. Record the
 PR and head; in the desktop app, bind the PR and turn its monitor on once.
-Past 55% context use, run `handoff` with the notes folder before starting
-anything new.
+Never stop for context use: auto-compaction resumes the run from `next.md`
+and the ledgers. Run `handoff` only when the owner asks to move the run to
+another session.
 
 ### Step 6: Brief and start the reviewer
 

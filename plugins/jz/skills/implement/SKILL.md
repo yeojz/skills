@@ -36,6 +36,14 @@ Branch before the first edit, as the `pr` skill's Worktree section
 describes. Ask when an item's meaning or order is
 unclear; never reconstruct a plan from memory.
 
+For a spec or plan, keep `docs/plans/implement-<slug>/next.md`, the slug
+being its basename, overwritten with the file-write tool after each item:
+`flow: implement`; `state:` `running`, `waiting-owner` at a Step 4
+checkpoint, or `done` after Step 5; `cwd:` this session's absolute working
+directory; `step:` the item; `next:` one sentence; `resume:` a `grep` that
+prints the status lines; `updated:`. The status lines in the spec or plan
+stay the record, and this file only points at them.
+
 ### Step 2: Serial or parallel
 
 Two items conflict if they touch the same file or one's output feeds the

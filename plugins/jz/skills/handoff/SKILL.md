@@ -12,6 +12,12 @@ a short paste-ready prompt for a fresh session. Every fact comes from git
 and files on disk, never from recollection, because the point is to survive
 losing the conversation.
 
+Auto-compaction resumes a running flow in the same session from its
+folder's `next.md` and ledgers, so a context limit alone is no reason to
+hand off. This skill moves work to a new session or to a person. When a
+`docs/plans/*/next.md` names this session's working directory, take the
+flow, its folder and Remaining's order from it.
+
 | Request | Produce |
 |---|---|
 | "write a handoff", "hand off to a new session", "context is low" | The document, then the prompt |

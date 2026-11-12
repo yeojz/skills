@@ -300,7 +300,7 @@ injects them at session start.
 | `git-workflow.md` | Branching, worktrees, commits, PR bodies, what never gets staged |
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |
-| `parallelism.md` | Fan independent work out to subagents by default; wait for the owner only at a lettered design fork, a remote write that asks, or an action the brief marks as theirs |
+| `parallelism.md` | Fan independent work out to subagents by default; wait for the owner only at a lettered design fork, a remote write that asks, an action the brief marks as theirs, or a skill's own pause; log decisions and `next.md` as they happen |
 | `models.md` | Host-neutral model tiers mapped to Claude and Codex: grilling, coordination, implementation, review on the other family first, fix escalation and scans |
 
 ### Hooks
@@ -314,6 +314,23 @@ also sets.
 | `guard-bash.sh` | PreToolUse on Bash | Runs every guard in `guards/` over the command text. A guard that denies ends the call with its reason; the guards that ask are joined into one confirmation |
 | `load-house-rules.sh` | SessionStart | Injects the rule files as context, since a plugin cannot ship always-on instructions |
 | `load-project-rules.sh` | SessionStart | Surfaces `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` at session start |
+| `pre-compact.sh` | PreCompact | Tells the compaction summary to keep the branch, the task list, decisions not yet logged and the owner's open questions, and names each running flow with its resume command. Writes no file and never blocks |
+| `resume-after-compact.sh` | SessionStart, matcher `compact` | After a compaction, has the session confirm its branch, log what the summary marked unlogged, and resume each running flow from its folder |
+
+A flow is running when a folder under `docs/plans/` holds a `next.md` whose
+`state` is not `done`, whose `cwd` is this session's working directory, and
+that changed in the last week. `coordinate`, `factory`, `handsfree`,
+`intake` and `implement` overwrite that file at each step boundary, so the
+work continues after auto-compaction with no handoff. To compact before the
+window is full, leaving the summary room, set it in your own
+`~/.claude/settings.json`; a plugin cannot:
+
+```json
+{ "env": { "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "75" } }
+```
+
+Codex has no documented PreCompact event, so there the two hooks do not run;
+the flows still keep `next.md` and their ledgers.
 
 The guards, each a module in `hooks/guards/` with a `NAME` and a
 `check(context)` that returns nothing, a `Deny` or an `Ask`:

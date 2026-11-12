@@ -27,6 +27,7 @@
 - Below that tier, decide, record the choice and the reason, and report it; an internal helper's name, test layout or the order of two commits never waits.
 - Wait for the choice on options you presented rather than implementing the recommendation straight away.
 - Keep options to three or four, each meaningfully different.
+- Under a running flow, append each decision to the flow's ledger the moment it is agreed, and overwrite the flow's `next.md` at each step boundary; after a compaction the work resumes from those files, not from the conversation.
 - Say which option you would pick and why, in one sentence.
 
 - Wait for the owner only at: a fork put as lettered options under the rule above, a remote write that asks (ready, a force push not pinned to a sha), an action the brief marks as the owner's, and a pause that a loaded skill's own steps name, such as `implement` stopping after each item or `pr` showing a body before replacing it.

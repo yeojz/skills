@@ -39,6 +39,12 @@ the current branch and refuses one with uncommitted edits, so the spec is
 committed through the `pr` skill first. On a spec that already has a run,
 `plan` starts nothing over.
 
+Write `$run/next.md` once with the file-write tool so the compaction hooks
+find the run: `flow: factory`, `state: running`, `cwd:` this session's
+absolute working directory, `resume:` the absolute `job` path followed by
+`next`, and `updated:`. `job next` holds the state, so the file needs no
+update per step; set `state: done` at Step 10.
+
 Report each ineligible step with the reason the script printed, and say that
 it stays with `coordinate`. `run.json` names the mode: `direct` for one
 eligible step, whose pull request targets the default branch, and

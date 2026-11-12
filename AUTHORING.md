@@ -25,6 +25,14 @@ and the confirmations for remote writes come from the
 `confirm-remote-writes` guard. Anything that must hold on every
 run belongs in a hook, not in prose.
 
+Some text is repeated across files on purpose. An agent file is the whole
+prompt of its subagent, a template is the whole brief of the subagent it
+starts, and a skill can run where the rules never arrived: in a subagent, or
+on Codex before its hooks are trusted. Such a file restates what it needs,
+such as the read-only constraints, the default-branch command or the
+ADR-tier list, rather than pointing at a file its reader cannot see. When
+one of those rules changes, search for every copy and change them together.
+
 ## Skill format
 
 Every skill is a directory under `plugins/jz/skills/` containing `SKILL.md` and

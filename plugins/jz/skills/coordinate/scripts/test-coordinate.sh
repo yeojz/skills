@@ -90,6 +90,10 @@ push_commit() {
   git -C "$R" rev-parse HEAD
 }
 pr_view() { printf '{"state":"%s","headRefOid":"%s","isDraft":%s}\n' "$1" "$2" "${3:-false}" > "$T/gh-view.json"; }
+at_move() {
+  # at_move <file> <id>: give the file the very second its row last moved
+  python3 -c 'import calendar,os,sys,time; t=calendar.timegm(time.strptime(sys.argv[2],"%Y-%m-%dT%H:%M:%SZ")); os.utime(sys.argv[1],(t,t))' "$1" "$(cell "$2" moved)"
+}
 aged() { python3 -c 'import os,sys,time; t=time.time()-120; os.utime(sys.argv[1],(t,t))' "$1"; }
 cell() { awk -F'\t' -v id="$1" -v col="$2" 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == col) n = i } $1 == id { print $n }' "$N/units.tsv"; }
 
@@ -104,6 +108,9 @@ Behaviour target: ${2:-unit-only}
 
 - C1.1 empty input is refused: passes when the parser returns an error. Check: \`make test\`
 - C1.2 a pipe survives: passes when the row is read whole. Check: \`cat x | wc -l\`
+- C1.10 a tenth criterion: passes when it holds. Check: \`make test\`
+
+<!-- a comment the repository's own standing orders carry -->
 BRIEF
 }
 
@@ -120,6 +127,7 @@ QUESTION: ${6:-none}
 | format | (no script) | - | not covered |
 | C1.1 empty input is refused | make test | 0 | pass |
 | C1.2 a pipe survives | \`cat x | wc -l\` | 0 | $4 |
+| C1.10 a tenth criterion | make test | 0 | pass |
 | behaviour | make test | 0 | ${5:-unit-only} |
 
 ## Findings answered
@@ -150,6 +158,7 @@ FINDINGS: ${4:-0 P1, 0 P2, 0 P3, 0 not fixed}
 |---|---|---|---|---|
 | C1.1 empty input is refused | \`make test\` | pass, exit 0 | pass, exit 0 | none |
 | C1.2 a pipe survives | \`cat x | wc -l\` | ${5:-pass, exit 0} | pass, exit 0 | none |
+| C1.10 a tenth criterion | \`make test\` | pass, exit 0 | pass, exit 0 | none |
 REVIEW
 }
 
@@ -174,7 +183,7 @@ has "with the file it wants" "brief 01 phase-01.md is not written yet"
 t "running is refused without the brief" 1 move "$N" 01 running --branch feat/x-step
 has "naming the brief" "phase-01.md is not written yet"
 brief 01
-printf '<!-- fill me -->\n' >> "$N/phase-01.md"
+printf '<!-- Paste the ## Standing orders section of AGENTS.md here verbatim, then delete this comment. -->\n' >> "$N/phase-01.md"
 t "running is refused while the brief holds a template comment" 1 move "$N" 01 running --branch feat/x-step
 brief 01
 t "next says to start a step whose brief is written" 0 next "$N"
@@ -197,7 +206,8 @@ has "naming the flag" "--pr"
 t "ready is refused before the report is written" 1 move "$N" 01 ready --pr 42
 has "naming the report" "report-01.md is not written yet"
 report 01 BLOCKED "$H1" pass unit-only "the fixture server will not start"
-t "next shows a report's first line and its question" 0 next "$N"
+at_move "$N/report-01.md" 01
+t "next shows a report written in the second its row moved" 0 next "$N"
 has "as one line" "report 01 BLOCKED the fixture server will not start"
 t "a report that is not READY is refused" 1 move "$N" 01 ready --pr 42
 has "with its status and question" "reads STATUS: BLOCKED: the fixture server will not start"
@@ -233,21 +243,46 @@ t "a head origin does not hold is refused" 1 move "$N" 01 ready --pr 42
 has "naming the branch" "origin/feat/x-step is at ${H1:0:10}"
 git -C "$R" reset -q --hard "$H1"
 report 01 READY "$H1" pass
+sed 's/^| C1.10 \(.*\)| pass |$/| C1.10 \1| not covered |/' "$N/report-01.md" > "$N/report.tmp" && mv "$N/report.tmp" "$N/report-01.md"
 pr_view OPEN "$H1"
+t "a two-digit criterion is read as itself" 1 move "$N" 01 ready --pr 42
+has "and named whole" "report-01.md: C1.10 reads not covered"
+report 01 READY "$H1" pass
+sed 's/^Behaviour target: .*/Behaviour target: unit-only, which the owner set below live-verified/' "$N/phase-01.md" > "$N/phase.tmp" && mv "$N/phase.tmp" "$N/phase-01.md"
+pr_view OPEN "$H1" true
+t "a pull request still in draft is refused" 1 move "$N" 01 ready --pr 42
+has "saying so" "pull request 42 is still a draft"
+pr_view OPEN "$H1"
+printf 'STATUS: DONE\nCOMMIT: %s\nQUESTION: none\n' "$H1" > "$N/report.keep"; cp "$N/report-01.md" "$N/report.good"; cp "$N/report.keep" "$N/report-01.md"
+t "next flags a status the report cannot carry" 0 next "$N"
+has "as a line to check" "check 01 running: report-01.md reads STATUS: DONE"
+cp "$N/report.good" "$N/report-01.md"
 t "a report that matches the brief and the pull request moves the row" 0 move "$N" 01 ready --pr 42
-has "and prints the head and the draft flag" "ready 01 pr=42 head=${H1:0:10} draft=false"
+has "and prints the pull request and the head" "ready 01 pr=42 head=${H1:0:10}"
 same "the head is in the row" "$(cell 01 head)" "$H1"
 same "the row is at ready" "$(cell 01 state)" "ready"
 
 printf '\nthe review\n'
 t "next says to start the reviewer" 0 next "$N"
 has "with the pull request and head" "review 01 pr=42 head=${H1:0:10}"
+t "a fix round with no verdict is refused while the pull request has not moved" 1 move "$N" 01 fixing --reason "owner pushed"
+has "naming both heads" "pull request 42 is at ${H1:0:10} and the step's head is ${H1:0:10}"
+pr_view OPEN "0000000000000000000000000000000000000000"
+t "and refused without a reason when it has" 1 move "$N" 01 fixing
+t "a pull request that moved under a waiting step frees it for a fix round" 0 move "$N" 01 fixing --reason "owner pushed a typo fix"
+has "naming the new head" "fixing 01 pr=42 moved to 0000000000"
+same "which uses no fix round" "$(grep -c "$(printf '\tverdict\t')" "$N/decisions.tsv")" "0"
+pr_view OPEN "$H1"
+# Back to ready for the cases below: the suite stands in for the report a real new head would bring.
+python3 -c 'import sys; p=sys.argv[1]; text=open(p).read().replace("\tfixing\t","\tready\t"); open(p,"w").write(text)' "$N/units.tsv"
 t "the row moves to in-review" 0 move "$N" 01 in-review
 t "next waits while there is no review" 0 next "$N"
 has "on the step in review" "wait 01 in-review"
 t "a verdict is refused before the review is written" 1 move "$N" 01 merge-ready
 has "naming the review file" "review-pr42.md is not written yet"
 review 42 "after fixes" "0000000" "0 P1, 2 P2, 1 P3, 0 not fixed"
+t "next flags a review of another commit" 0 next "$N"
+has "as stale" "stale 01 review-pr42.md is of 0000000, and the step's head is ${H1:0:10}"
 t "a review of another commit is refused" 1 move "$N" 01 fixing
 has "naming both commits" "review-pr42.md reviewed 0000000, and the step's head is ${H1:0:10}"
 review 42 "after fixes" "$H1" "0 P1, 2 P2, 1 P3, 0 not fixed"
@@ -327,6 +362,9 @@ rm "$T/gh-fails"
 printf 'not json\n' > "$T/gh-view.json"
 t "an answer from gh that is not JSON is a refusal" 1 move "$N" 01 merged
 has "saying so" "gh pr view 42 did not answer in JSON"
+pr_view CLOSED "$H"
+t "next flags a pull request closed without merging" 0 next "$N"
+has "as a line to check" "check 01 merge-ready: pull request 42 was closed without merging"
 pr_view MERGED "$H"
 t "next reports the merge" 0 next "$N"
 has "with the pull request" "merged 01 pr=42"
@@ -354,6 +392,7 @@ has "naming that state" "02 is at parked, which leaves only for: scoped"
 t "leaving parked records the answer" 0 move "$N" 02 scoped --reason "owner: B, the store"
 same "the answer is logged with the move" "$(tail -1 "$N/decisions.tsv" | cut -f2,3,4,6)" "$(printf '02\tnote\towner: B, the store\tparked to scoped')"
 t "a move to the state a row is at is refused" 1 move "$N" 02 scoped
+t "a record of a new base takes no other flag" 1 move "$N" 02 scoped --base main --reason "x"
 t "unless it records a new base" 0 move "$N" 02 scoped --base "feat/x-step@abc1234"
 has "and says nothing moved" "kept 02 scoped base=feat/x-step@abc1234 session=-"
 same "the base is in the row" "$(cell 02 base)" "feat/x-step@abc1234"
@@ -371,6 +410,25 @@ t "a line break in a decision stays in its cell" 0 log "$N" - note "$(printf 'fi
 same "and the row is still one line of six cells" "$(tail -1 "$N/decisions.tsv" | awk -F'\t' '{ print NF, $4 }')" "6 first line second cell"
 t "a decision for a step the ledger does not hold is refused" 1 log "$N" 09 fork "x"
 t "a kind the ledger does not know is a usage error" 2 log "$N" 02 rumour "x"
+t "a verdict row is not for log to write" 2 log "$N" 02 verdict "second reviewer" --result "after fixes"
+
+printf '\na ledger from before the script\n'
+O="$R/docs/plans/coordinate-old"
+mkdir -p "$O"
+printf 'id\ttitle\tsession\tbranch\tbase\tpr\thead\tverdict\tstate\n07\told step\t\tfeat/x\t\t\t\t\tparked\n' > "$O/units.tsv"
+printf 'when\tunit\tkind\tdecision\tevidence\tresult\n' > "$O/decisions.tsv"
+t "its nine columns are read" 0 status "$O"
+has "with its row" "old step"
+t "a held step with no row to say where it came from is refused" 1 move "$O" 07 running --reason "owner: A"
+has "with the command that repairs it" "unit log <notes> 07 park"
+t "the repair is one log row" 0 log "$O" 07 park "cookie or store?" --result running
+t "after which the step leaves for that state" 0 move "$O" 07 running --reason "owner: A"
+printf 'id\ttitle\tstate\n07\told\tscoped\n' > "$O/units.tsv"
+t "a header the script did not write is refused" 1 next "$O"
+has "naming the header" "does not start with the header this script writes"
+printf '%s\n07\told\t\t\t\t\t\t\thalf-done\t\n' "$(head -1 "$N/units.tsv")" > "$O/units.tsv"
+t "a state the script does not know is refused" 1 next "$O"
+has "naming it" "holds step 07 at \`half-done\`"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

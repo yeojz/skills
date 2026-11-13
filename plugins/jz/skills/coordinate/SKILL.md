@@ -90,12 +90,13 @@ the merge frontier, and when a session picks the run up. One line per step:
 |---|---|
 | `brief <id>`, `start <id>` | Step 5 |
 | `report <id> READY` | Step 6 |
-| `report <id> BLOCKED` or `FORK`, with the question | Step 11 |
+| `report <id> FORK`, with the question | Step 11 |
+| `report <id> BLOCKED`, with what would unblock it | Relay the unblocker when this session can supply it; otherwise move the row to `blocked` with it as `--reason` |
 | `review <id>` | Step 7 |
 | `verdict <id> after fixes` or `rework` | Step 8 |
 | `verdict <id> merge as is` | Step 9 |
 | `merged <id>` | Step 10 |
-| `stale <id>` | The pull request moved after its verdict: `"$unit" move "$notes" <id> fixing --reason "<who pushed and why>"`, then Step 6 on the new report |
+| `stale <id>` | The pull request moved under a review or after its verdict: `"$unit" move "$notes" <id> fixing --reason "<who pushed and why>"`, then a session that verifies the new head and writes its report, and Step 6 |
 | `owner <id>`, with the question | Nothing; the owner owes the answer |
 | `wait <id>`, `done <id>` | Nothing |
 | `check <id>`, with a reason | Fix what the line names: a file the script could not read, or GitHub out of reach |
@@ -153,9 +154,9 @@ pull request's head and `origin/<branch>`, every criterion in the brief has
 a verify row reading `pass` or `met`, no row reads `fail`, `not met` or `not
 run`, and the `behaviour` row reaches the brief's target. A refusal names
 what is missing: send that one line to the worker, and never open the
-report to judge it yourself. The printed line carries `draft=`; a pull
-request still in draft goes back when the brief named ready. In the desktop
-app, bind the PR and turn its monitor on once.
+report to judge it yourself. A pull request still in draft is refused too,
+since the brief asks for ready. In the desktop app, bind the PR and turn its
+monitor on once.
 
 In Claude Code, never stop for context use: after a compaction the run
 continues from the ledgers. Where the compaction hooks do not run, as on
@@ -176,7 +177,7 @@ Post field. Move the row once the reviewer has started:
 
 The reviewer writes `review-pr<number>.md` in the notes folder and messages
 its first three lines. A contested design gets a second reviewer on the
-other family, writing `review-pr<number>-second.md`: log its verdict with
+other family, writing `review-pr<number>-second.md`: log its verdict as a `note` with
 `"$unit" log`, and put a disagreement between the two to the owner.
 
 ### Step 8: Fix rounds

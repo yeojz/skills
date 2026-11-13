@@ -100,7 +100,7 @@ Then message the coordinator with the three lines and the report's path, and not
 
 ## Standing orders
 
-<!-- Paste the ## Standing orders section of AGENTS.md here verbatim. When the repo has none, the block below stands in, and adding the section to AGENTS.md is part of this unit's scope. -->
+<!-- Paste the ## Standing orders section of AGENTS.md here verbatim, then delete this comment. When the repo has none, the block below stands in, and adding the section to AGENTS.md is part of this unit's scope. -->
 
 - Work only on this branch in this worktree; never on the default branch.
 - Rebase onto the default branch; never merge it in.

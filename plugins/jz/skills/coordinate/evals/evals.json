@@ -77,7 +77,7 @@
       "expected_output": "The agent sends the owner one line with the verdict and its evidence, moves the row to merge-ready through the unit script, starts the step 3 worker at once without waiting for the merge, and in Claude Code schedules one recurring merge check for the frontier with CronCreate when none exists, whose prompt runs the unit script's next command and the after-merge step on each merged line. It never runs gh pr merge and never arms auto-merge.",
       "files": [],
       "expectations": [
-        "One line to the owner carries the verdict, the review file, the gated head and its exit code",
+        "One line to the owner carries the verdict, the review file, the reviewed head and the finding counts",
         "The row for PR 42 moves to merge-ready through the unit script, which reads the verdict from review-pr42.md",
         "The step 3 worker is started before PR 42 is merged, as a fresh session in its own worktree",
         "A single CronCreate job covers the merge frontier, with a prompt that runs the unit script's next command and acts on each merged line, and it is deleted when no row is merge-ready",

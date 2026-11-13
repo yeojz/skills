@@ -285,7 +285,8 @@ Three facts no rule file carries:
   implementations.
 - Plans live in `docs/plans/YYYY-MM-DD-HHMM-<slug>.md` and are not committed.
 - A flow's folder under `docs/plans/` holds one `flow.md`, written by the
-  session that owns the flow when the run starts: `flow` (`coordinate`,
+  session that owns the flow when the run starts, and again by a session that
+  picks the run up: `flow` (`coordinate`,
   `factory`, `handsfree` or `intake`), `state` (`running` or `done`) and
   `session`, one `key: value` line each. It marks the folder and carries no
   instruction: the compaction hooks print the flow's name and the folder's

@@ -10,7 +10,10 @@ under docs/plans/ and writes that folder's flow.md once, when the run starts:
 The file marks the folder and holds nothing else. Where the run stands is in
 the flow's own ledgers, and the way back in is the Resume paragraph of the
 flow's skill. So the hooks print the flow's name, which is one of four known
-words, and its folder's path, and no text from the file.
+words, and its folder's path, and no text from the file. The folder's own
+name is limited to a plain character set and neither it nor the marker may
+be a symbolic link, since a link to a session's real marker would carry that
+session's id under a name of someone else's choosing.
 
 A folder is this session's when its marker says `running` and carries the
 session id the hook payload carries. A marker anyone else wrote, in another
@@ -25,6 +28,7 @@ Usage: flows.py pre-compact | after-compact, with the hook payload on stdin.
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -35,6 +39,8 @@ MAX_BYTES = 4096
 MAX_BRANCH = 120
 MAX_PATH = 300
 GIT_TIMEOUT = 2
+FOLDER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 MARKUP = "-*#>` \t"
 
 
@@ -88,9 +94,12 @@ def session_flows(cwd, session):
         return []
     found = {}
     for root in roots(cwd):
-        for path in glob.glob(os.path.join(root, "docs", "plans", "*", MARKER)):
+        for path in glob.glob(os.path.join(glob.escape(root), "docs", "plans", "*", MARKER)):
             folder = os.path.dirname(path)
-            if not plain(folder, MAX_PATH) or not os.path.isfile(path):
+            if not FOLDER.fullmatch(os.path.basename(folder)) or not plain(folder, MAX_PATH):
+                continue
+            # The root is already resolved, so any difference is a link below it.
+            if os.path.realpath(path) != path or not os.path.isfile(path):
                 continue
             fields = read_marker(path)
             flow = fields.get("flow", "").lower()
@@ -116,7 +125,7 @@ def pre_compact(cwd, flows):
         "not yet in its folder's decisions.tsv as unlogged, every question the owner "
         "still owes, and each run a skill is driving with its skill and its folder, spec "
         "or plan path. Drop tool output and exploration that led nowhere."
-        % (" (%s)" % branch if plain(branch, MAX_BRANCH) else ""),
+        % (" (%s)" % branch if BRANCH.fullmatch(branch) and plain(branch, MAX_BRANCH) else ""),
     ]
     if flows:
         out.append("Flows this session marked as running, each continued from its folder "
@@ -143,7 +152,8 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     try:
-        payload = json.loads(sys.stdin.read() or "{}")
+        # Bytes, so a path outside ASCII is read whatever the locale says stdin is.
+        payload = json.loads(sys.stdin.buffer.read() or b"{}")
     except ValueError:
         payload = {}
     if not isinstance(payload, dict):

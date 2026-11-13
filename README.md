@@ -318,8 +318,8 @@ also sets.
 | `resume-after-compact.sh` | SessionStart, matcher `compact` | After a compaction, has the session confirm its branch, log what the summary marked unlogged, and continue each flow it marked as running from the flow's folder and its skill's Resume paragraph |
 
 `coordinate`, `factory`, `handsfree` and `intake` each write a `flow.md` in
-their folder under `docs/plans/` once, when the run starts: the flow's name,
-`state: running` and the session's id. The hooks name a folder only when its
+their folder under `docs/plans/` when the run starts, and again in a session
+that picks the run up: the flow's name, `state: running` and the session's id. The hooks name a folder only when its
 marker carries the id of the session that is compacting, and print nothing
 else from the file. Where a run stands is in its ledgers, so the work
 continues after an auto-compaction with no handoff.

@@ -45,6 +45,26 @@ auto-update off for third-party marketplaces, so to pick up new commits run
 or turn auto-update on for the marketplace under
 `/plugin`.
 
+#### Settings for long runs
+
+A plugin cannot change your settings, so these go in your own
+`~/.claude/settings.json`. They are optional; without them a long
+`coordinate`, `factory` or `handsfree` session still continues after a
+compaction, it only grows larger first.
+
+```json
+{ "autoCompactWindow": 200000 }
+```
+
+| Setting | Effect |
+|---|---|
+| `autoCompactWindow` | Compacts the session once its context reaches this many tokens, from 100000 to 1000000. `/autocompact 200k` sets it from inside a session, for the current model |
+| `idleCompaction` | Compacts a large conversation while it sits idle, which is the quiet moment between turns. On by default; leave it on |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, an environment variable | The same window for a cloud environment or a script, where there is no settings file of yours. It wins over the setting |
+
+Compacting early is safe here because a run's state is on disk: see
+[Hooks](#hooks).
+
 ### Codex
 
 ```bash
@@ -96,7 +116,10 @@ block headed "House rules from the jz plugin", with the project's own
 
 A spec's steps run through `/jz:coordinate` from a session in the target
 repository. It starts one worker session per step and one reviewer per PR,
-reports one line per PR at merge-ready, and leaves the merge to you.
+reports one line per PR at merge-ready, and leaves the merge to you. Its
+`unit` script holds the run's state and checks each report and review from
+files, so the session can run for a long time and pick up after a
+compaction from one command.
 
 Two more ways to run a spec, for when you would rather not be in the loop:
 
@@ -203,12 +226,15 @@ flowchart TB
   spec --> plan
   subgraph coordinate ["coordinate: you stay in the loop"]
     pick(["Coordinator picks ready steps"]) --> worker(["Worker session builds the step"])
-    worker --> check(["Coordinator checks the report"])
+    worker -- "report file" --> check["unit script: report against the brief and the pull request"]
+    check -- "refused, one line" --> worker
     check --> reviewer(["Fresh reviewer session"])
-    reviewer -- "fix round, max 3" --> worker
-    reviewer --> ready(["Reports merge-ready"])
+    reviewer -- "review file" --> verdict["unit script: verdict on the reviewed head"]
+    verdict -- "fix round, max 3" --> worker
+    verdict --> ready(["Coordinator reports merge-ready"])
     ready --> merge1["You merge each pull request"]:::you
     worker -- "ADR-tier fork" --> fork1["You choose"]:::you
+    next["unit next: one line per step"] --> pick
   end
   subgraph factory ["factory: runs unattended"]
     plan["Plan: one job per eligible step"] --> builder(["Builder subagent, draft PR"])
@@ -319,19 +345,15 @@ also sets.
 
 `coordinate`, `factory`, `handsfree` and `intake` each write a `flow.md` in
 their folder under `docs/plans/` when the run starts, and again in a session
-that picks the run up: the flow's name, `state: running` and the session's id. The hooks name a folder only when its
-marker carries the id of the session that is compacting, and print nothing
-else from the file. Where a run stands is in its ledgers, so the work
-continues after an auto-compaction with no handoff.
+that picks the run up: the flow's name, `state: running` and the session's
+id. The hooks name a folder only when its marker carries the id of the
+session that is compacting, and print nothing else from the file. Where a
+run stands is in its ledgers, so the work continues after an
+auto-compaction with no handoff.
 
 That makes compaction cheap, and compacting early is what keeps a long
-coordinating session small. Set the window in your own
-`~/.claude/settings.json`, or run `/autocompact 200k` in the session; a
-plugin cannot:
-
-```json
-{ "autoCompactWindow": 200000 }
-```
+coordinating session small:
+[Settings for long runs](#settings-for-long-runs) has the two settings.
 
 Codex has no documented PreCompact event, so there the two hooks do not run;
 the flows still write `flow.md` and keep their ledgers, and `coordinate`
@@ -365,16 +387,17 @@ to the guards named, which is how the suite tests one at a time.
 The hooks have their own regression suite, which builds throwaway repos and
 feeds the Bash guard the payloads it will see, one guard at a time. Exit 2
 denies a tool call, exit 0 allows it, and an ask decision is read from the
-output.
+output. The `factory` and `coordinate` scripts each have a suite of the same
+kind, and `make test` runs all three.
 
 ```bash
 make test
 ```
 
-`make validate` runs the hook suite, along with checks over the marketplace
-and plugin manifests, every skill, rule, agent and template, `bash -n` and
-`shellcheck` over every script, `claude plugin validate` over the marketplace
-and the plugin when the Claude Code CLI is installed, a 300-line limit on
+`make validate` runs those suites, along with checks over the marketplace
+and plugin manifests, every skill, rule, agent and template, that every
+hook and script is executable and compiles, `claude plugin validate` over
+the marketplace and the plugin when the Claude Code CLI is installed, a 300-line limit on
 every skill, and a check that every skill is listed in this README. Run it before
 committing a change here.
 

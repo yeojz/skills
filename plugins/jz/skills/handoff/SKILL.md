@@ -74,6 +74,7 @@ awk -F'\t' -v unit=2 -v decision=4 'NR == FNR { if (FNR > 1) last[$unit FS $deci
 |---|---|
 | `fork` with a letter in `result` | The choice, with its `when` and `evidence` |
 | `fork` with `result` empty | An open question |
+| `park` or `block` whose step still reads `parked` or `blocked` in `units.tsv` | An open question, or what blocks the step; a later `note` for that unit is the owner's answer |
 | `verdict` or `relay` | That PR's state, under Completed or Remaining |
 | Anything else with `result` empty | Something the next session must check |
 

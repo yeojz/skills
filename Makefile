@@ -8,3 +8,4 @@ validate:
 test:
 	./plugins/jz/hooks/test-hooks.sh
 	./plugins/jz/skills/factory/scripts/test-factory.sh
+	./plugins/jz/skills/coordinate/scripts/test-coordinate.sh

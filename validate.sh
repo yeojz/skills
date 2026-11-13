@@ -278,6 +278,20 @@ else
   bad "factory regression suite failed, run $FACTORY/test-factory.sh to see which case"
 fi
 
+printf '\nCoordinate scripts\n'
+# The coordinate skill's ledger moves are a script too, checked the same way.
+COORDINATE="$PLUGIN/skills/coordinate/scripts"
+for f in "$COORDINATE/unit" "$COORDINATE/test-coordinate.sh"; do
+  [ -x "$f" ] || bad "$(basename "$f"): not executable"
+done
+python3 -m py_compile "$COORDINATE/unit" 2>/dev/null || bad "unit: does not compile"
+note "unit"
+if "$COORDINATE/test-coordinate.sh" >/dev/null 2>&1; then
+  note "coordinate regression suite passed"
+else
+  bad "coordinate regression suite failed, run $COORDINATE/test-coordinate.sh to see which case"
+fi
+
 printf '\nPlugin validation\n'
 # Claude Code's own validator is the authority on the manifests. It is optional
 # here so a machine without the CLI still validates the rest.

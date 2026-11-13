@@ -12,6 +12,12 @@ a short paste-ready prompt for a fresh session. Every fact comes from git
 and files on disk, never from recollection, because the point is to survive
 losing the conversation.
 
+In Claude Code, an auto-compaction continues a running flow in the same
+session from its folder and ledgers, so a context limit alone is no reason
+to hand off there. This skill moves work to a new session or to a person.
+When this session wrote a `docs/plans/*/flow.md`, take the flow and its
+folder from it, and Remaining's order from that folder's ledgers.
+
 | Request | Produce |
 |---|---|
 | "write a handoff", "hand off to a new session", "context is low" | The document, then the prompt |

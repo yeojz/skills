@@ -32,6 +32,16 @@ A folder that already holds rounds is a run to continue: the next round is
 one above the highest answers file, and the next decision is one above the
 last `D<n>`. If the folder can't be created, start nothing.
 
+Write `$run/flow.md` with the file-write tool when the run starts, and again
+in a session that picks the run up: `flow: handsfree`, `state: running` and
+`session: ${CLAUDE_SESSION_ID}`, one line each, leaving the last out when its
+value still reads as a placeholder. Set `state: done` after Step 9's report
+and back to `running` on an overturn. Only this session writes it, never the
+asking skill's subagent.
+
+**Resume.** After a compaction, run this step's commands again: the round
+files and `decisions.tsv` say where the run stands.
+
 ### Step 2: Start the asking skill
 
 | Wrapped skill | Who asks | How a round reaches this session |

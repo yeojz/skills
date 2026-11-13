@@ -62,6 +62,25 @@ with a pointer to its evidence.
 | `parked` | Waiting on the owner for a fork, or on `criteria` for a requirement with none |
 | `blocked` | Three fix rounds used, or a gate nobody can run |
 
+Write `$notes/flow.md` with the file-write tool when the run starts, and
+again in a session that picks the run up. Only this session writes it, never
+a worker or reviewer:
+
+```text
+flow: coordinate
+state: running
+session: ${CLAUDE_SESSION_ID}
+```
+
+Leave the `session` line out when its value still reads as a placeholder.
+Set `state: done` once every unit is `merged` or the owner ends the run. The
+file marks the folder for the compaction hooks and says nothing of where the
+run stands: the ledgers do. Append a fork, verdict or relay to
+`decisions.tsv` the moment it lands, never in a batch.
+
+**Resume.** After a compaction, or in a session that picks the run up, run
+Step 11 and go on from the table, never from memory of the run.
+
 ### Step 3: Pick the next steps
 
 ```bash
@@ -113,8 +132,11 @@ git fetch origin <branch> && git rev-parse "origin/<branch>"
 
 Anything missing goes back to the worker in one line naming it. Record the
 PR and head; in the desktop app, bind the PR and turn its monitor on once.
-Past 55% context use, run `handoff` with the notes folder before starting
-anything new.
+In Claude Code, never stop for context use: after an auto-compaction the
+run continues from the ledgers. On a host where the compaction hooks do not
+run, such as Codex, run `handoff` with the notes folder past 55% context
+use, before starting anything new. Otherwise `handoff` is for when the owner
+asks to move the run to another session.
 
 ### Step 6: Brief and start the reviewer
 

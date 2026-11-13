@@ -39,6 +39,12 @@ the current branch and refuses one with uncommitted edits, so the spec is
 committed through the `pr` skill first. On a spec that already has a run,
 `plan` starts nothing over.
 
+Write `$run/flow.md` with the file-write tool so the compaction hooks find
+the run: `flow: factory`, `state: running` and `session: ${CLAUDE_SESSION_ID}`,
+one line each, leaving the last out when its value still reads as a
+placeholder. Only this session writes it. `job next` holds where the run
+stands; set `state: done` at Step 10 once no job waits on the owner.
+
 Report each ineligible step with the reason the script printed, and say that
 it stays with `coordinate`. `run.json` names the mode: `direct` for one
 eligible step, whose pull request targets the default branch, and
@@ -261,10 +267,10 @@ Final pull request 57 (draft) for parsers: 3 jobs merged; job 04 waits on you (f
 The owner merges the final pull request on GitHub. Never mark it ready
 unless the owner said so in this conversation, and never merge it.
 
-A session that loads this skill on a spec with a run resumes it the same
-way: Step 1, which changes nothing, then Step 2. "What is it waiting on" is
-answered from `status`: each job's stage, and the question behind each
-`needs-owner` row.
+**Resume.** After a compaction, or in a session that loads this skill on a
+spec with a run: Step 1, which starts nothing over, then Step 2. "What is it
+waiting on" is answered from `status`: each job's stage, and the question
+behind each `needs-owner` row.
 
 ## Common Mistakes
 

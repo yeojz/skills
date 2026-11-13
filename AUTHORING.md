@@ -195,6 +195,7 @@ check that fails, then a test, with prose last.
 | No secret, token or credential reaches a remote | `scan-secrets-before-push` guard, PreToolUse, through betterleaks or gitleaks when installed |
 | Rules are read in every session | `load-house-rules.sh`, SessionStart |
 | Project instruction files are read at session start | `load-project-rules.sh`, SessionStart |
+| A flow continues from its folder after a compaction, not from the summary | `pre-compact.sh`, PreCompact, and `resume-after-compact.sh`, SessionStart `compact`, name the folder of each flow whose `flow.md` carries the compacting session's id; nothing makes a flow write that file, the flow skills state it |
 | Skills, rules, agents, templates and manifests are well formed | `validate.sh`, in CI |
 | A SKILL.md stays under 300 lines | `validate.sh`, in CI |
 | Open as draft, mark ready only after the gate is green | `pr` Ready section: ready is flipped only when a go-ahead or brief named it, `verify` passed on the pushed head and no check has failed; no hook yet |
@@ -278,8 +279,17 @@ workspace usually needs both a filter and a project, for example
 
 The git, PR, writing, code-style and working-style conventions live in
 `rules/` and nowhere else; read those files rather than a restatement here.
-Two facts no rule file carries:
+Three facts no rule file carries:
 
 - READMEs are succinct quickstarts. Link to the guide, do not paste
   implementations.
 - Plans live in `docs/plans/YYYY-MM-DD-HHMM-<slug>.md` and are not committed.
+- A flow's folder under `docs/plans/` holds one `flow.md`, written by the
+  session that owns the flow when the run starts, and again by a session that
+  picks the run up: `flow` (`coordinate`,
+  `factory`, `handsfree` or `intake`), `state` (`running` or `done`) and
+  `session`, one `key: value` line each. It marks the folder and carries no
+  instruction: the compaction hooks print the flow's name and the folder's
+  path, never text from the file, and only when `session` is the id of the
+  session that is compacting. Where the run stands belongs in the flow's
+  ledgers, and how to pick it up in the Resume paragraph of its skill.

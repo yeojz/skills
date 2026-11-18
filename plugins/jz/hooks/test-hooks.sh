@@ -312,6 +312,9 @@ printf '\ncompaction hooks\n'
 C="$FIXTURE/compact"
 SID="11111111-2222-4333-8444-555555555555"
 git init -q -b feat/x "$C"
+# The hooks print each folder with links resolved, and macOS's temp dir sits
+# under the /var -> /private/var link, so compare against the resolved path.
+C="$(cd "$C" && pwd -P)"
 marker() {
   # marker <repo> <folder under docs/plans> <line>...
   local dir="$1/docs/plans/$2"; shift 2

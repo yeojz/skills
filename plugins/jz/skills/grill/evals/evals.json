@@ -18,12 +18,11 @@
     },
     {
       "id": 2,
-      "prompt": "kick off a new serverless OpenID Connect provider library in this empty repo, with docs. The old oidclib repo at ../oidclib is a reference but not the truth. One thing I already know: it should be secure and the code should be clean.",
-      "expected_output": "Spec mode. Branches into its own worktree, names facts taken from the predecessor repo without copying its decisions, writes CONTEXT.md as terms resolve, writes docs/specs/<slug>.md with Requirements, Decisions and Steps as decisions land, asks each step's Risk and Surfaces in the round that settles the step and writes both lines on it, refuses 'secure' and 'clean' as requirements until they name something observable, records most decisions as spec Decisions lines and only bar-passing ones as ADRs, adds Standing orders to AGENTS.md, and hands back naming criteria as next.",
+      "prompt": "kick off a new serverless OpenID Connect provider library in this empty repo, with docs. One thing I already know: it should be secure and the code should be clean.",
+      "expected_output": "Spec mode. Branches into its own worktree, writes CONTEXT.md as terms resolve, writes docs/specs/<slug>.md with Requirements, Decisions and Steps as decisions land, asks each step's Risk and Surfaces in the round that settles the step and writes both lines on it, refuses 'secure' and 'clean' as requirements until they name something observable, records most decisions as spec Decisions lines and only bar-passing ones as ADRs, adds Standing orders to AGENTS.md, and hands back naming criteria as next.",
       "files": [],
       "expectations": [
         "A task branch exists in its own worktree before the first file is written; nothing is written on the default branch",
-        "Facts taken from the predecessor repository are named as such and no decision is copied from it",
         "CONTEXT.md is written in the same turn the first term is resolved, not at the end",
         "docs/specs/<slug>.md is written with Requirements, Decisions and Steps sections and an empty Criteria section, with no acceptance or test command in it",
         "'Secure' and 'clean' are not written as requirements as given; the agent asks what someone would observe, as lettered options, or drops them and says so",

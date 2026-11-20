@@ -171,8 +171,8 @@ above holds, with these differences:
 - **D1.** Name of the claims helper. A `readClaims`, B `parseClaims`. Recommendation B, handsfree A, second opinion A. Chosen: A.
 ```
 
-- An ADR from one of these decisions takes the model sign-off line of
-  `template-adr.md`. The frontier being empty ends the run with the Step 6
+- An ADR from one of these decisions takes the family sign-off and the
+  Opinions line of `template-adr.md`. The frontier being empty ends the run with the Step 6
   hand-back; the confirmation in Step 5 is the owner's and is not asked of
   the brief's sender.
 

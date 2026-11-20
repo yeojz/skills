@@ -73,7 +73,8 @@ When the build forces a decision that is hard to reverse, surprising, and a
 real trade-off, stop and put it to the owner as lettered options. Write the
 answer as an ADR from the `grill` skill's `template-adr.md` and link it from
 the step, with the Sign-off line as that template gives it: the person who
-chose, or the model sign-off line when the decision came through `handsfree`.
+chose, or the family sign-off and Opinions line when the decision came
+through `handsfree`.
 
 **3d. Prove and record.** Run the `verify` skill. Write the result back
 before the checkpoint, not at the end:

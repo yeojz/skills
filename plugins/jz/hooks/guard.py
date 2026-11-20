@@ -13,6 +13,14 @@ run first, so a line that both denies and asks is denied.
 
 JZ_GUARDS, a comma-separated list of guard names, restricts the run to those
 guards; the test suite uses it to exercise one guard at a time.
+
+In a Claude Code cloud session (CLAUDE_CODE_REMOTE=true) the guards whose
+workflow the cloud session cannot follow are skipped: it has no gh to open a
+PR with the pr skill, and runs with no one watching for an ask. The
+default-branch, rebase, artifact and secret guards still run; the cloud
+rules recover a rejected push by rebasing. JZ_GUARDS_SKIP, a comma-separated list of guard
+names, skips those guards anywhere and, when set, replaces the cloud list, so
+JZ_GUARDS_SKIP=none runs every guard in the cloud.
 """
 
 import json
@@ -39,12 +47,32 @@ GUARDS = [
 ]
 
 
+# Guards whose workflow a cloud session cannot follow.
+REMOTE_SKIPS = {
+    require_pr_skill.NAME,
+    confirm_remote_writes.NAME,
+}
+
+
+def names_in(variable):
+    return {name.strip() for name in os.environ.get(variable, "").split(",") if name.strip()}
+
+
+def skipped_names():
+    if "JZ_GUARDS_SKIP" in os.environ:
+        return names_in("JZ_GUARDS_SKIP")
+    if os.environ.get("CLAUDE_CODE_REMOTE") == "true":
+        return REMOTE_SKIPS
+    return set()
+
+
 def selected_guards():
-    names = os.environ.get("JZ_GUARDS")
-    if not names:
-        return GUARDS
-    wanted = {name.strip() for name in names.split(",") if name.strip()}
-    return [guard for guard in GUARDS if guard.NAME in wanted]
+    guards = GUARDS
+    if os.environ.get("JZ_GUARDS"):
+        wanted = names_in("JZ_GUARDS")
+        guards = [guard for guard in guards if guard.NAME in wanted]
+    skipped = skipped_names()
+    return [guard for guard in guards if guard.NAME not in skipped]
 
 
 def main():

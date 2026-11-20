@@ -1,6 +1,7 @@
 # <Short title of the decision>
 
-Sign-off: <the git user.name of the person who chose, or (C) <model of the session running handsfree>, (W) <model of the asking skill's session>, (R) <model that gave the second opinion>>
+Sign-off: <the git user.name of the person who chose, or the coordinator's family, such as Claude>
+<A family sign-off only: Opinions: coordinator <pick> (<family>); worker <pick> (<family>); reviewer <pick> (<family>)>
 
 <One to three sentences: the context, what was decided, and why.>
 
@@ -13,13 +14,15 @@ Write an ADR only when all three hold:
 3. A real trade-off: there were genuine alternatives and one was picked for specific reasons.
 
 Sign-off is always present and never edited later. A person's choice reads
-their `git config user.name`, for example `Sign-off: Jane Doe`. A decision
-made through the `handsfree` skill names the three models by display name,
-as the briefs' Model tier lines give them, for example
-`Sign-off: (C) Opus 5.5, (W) Opus 5.5, (R) Fable 5.1`: (C) the session
-running handsfree, (W) the session of the skill that asked, a worker under
-`coordinate`, and (R) the second opinion. Someone who disagrees with a
-model sign-off writes a new ADR that supersedes it.
+their `git config user.name`, for example `Sign-off: Jane Doe`, with no
+Opinions line. A decision made without the owner names the family of the
+coordinator that decided it, one word such as `Claude` or `Codex`, never a
+model or version, and the Opinions line under it lists every pick that was
+asked, in this order: the coordinator's own, the worker's (the asking
+skill's session), then one `reviewer` entry per second opinion, for example
+`Opinions: coordinator B (Claude); worker B (Claude); reviewer A (Codex)`.
+Someone who disagrees with a family sign-off writes a new ADR that
+supersedes it.
 
 Optional sections, only when they add something:
 - Status frontmatter (proposed, accepted, deprecated, superseded by ADR-NNNN) when decisions get revisited.

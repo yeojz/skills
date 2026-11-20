@@ -163,7 +163,8 @@ A2: object. R2 names two tenants.
 Save that as `round-<N>-answers.md`. Append one row per decided question to
 `decisions.tsv`: the next `D<n>`, the round, the question with its lettered
 options, the tier, the three picks with `none` where no second opinion was
-asked, the decision, and the reason. The file is append-only.
+asked, each pick with the family that made it, such as `B (Claude)`, the
+decision, and the reason. The file is append-only.
 
 Start the asking skill again with the answers file: a fresh subagent that
 reads the spec written so far and the run folder, since the state is in the
@@ -172,9 +173,10 @@ in the next report to the owner. Under `factory`, pass the answer back
 through the job script's `answer` command; a hard escalation condition or a
 blocked job still goes to the owner.
 
-An ADR written from one of these decisions carries the model sign-off line
-from grill's `template-adr.md`: `(C)` the session running handsfree, `(W)`
-the asking skill's session, `(R)` the second opinion.
+An ADR written from one of these decisions carries the family sign-off and
+the Opinions line from grill's `template-adr.md`, copied from the decision's
+row: the coordinator is the session running handsfree, the worker the asking
+skill's session, and each second opinion a reviewer.
 
 ### Step 8: Leave the owner's actions to the owner
 

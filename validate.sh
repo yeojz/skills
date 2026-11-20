@@ -201,8 +201,8 @@ EVALS
 done
 
 printf '\nRules\n'
-for f in "$PLUGIN"/rules/*.md; do
-  [ -e "$f" ] || { bad "no rule files"; break; }
+for f in "$PLUGIN"/rules/*.md "$PLUGIN"/rules/local/*.md "$PLUGIN"/rules/cloud/*.md; do
+  [ -e "$f" ] || { bad "no rule files: $f"; continue; }
   lines="$(grep -c '' "$f")"
   [ "$lines" -le 80 ] || bad "$(basename "$f"): $lines lines, rules must stay short"
   emoji_free "$f" || bad "$(basename "$f"): contains emoji"

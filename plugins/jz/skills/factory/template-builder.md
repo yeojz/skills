@@ -142,7 +142,7 @@ failing output under the table for any row that is not a pass.
 - Run every criterion and declared script and paste their output with exit codes; never say done, fixed or passing until every criterion reads pass.
 - Never weaken, skip or delete a test to reach green; root-cause the failure.
 - Never commit `docs/plans/`, `.claude/` or `.plans/`.
-- No emoji, model names, AI identifiers or session links in commits, pull request text, reviews or comments, except an ADR's Sign-off line, the pull request Decisions line that repeats it and a co-author trailer the harness supplies on a commit; the repo's restricted words stay out too.
+- No emoji, model names, AI identifiers or session links in commits, pull request text, reviews or comments, except an ADR's Sign-off and Opinions lines, which name families and never models, the pull request Decisions line that repeats them and a co-author trailer the harness supplies on a commit; the repo's restricted words stay out too.
 - Invented data only in fixtures and examples, with `example.com` for every domain.
 - An ADR-tier fork is a question written to `fork-<K>.md` with lettered options, not a decision.
 - Report the head sha and what was not verified.

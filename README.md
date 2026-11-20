@@ -317,17 +317,22 @@ subagent types `jz:principal-engineer`, `jz:security-engineer`,
 
 Always-on and deliberately short, because they cost tokens in every session.
 A plugin cannot ship rule files directly, so the `load-house-rules.sh` hook
-injects them at session start.
+injects them at session start. Files directly in `rules/` load everywhere;
+`rules/local/` loads on your own machine and `rules/cloud/` in a Claude Code
+cloud session, which sets `CLAUDE_CODE_REMOTE=true`.
 
 | File | Covers |
 |---|---|
 | `house-style.md` | TypeScript and general code style |
 | `prose.md` | Numbered writing rules, so a steer can cite "prose rule 4": plain facts, no narrative of earlier runs, no mannered phrasing, sentence-case headings, straight quotes, no emoji or model names |
-| `git-workflow.md` | Branching, worktrees, commits, PR bodies, what never gets staged |
+| `git-workflow.md` | Branching, commits, PR bodies, linear history by rebase, what never gets staged |
 | `verification.md` | Evidence before assertions, root cause over workaround |
 | `ui-conventions.md` | Icons, primitives, type scale, the checks before a layout is done |
-| `parallelism.md` | Fan independent work out to subagents by default; wait for the owner only at a lettered design fork, a remote write that asks, an action the brief marks as theirs, or a skill's own pause; log each decision in the flow's ledger as it is agreed |
+| `decisions.md` | Wait for the owner only at a lettered design fork, a remote write that asks, an action the brief marks as theirs, or a skill's own pause; log each decision in the flow's ledger as it is agreed |
 | `models.md` | Host-neutral model tiers mapped to Claude and Codex: grilling, coordination, implementation, review on the other family first, fix escalation and scans |
+| `local/git-workflow-local.md` | A worktree per task, `<type>/<scope>-<description>` branch names, the `pr` skill for every commit and push, draft PRs without asking |
+| `local/parallelism.md` | Fan independent work out to subagents by default |
+| `cloud/git-workflow-cloud.md` | Work on the assigned branch, open a PR only when asked, recover a rejected push by rebasing onto the fetched branch, never by merging it in |
 
 ### Hooks
 
@@ -384,6 +389,16 @@ the two confirmations, because a host that answers prompts itself treats an
 ask as advice rather than a stop. `JZ_GUARDS=<name>,<name>` restricts a run
 to the guards named, which is how the suite tests one at a time.
 
+In a Claude Code cloud session, which sets `CLAUDE_CODE_REMOTE=true`, the
+guard skips `require-pr-skill` and `confirm-remote-writes`: a cloud session
+has no `gh` for the `pr` skill's PR steps, and runs with no one watching for
+an ask. `protect-default-branches`, `rebase-not-merge`,
+`no-claude-artifacts` and `scan-secrets-before-push` still run, and the cloud
+rules recover a rejected push by rebasing. `JZ_GUARDS_SKIP=<name>,<name>`
+skips the guards named in any session and, when set, replaces the cloud
+list; `JZ_GUARDS_SKIP=none` runs every guard in the cloud. Set it in the
+cloud environment's variables to change the list without a release.
+
 The hooks have their own regression suite, which builds throwaway repos and
 feeds the Bash guard the payloads it will see, one guard at a time. Exit 2
 denies a tool call, exit 0 allows it, and an ask decision is read from the
@@ -414,7 +429,7 @@ plugins can still get the rules:
 ./make-agents-md.sh --help
 ```
 
-That writes every file in `plugins/jz/rules/` except `models.md` into `AGENTS.md` in the target
+That writes every file in `plugins/jz/rules/` and `rules/local/` except `models.md` into `AGENTS.md` in the target
 repo, between delimiter comments. Re-running replaces only the generated block,
 so anything you wrote by hand around it survives. Edit the rules here and
 re-run to update.

@@ -4,6 +4,8 @@
 # through JZ_GUARDS or all together, and checks the outcome: exit 2 denies,
 # an ask decision on stdout asks, exit 0 with no decision allows.
 set -uo pipefail
+# The suite judges every guard; a cloud session's skips must not leak in.
+unset CLAUDE_CODE_REMOTE JZ_GUARDS_SKIP
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export HOOK_DIR
@@ -74,6 +76,41 @@ git -C "$FIXTURE/two" -c user.email=dev@example.com -c user.name=dev commit -q -
 out="$(printf '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t && git push --force origin topic"},"cwd":"%s"}' "$FIXTURE/two" \
   | "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
 if printf '%s' "$out" | grep -q 'without --draft' && printf '%s' "$out" | grep -q 'Possible secret'; then echo "PASS"; else echo "FAIL"; fail=1; fi
+: > "$FIXTURE/empty-transcript.jsonl"
+# A clean repository, so no-claude-artifacts stays quiet and only the guard under test speaks.
+git init -q -b topic "$FIXTURE/cloud"
+remote() {
+  # remote <JZ_GUARDS_SKIP value or -> <json-quoted command> <label> <deny|ask|allow>
+  # The payload names a transcript without the pr skill, so require-pr-skill would deny.
+  printf '  %-56s' "$3"
+  local payload out code got=allow
+  payload="$(printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s","transcript_path":"%s"}' \
+    "$2" "$FIXTURE/cloud" "$FIXTURE/empty-transcript.jsonl")"
+  if [ "$1" = - ]; then
+    out="$(printf '%s' "$payload" | CLAUDE_CODE_REMOTE=true "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+  else
+    out="$(printf '%s' "$payload" | CLAUDE_CODE_REMOTE=true JZ_GUARDS_SKIP="$1" "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
+  fi
+  code=$?
+  [ "$code" = 2 ] && got=deny
+  printf '%s' "$out" | grep -q '"permissionDecision": "ask"' && got=ask
+  if [ "$got" = "$4" ]; then echo "$got PASS"; else echo "$got FAIL, expected $4"; fail=1; fi
+}
+printf '\nin a cloud session\n'
+remote - '"git commit -m x"'                         "skips require-pr-skill"                     allow
+remote - '"gh pr create --title t"'                  "skips confirm-remote-writes"                allow
+remote - '"git merge --no-edit FETCH_HEAD"'          "still denies a merge"                       deny
+remote - '"git pull origin topic"'                   "still denies a pull without --rebase"       deny
+remote - '"git rebase FETCH_HEAD"'                   "allows the rebase recovery"                 allow
+remote - '"gh pr merge 5"'                           "still protects the default branch"          deny
+remote - '"git push origin main"'                    "still blocks a push to main"                deny
+remote none '"git commit -m x"'                      "JZ_GUARDS_SKIP=none runs every guard"       deny
+remote require-pr-skill '"gh pr create --title t"'   "JZ_GUARDS_SKIP replaces the cloud list"     ask
+printf '  %-56s' "JZ_GUARDS_SKIP works outside the cloud"
+printf '{"tool_name":"Bash","tool_input":{"command":"git merge topic"},"cwd":"%s"}' "$FIXTURE" \
+  | JZ_GUARDS_SKIP=rebase-not-merge "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+if [ $? = 0 ]; then echo "PASS"; else echo "FAIL"; fail=1; fi
+
 printf '  %-56s' "a payload that is not JSON is allowed"
 printf 'not json' | "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
 if [ $? = 0 ]; then echo "PASS"; else echo "FAIL"; fail=1; fi
@@ -293,20 +330,31 @@ out="$(printf '{"hook_event_name":"SessionStart","how":"startup","cwd":"%s"}' "$
 if [ -z "$out" ]; then echo "PASS"; else echo "FAIL, expected no output"; fail=1; fi
 
 printf '\nload-house-rules.sh\n'
-printf '  %-56s' "emits every rule file as context"
-out="$(printf '{"hook_event_name":"SessionStart","how":"startup","cwd":"%s"}' "$FIXTURE" | "$HOOK_DIR/load-house-rules.sh" 2>/dev/null)"
-if printf '%s' "$out" | python3 -c "
+house_rules() {
+  # house_rules <label> <scope loaded> <scope left out> [env assignment]
+  printf '  %-56s' "$1"
+  local out
+  out="$(printf '{"hook_event_name":"SessionStart","how":"startup","cwd":"%s"}' "$FIXTURE" \
+    | env ${4:-} "$HOOK_DIR/load-house-rules.sh" 2>/dev/null)"
+  if printf '%s' "$out" | LOADED="$2" LEFT_OUT="$3" python3 -c "
 import json,sys,glob,os
 d=json.load(sys.stdin)
 ctx=d['hookSpecificOutput']['additionalContext']
 assert d['hookSpecificOutput']['hookEventName']=='SessionStart'
 assert 'House rules' in ctx
-rules=sorted(glob.glob(os.path.join(os.environ['HOOK_DIR'],'..','rules','*.md')))
-assert rules, 'no rule files found'
-for r in rules:
-    first=open(r,encoding='utf-8').readline().strip()
-    assert first in ctx, first+' missing'
+root=os.path.join(os.environ['HOOK_DIR'],'..','rules')
+def heads(sub):
+    files=sorted(glob.glob(os.path.join(root,sub,'*.md')))
+    assert files, 'no rule files in '+sub
+    return [open(f,encoding='utf-8').readline().strip() for f in files]
+for h in heads('')+heads(os.environ['LOADED']):
+    assert h in ctx, h+' missing'
+for h in heads(os.environ['LEFT_OUT']):
+    assert h not in ctx, h+' should be left out'
 " 2>/dev/null; then echo "PASS"; else echo "FAIL"; fail=1; fi
+}
+house_rules "emits the common and local rules on a local machine" local cloud
+house_rules "emits the common and cloud rules in a cloud session" cloud local CLAUDE_CODE_REMOTE=true
 
 printf '\ncompaction hooks\n'
 C="$FIXTURE/compact"

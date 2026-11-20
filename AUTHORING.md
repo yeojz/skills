@@ -155,7 +155,10 @@ expectation that would also pass without the skill proves nothing.
 ## Rule format
 
 A rule file is plain markdown under `plugins/jz/rules/`: one H1, a flat list of
-imperative lines, no frontmatter, under 80 lines. Rules are always on and cost
+imperative lines, no frontmatter, under 80 lines. Files directly in `rules/` load
+in every session; those in `rules/local/` load only on the owner's own machine,
+and those in `rules/cloud/` only in a Claude Code cloud session
+(`CLAUDE_CODE_REMOTE=true`). Rules are always on and cost
 tokens in every session, so a line that a skill already enforces belongs in the
 skill, not here. `models.md` is the one rule that names models; it reaches a
 session through the hook only and `make-agents-md.sh` never writes it into a
@@ -211,7 +214,7 @@ check that fails, then a test, with prose last.
 | A throwaway worktree is removed only after the last step that runs in it | `validate.sh`: a skill or template that names the directory variable after its `git worktree remove` fails |
 | A skill or template carries no `$ARGUMENTS` or `$<digits>` placeholder that Claude Code would fill with the skill's arguments | `validate.sh`: a SKILL.md or template with one fails, naming the line |
 | Every requirement has an acceptance criterion whose check proves it, seen failing before the build, and every criterion has a row in the verify block | nothing; `criteria` Step 3 asks for the check or sends the requirement back to `grill`, `criteria` Step 4 runs each check before sign-off, `implement` stops a step whose requirement has no criterion, `coordinate` Step 4 holds back a step whose requirement has no criterion and its `unit` script refuses a report with a missing row, `verify` Step 7 reads `not run` for a criterion without a run, and the review brief re-runs each command |
-| Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes` guard for the remote writes; nothing for the rest, `parallelism.md` states it |
+| Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes` guard for the remote writes; nothing for the rest, `decisions.md` states it |
 | Prose rules 7 and 8, no emoji or model name in commit or PR text | nothing in a hook; `validate.sh` for emoji in this repo's files |
 | Prose rules 1 to 6 and 9 to 14 | nothing; `prose.md` numbers them so a steer cites one, and `improve` turns a repeated steer into the next check |
 

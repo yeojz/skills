@@ -75,9 +75,9 @@ dropped.
 | Correction is about | Path, home |
 |---|---|
 | wording, tone, headings | Plugin: `rules/prose.md`, by rule number; when the owner cites a rule that already exists, also the skill that wrote the prose |
-| branching, commits, PR body, staging | Plugin: `rules/git-workflow.md` or the `pr` skill |
+| branching, commits, PR body, staging | Plugin: `rules/git-workflow.md`, its `local/` or `cloud/` counterpart when the correction holds on one machine only, or the `pr` skill |
 | a done claim without output, a weakened test | Plugin: `rules/verification.md` or `verify` |
-| fan-out, waiting, options without a recommendation | Plugin: `rules/parallelism.md` |
+| fan-out, waiting, options without a recommendation | Plugin: `rules/decisions.md`, or `rules/local/parallelism.md` for fan-out |
 | the model a session ran on | Plugin: `rules/models.md` |
 | a step a skill took or skipped | Plugin: that skill's `SKILL.md`, the step by name |
 | the project's code, scripts, CI, tests, formatter, hooks | Project |

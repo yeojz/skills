@@ -15,10 +15,10 @@ JZ_GUARDS, a comma-separated list of guard names, restricts the run to those
 guards; the test suite uses it to exercise one guard at a time.
 
 In a Claude Code cloud session (CLAUDE_CODE_REMOTE=true) the guards whose
-workflow contradicts the cloud harness are skipped: the harness assigns the
-session its branch, recovers a rejected push by merging the remote branch
-in, and pushes with no one watching for an ask. The default-branch, artifact
-and secret guards still run. JZ_GUARDS_SKIP, a comma-separated list of guard
+workflow the cloud session cannot follow are skipped: it has no gh to open a
+PR with the pr skill, and runs with no one watching for an ask. The
+default-branch, rebase, artifact and secret guards still run; the cloud
+rules recover a rejected push by rebasing. JZ_GUARDS_SKIP, a comma-separated list of guard
 names, skips those guards anywhere and, when set, replaces the cloud list, so
 JZ_GUARDS_SKIP=none runs every guard in the cloud.
 """
@@ -47,9 +47,8 @@ GUARDS = [
 ]
 
 
-# Guards whose workflow contradicts the cloud harness's own git instructions.
+# Guards whose workflow a cloud session cannot follow.
 REMOTE_SKIPS = {
-    rebase_not_merge.NAME,
     require_pr_skill.NAME,
     confirm_remote_writes.NAME,
 }

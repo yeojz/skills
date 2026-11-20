@@ -384,6 +384,16 @@ the two confirmations, because a host that answers prompts itself treats an
 ask as advice rather than a stop. `JZ_GUARDS=<name>,<name>` restricts a run
 to the guards named, which is how the suite tests one at a time.
 
+In a Claude Code cloud session, which sets `CLAUDE_CODE_REMOTE=true`, the
+guard skips `rebase-not-merge`, `require-pr-skill` and
+`confirm-remote-writes`: the cloud harness assigns the session its branch,
+recovers a rejected push by merging the remote branch in, and runs with no
+one watching for an ask. `protect-default-branches`, `no-claude-artifacts`
+and `scan-secrets-before-push` still run. `JZ_GUARDS_SKIP=<name>,<name>`
+skips the guards named in any session and, when set, replaces the cloud
+list; `JZ_GUARDS_SKIP=none` runs every guard in the cloud. Set it in the
+cloud environment's variables to change the list without a release.
+
 The hooks have their own regression suite, which builds throwaway repos and
 feeds the Bash guard the payloads it will see, one guard at a time. Exit 2
 denies a tool call, exit 0 allows it, and an ask decision is read from the

@@ -4,6 +4,8 @@
 # through JZ_GUARDS or all together, and checks the outcome: exit 2 denies,
 # an ask decision on stdout asks, exit 0 with no decision allows.
 set -uo pipefail
+# The suite judges every guard; a cloud session's skips must not leak in.
+unset CLAUDE_CODE_REMOTE JZ_GUARDS_SKIP
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export HOOK_DIR
@@ -74,6 +76,33 @@ git -C "$FIXTURE/two" -c user.email=dev@example.com -c user.name=dev commit -q -
 out="$(printf '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t && git push --force origin topic"},"cwd":"%s"}' "$FIXTURE/two" \
   | "$HOOK_DIR/guard-bash.sh" 2>/dev/null)"
 if printf '%s' "$out" | grep -q 'without --draft' && printf '%s' "$out" | grep -q 'Possible secret'; then echo "PASS"; else echo "FAIL"; fail=1; fi
+remote() {
+  # remote <JZ_GUARDS_SKIP value or -> <json-quoted command> <label> <deny|allow>
+  printf '  %-56s' "$3"
+  local code got=allow
+  if [ "$1" = - ]; then
+    printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$2" "$FIXTURE" \
+      | CLAUDE_CODE_REMOTE=true "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+  else
+    printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' "$2" "$FIXTURE" \
+      | CLAUDE_CODE_REMOTE=true JZ_GUARDS_SKIP="$1" "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+  fi
+  code=$?
+  [ "$code" = 2 ] && got=deny
+  if [ "$got" = "$4" ]; then echo "$got PASS"; else echo "$got FAIL, expected $4"; fail=1; fi
+}
+printf '\nin a cloud session\n'
+remote - '"git merge --no-edit FETCH_HEAD"'          "skips rebase-not-merge"                     allow
+remote - '"git pull origin topic"'                   "skips rebase-not-merge on pull"             allow
+remote - '"gh pr merge 5"'                           "still protects the default branch"          deny
+remote - '"git push origin main"'                    "still blocks a push to main"                deny
+remote none '"git merge topic"'                      "JZ_GUARDS_SKIP=none runs every guard"       deny
+remote protect-default-branches '"gh pr merge 5"'    "JZ_GUARDS_SKIP replaces the cloud list"     allow
+printf '  %-56s' "JZ_GUARDS_SKIP works outside the cloud"
+printf '{"tool_name":"Bash","tool_input":{"command":"git merge topic"},"cwd":"%s"}' "$FIXTURE" \
+  | JZ_GUARDS_SKIP=rebase-not-merge "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
+if [ $? = 0 ]; then echo "PASS"; else echo "FAIL"; fail=1; fi
+
 printf '  %-56s' "a payload that is not JSON is allowed"
 printf 'not json' | "$HOOK_DIR/guard-bash.sh" >/dev/null 2>&1
 if [ $? = 0 ]; then echo "PASS"; else echo "FAIL"; fail=1; fi

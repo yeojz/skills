@@ -160,9 +160,9 @@ within one session's context without the owner managing it.
 - `grill` gains two things: each question is marked ADR-tier or not, and a
   round can be written to files as above. Its interview of the owner is
   otherwise unchanged.
-- An ADR from an `handsfree` decision carries the model sign-off line, naming the
-  session running `handsfree`, the asking skill's session and the second
-  opinion.
+- An ADR from an `handsfree` decision carries the coordinator's family as its
+  sign-off and an Opinions line giving each pick with its family: the
+  coordinator, the worker and each second opinion.
 - A new dependency chosen by `intake` is always listed as an ADR-tier
   decision, and a step that adds one stays ineligible for the factory.
 - Each builder, reviewer and approver starts fresh and reads the spec step,

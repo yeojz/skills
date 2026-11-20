@@ -139,6 +139,35 @@ run $G '"git commit -m x"'                           "commit with a clean tree" 
 run $G '"git add src/.claudette"'                    "a path that only looks like an artifact"    allow
 run $G '"git -C /tmp add x"'                         "add judged in the cwd, not the -C path"     allow
 
+printf '\nadr-sign-off\n'
+adr_case() {
+  # adr_case <label> <deny|allow> <sign-off block> [commit command]
+  local repo="$FIXTURE/adr-$RANDOM$RANDOM"
+  git init -q -b topic "$repo"
+  mkdir -p "$repo/docs/adr"
+  printf '# A decision\n\n%b\n\nWhy it was decided.\n' "$3" > "$repo/docs/adr/0002-a-decision.md"
+  git -C "$repo" add docs/adr/0002-a-decision.md
+  run adr-sign-off "\"${4:-git commit -m x}\"" "$1" "$2" "$repo"
+}
+adr_case "a person's sign-off"                         allow 'Sign-off: Jane Doe'
+adr_case "a family sign-off with its opinions"         allow 'Sign-off: Claude\nOpinions: coordinator B (Claude); worker B (Claude); reviewer A (Codex)'
+adr_case "two reviewers"                               allow 'Sign-off: Codex\nOpinions: coordinator A (Codex); worker A (Claude); reviewer A (Claude); reviewer B (Codex)'
+adr_case "no sign-off line"                            deny  'Decided by someone.'
+adr_case "a family sign-off without opinions"          deny  'Sign-off: Claude'
+adr_case "a model name in the sign-off"                deny  'Sign-off: (C) Opus 5.5, (W) Opus 5.5, (R) Fable 5.1'
+adr_case "a model name in the opinions"                deny  'Sign-off: Claude\nOpinions: coordinator B (Opus 5.5); worker B (Claude)'
+adr_case "a family the guard does not know"            deny  'Sign-off: Claude\nOpinions: coordinator B (Claude); reviewer A (Gemini)'
+adr_case "opinions under a person's sign-off"          deny  'Sign-off: Jane Doe\nOpinions: coordinator B (Claude)'
+adr_case "a commit that is not one is not judged"      allow 'Sign-off: Claude' 'git status'
+mkdir -p "$FIXTURE/adr-old/docs/adr"
+git init -q -b topic "$FIXTURE/adr-old"
+printf '# Old\n\nSign-off: (C) Opus 5.5\n' > "$FIXTURE/adr-old/docs/adr/0001-old.md"
+git -C "$FIXTURE/adr-old" add docs/adr && git -C "$FIXTURE/adr-old" -c user.email=dev@example.com -c user.name=dev commit -q -m "docs: old"
+echo "note" > "$FIXTURE/adr-old/README.md" && git -C "$FIXTURE/adr-old" add README.md
+run adr-sign-off '"git commit -m x"'                 "an older ADR the commit leaves alone"       allow "$FIXTURE/adr-old"
+printf '# Old\n\nSign-off: (C) Opus 5.5\nmore\n' > "$FIXTURE/adr-old/docs/adr/0001-old.md"
+run adr-sign-off '"git commit -am x"'                "an ADR -a would commit is judged"           deny  "$FIXTURE/adr-old"
+
 printf '\nrebase-not-merge\n'
 G=rebase-not-merge
 run $G '"git status"'                                "git status"                                 allow

@@ -29,6 +29,7 @@ import sys
 
 from guards import Ask, Context, Deny
 from guards import (  # noqa: E402
+    adr_sign_off,
     confirm_remote_writes,
     no_claude_artifacts,
     protect_default_branches,
@@ -42,6 +43,7 @@ GUARDS = [
     rebase_not_merge,
     require_pr_skill,
     no_claude_artifacts,
+    adr_sign_off,
     confirm_remote_writes,
     scan_secrets_before_push,
 ]

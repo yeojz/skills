@@ -1,6 +1,6 @@
 # <Short title of the decision>
 
-Sign-off: <the git user.name of the person who chose, or the coordinator's family: Claude or Codex>
+Sign-off: <the git user.name of the person who chose, or the coordinator's family, such as Claude>
 <A family sign-off only: Opinions: coordinator <pick> (<family>); worker <pick> (<family>); reviewer <pick> (<family>)>
 
 <One to three sentences: the context, what was decided, and why.>
@@ -16,10 +16,10 @@ Write an ADR only when all three hold:
 Sign-off is always present and never edited later. A person's choice reads
 their `git config user.name`, for example `Sign-off: Jane Doe`, with no
 Opinions line. A decision made without the owner names the family of the
-coordinator that decided it, `Claude` or `Codex`, never a model, and the
-Opinions line under it lists every pick that was asked, in this order: the
-coordinator's own, the worker's (the asking skill's session), then one
-`reviewer` entry per second opinion, for example
+coordinator that decided it, one word such as `Claude` or `Codex`, never a
+model or version, and the Opinions line under it lists every pick that was
+asked, in this order: the coordinator's own, the worker's (the asking
+skill's session), then one `reviewer` entry per second opinion, for example
 `Opinions: coordinator B (Claude); worker B (Claude); reviewer A (Codex)`.
 The `adr-sign-off` guard denies a commit whose ADR breaks this shape.
 Someone who disagrees with a family sign-off writes a new ADR that

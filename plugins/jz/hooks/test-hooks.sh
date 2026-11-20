@@ -153,10 +153,11 @@ adr_case "a person's sign-off"                         allow 'Sign-off: Jane Doe
 adr_case "a family sign-off with its opinions"         allow 'Sign-off: Claude\nOpinions: coordinator B (Claude); worker B (Claude); reviewer A (Codex)'
 adr_case "two reviewers"                               allow 'Sign-off: Codex\nOpinions: coordinator A (Codex); worker A (Claude); reviewer A (Claude); reviewer B (Codex)'
 adr_case "no sign-off line"                            deny  'Decided by someone.'
-adr_case "a family sign-off without opinions"          deny  'Sign-off: Claude'
+adr_case "a sign-off family the coordinator lacks"     deny  'Sign-off: Codex\nOpinions: coordinator B (Claude); worker B (Claude)'
 adr_case "a model name in the sign-off"                deny  'Sign-off: (C) Opus 5.5, (W) Opus 5.5, (R) Fable 5.1'
 adr_case "a model name in the opinions"                deny  'Sign-off: Claude\nOpinions: coordinator B (Opus 5.5); worker B (Claude)'
-adr_case "a family the guard does not know"            deny  'Sign-off: Claude\nOpinions: coordinator B (Claude); reviewer A (Gemini)'
+adr_case "any one-word family"                       allow 'Sign-off: Claude\nOpinions: coordinator B (Claude); reviewer A (Gemini)'
+adr_case "a model and version as a family"             deny  'Sign-off: Claude\nOpinions: coordinator B (Claude); reviewer A (GPT-5)'
 adr_case "opinions under a person's sign-off"          deny  'Sign-off: Jane Doe\nOpinions: coordinator B (Claude)'
 adr_case "a commit that is not one is not judged"      allow 'Sign-off: Claude' 'git status'
 mkdir -p "$FIXTURE/adr-old/docs/adr"

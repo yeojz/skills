@@ -21,7 +21,6 @@ model or version, and the Opinions line under it lists every pick that was
 asked, in this order: the coordinator's own, the worker's (the asking
 skill's session), then one `reviewer` entry per second opinion, for example
 `Opinions: coordinator B (Claude); worker B (Claude); reviewer A (Codex)`.
-The `adr-sign-off` guard denies a commit whose ADR breaks this shape.
 Someone who disagrees with a family sign-off writes a new ADR that
 supersedes it.
 

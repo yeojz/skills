@@ -216,7 +216,6 @@ check that fails, then a test, with prose last.
 | Every requirement has an acceptance criterion whose check proves it, seen failing before the build, and every criterion has a row in the verify block | nothing; `criteria` Step 3 asks for the check or sends the requirement back to `grill`, `criteria` Step 4 runs each check before sign-off, `implement` stops a step whose requirement has no criterion, `coordinate` Step 4 holds back a step whose requirement has no criterion and its `unit` script refuses a report with a missing row, `verify` Step 7 reads `not run` for a criterion without a run, and the review brief re-runs each command |
 | Wait for the owner only at a lettered fork, a remote write that asks, or the owner's action; everything else proceeds and is reported | `confirm-remote-writes` guard for the remote writes; nothing for the rest, `decisions.md` states it |
 | Prose rules 7 and 8, no emoji or model name in commit or PR text | nothing in a hook; `validate.sh` for emoji in this repo's files |
-| An ADR signs off as a person, or as the coordinator's family with an Opinions line, never a model | `adr-sign-off` guard on every commit that adds or changes an ADR |
 | Prose rules 1 to 6 and 9 to 14 | nothing; `prose.md` numbers them so a steer cites one, and `improve` turns a repeated steer into the next check |
 
 A repository lists its restricted words as bullets under a `## Restricted
